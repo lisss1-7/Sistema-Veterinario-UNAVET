@@ -1,6 +1,4 @@
 const DEFAULT_PROVIDER = process.env.AI_PROVIDER || 'auto';
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.1:8b';
 const OPENROUTER_MODEL =
   process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.1-8b-instruct:free';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
@@ -355,28 +353,6 @@ const buildLegacyFallbackReport = (prompt, metrics, chart) => {
   ].join('\n');
 };
 
-const callOllama = async (messages) => {
-  const response = await fetch(`${OLLAMA_URL}/api/chat`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: OLLAMA_MODEL,
-      stream: false,
-      messages,
-    }),
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Ollama error: ${response.status} ${text}`);
-  }
-
-  const data = await response.json();
-  return data?.message?.content || '';
-};
-
 const callOpenRouter = async (messages) => {
   const apiKey = process.env.OPENROUTER_API_KEY;
 
@@ -466,7 +442,7 @@ const callGroq = async (messages) => {
 
 const resolveProviderOrder = () => {
   if (DEFAULT_PROVIDER === 'auto') {
-    return ['openai', 'openrouter', 'groq', 'ollama'];
+    return ['openai', 'openrouter', 'groq'];
   }
 
   return [DEFAULT_PROVIDER];
@@ -483,10 +459,6 @@ const executeProvider = async (provider, messages) => {
 
   if (provider === 'groq') {
     return callGroq(messages);
-  }
-
-  if (provider === 'ollama') {
-    return callOllama(messages);
   }
 
   throw new Error(`Proveedor IA no soportado: ${provider}`);
@@ -538,7 +510,6 @@ const generarReporteIA = async (req, res) => {
 
     let content = '';
     let providerUsed = DEFAULT_PROVIDER;
-    let fallbackUsed = false;
     const providerErrors = [];
 
     try {
@@ -562,23 +533,16 @@ const generarReporteIA = async (req, res) => {
         );
       }
     } catch (providerError) {
-      fallbackUsed = true;
-      providerUsed = 'fallback-local';
-      content = buildFallbackReport(
-        prompt,
-        reportType,
-        effectiveReportTitle,
-        metrics || {},
-        chart || {}
-      );
-
-      console.error('Fallo proveedor IA, usando fallback local:', providerError.message);
+      console.error('Fallo proveedor IA:', providerError.message);
+      return res.status(502).json({
+        message: 'No se pudo generar el reporte con un proveedor IA en la nube',
+        error: providerError.message,
+      });
     }
 
     return res.json({
       content,
       providerUsed,
-      fallbackUsed,
       providerMode: DEFAULT_PROVIDER,
       reportType,
       reportTitle: effectiveReportTitle,

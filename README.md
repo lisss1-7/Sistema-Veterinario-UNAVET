@@ -30,7 +30,7 @@ Implementado en esta versión:
 
 - Chat de reportes IA conectado a datos reales del sistema
 - Endpoint backend `POST /api/ai-reports/chat` protegido con JWT
-- Soporte para IA local gratis con Ollama y fallback local automático
+- Soporte para proveedores de IA en la nube
 
 ## Tecnologías utilizadas
 
@@ -254,7 +254,7 @@ GROQ_MODEL=llama-3.1-8b-instant
 AI_PROVIDER=auto
 ```
 
-En modo `auto`, el backend intenta en este orden: OpenAI, OpenRouter, Groq y luego Ollama.
+En modo `auto`, el backend intenta en este orden: OpenAI, OpenRouter y Groq.
 
 ### 2. Reiniciar backend
 
@@ -263,7 +263,7 @@ cd backend
 npm run dev
 ```
 
-Si el proveedor IA falla, el sistema genera automáticamente un reporte local de respaldo para no bloquear el chat.
+Si todos los proveedores IA fallan, el sistema devuelve un error y no genera una respuesta local de respaldo.
 
 ## Usuarios iniciales
 

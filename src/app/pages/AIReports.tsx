@@ -614,8 +614,8 @@ async function requestAIReport(
 
     return content;
   } catch (error) {
-    console.warn('Fallo IA remota, usando fallback local:', error);
-    return generatePrototypeAIReport(prompt, reportType, metrics, chart);
+    console.warn('Fallo IA en la nube:', error);
+    throw error;
   }
 }
 
