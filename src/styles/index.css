@@ -1,0 +1,8 @@
+@import './tailwind.css';
+@import './theme.css';
+/* Fondo compartido para los modales: mejora el contraste con cursores claros. */
+.modal-backdrop {
+  background-color: rgb(45 33 24 / 68%) !important;
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}

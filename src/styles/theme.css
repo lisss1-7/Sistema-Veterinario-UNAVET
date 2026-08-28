@@ -1,0 +1,492 @@
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  color-scheme: light;
+  --font-size: 19px;
+  --background: #f5f0eb;
+  --app-background: linear-gradient(135deg, #f5f0eb 0%, #e8ddd0 100%);
+  --login-background: linear-gradient(135deg, #d8c2aa 0%, #b99c80 100%);
+  --login-card: #efe2d2;
+  --foreground: #2d1f14;
+  --card: #ffffff;
+  --card-foreground: #2d1f14;
+  --popover: #ffffff;
+  --popover-foreground: #2d1f14;
+  --primary: #8b6f47;
+  --primary-foreground: #ffffff;
+  --secondary: #d4a574;
+  --secondary-foreground: #2d1f14;
+  --muted: #f9f5f0;
+  --muted-foreground: #6b5b4d;
+  --accent: #c9965a;
+  --accent-foreground: #ffffff;
+  --destructive: #5b4031;
+  --destructive-foreground: #ffffff;
+  --border: #e5d4c1;
+  --input: transparent;
+  --input-background: #fefdfb;
+  --switch-background: #d4a574;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --ring: #8b6f47;
+  --chart-1: #8b6f47;
+  --chart-2: #c9965a;
+  --chart-3: #d4a574;
+  --chart-4: #6b5b4d;
+  --chart-5: #4a3f35;
+  --radius: 0.75rem;
+  --sidebar: #2d1f14;
+  --sidebar-foreground: #f5f0eb;
+  --sidebar-primary: #c9965a;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #8b6f47;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --sidebar-ring: #c9965a;
+  --success: #8b6f47;
+  --success-foreground: #ffffff;
+  --warning: #c9965a;
+  --warning-foreground: #ffffff;
+  --info: #6b5b4d;
+  --info-foreground: #ffffff;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #2b231e;
+  --app-background: linear-gradient(135deg, #2b231e 0%, #382c25 100%);
+  --login-background: linear-gradient(135deg, #725b49 0%, #4b3a30 100%);
+  --login-card: #514034;
+  --foreground: #f7efe6;
+  --card: #40332b;
+  --card-foreground: #f7efe6;
+  --popover: #46372e;
+  --popover-foreground: #f7efe6;
+  --primary: #8b6f47;
+  --primary-foreground: #ffffff;
+  --secondary: #554337;
+  --secondary-foreground: #f7efe6;
+  --muted: #49392f;
+  --muted-foreground: #d7c7ba;
+  --accent: #d4a574;
+  --accent-foreground: #211710;
+  --destructive: #d4a574;
+  --destructive-foreground: #ffffff;
+  --border: #705b4d;
+  --input: #705b4d;
+  --input-background: #44362e;
+  --switch-background: #8b6f47;
+  --ring: #d4a574;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --chart-1: #d4a574;
+  --chart-2: #c9965a;
+  --chart-3: #8b6f47;
+  --chart-4: #705b4d;
+  --chart-5: #d7c7ba;
+  --sidebar: #160f0c;
+  --sidebar-foreground: #f7efe6;
+  --sidebar-primary: #c9965a;
+  --sidebar-primary-foreground: #1c140f;
+  --sidebar-accent: #4a372a;
+  --sidebar-accent-foreground: #f7efe6;
+  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --sidebar-ring: #d4a574;
+  --success: #d4a574;
+  --success-foreground: #211710;
+  --warning: #c9965a;
+  --warning-foreground: #211710;
+  --info: #d7c7ba;
+  --info-foreground: #211710;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-switch-background: var(--switch-background);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply text-foreground;
+    background: var(--app-background);
+    background-attachment: fixed;
+    transition: background-color 200ms ease, color 200ms ease;
+  }
+
+  .login-page {
+    background: var(--login-background);
+  }
+
+  .login-card {
+    background-color: var(--login-card);
+  }
+
+  /**
+  * Default typography styles for HTML elements (h1-h4, p, label, button, input).
+  * These are in @layer base, so Tailwind utility classes (like text-sm, text-lg) automatically override them.
+  */
+
+  html {
+    font-size: var(--font-size);
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    font-size: 1.05rem;
+    line-height: 1.6;
+  }
+
+  body,
+  #root {
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  @media (min-width: 1024px) {
+    html,
+    body,
+    #root {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+
+    html::-webkit-scrollbar,
+    body::-webkit-scrollbar,
+    #root::-webkit-scrollbar {
+      display: none;
+      width: 0;
+      height: 0;
+    }
+  }
+
+  img,
+  video,
+  canvas,
+  svg {
+    max-width: 100%;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    max-width: 100%;
+  }
+
+  input,
+  select,
+  textarea {
+    min-width: 0;
+  }
+
+  h1 {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  h2 {
+    font-size: var(--text-xl);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  h3 {
+    font-size: var(--text-lg);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  h4 {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  label {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  button {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  input {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-normal);
+    line-height: 1.5;
+  }
+}
+
+@layer components {
+  .dashboard-page {
+    background-color: #f3e9dd;
+    background-image: linear-gradient(
+        135deg,
+        rgb(255 250 245 / 34%) 25%,
+        transparent 25%
+      ),
+      linear-gradient(315deg, rgb(166 109 53 / 4%) 25%, transparent 25%),
+      radial-gradient(circle at 88% 4%, rgb(201 150 90 / 25%), transparent 26%),
+      radial-gradient(circle at 4% 88%, rgb(185 120 88 / 20%), transparent 28%);
+    background-size: 44px 44px, 44px 44px, auto, auto;
+  }
+
+  .dark .dashboard-page {
+    background-color: #2b231e;
+    background-image: linear-gradient(
+        135deg,
+        rgb(112 91 77 / 11%) 25%,
+        transparent 25%
+      ),
+      linear-gradient(315deg, rgb(201 150 90 / 5%) 25%, transparent 25%),
+      radial-gradient(circle at 88% 4%, rgb(201 150 90 / 13%), transparent 26%),
+      radial-gradient(circle at 4% 88%, rgb(185 120 88 / 10%), transparent 28%);
+  }
+}
+
+/* Adaptadores para utilidades de estado que conservan colores fijos. */
+@layer utilities {
+  .dark .bg-white {
+    background-color: var(--card);
+  }
+
+  .dark .bg-gray-100 {
+    background-color: #332a25;
+  }
+
+  .dark .text-gray-700,
+  .dark .text-gray-800 {
+    color: #d7c9bd;
+  }
+
+  .dark .bg-red-100,
+  .dark .bg-red-200 {
+    background-color: rgb(127 29 29 / 38%);
+  }
+
+  .dark .text-red-600,
+  .dark .text-red-700,
+  .dark .text-red-800 {
+    color: #fca5a5;
+  }
+
+  .dark .bg-green-100,
+  .dark .bg-green-200 {
+    background-color: rgb(20 83 45 / 42%);
+  }
+
+  .dark .text-green-700,
+  .dark .text-green-800 {
+    color: #86efac;
+  }
+
+  .dark .bg-blue-50,
+  .dark .bg-blue-100,
+  .dark .bg-blue-200 {
+    background-color: rgb(30 64 175 / 30%);
+  }
+
+  .dark .text-blue-700,
+  .dark .text-blue-800 {
+    color: #93c5fd;
+  }
+
+  .dark .bg-yellow-100,
+  .dark .bg-yellow-200 {
+    background-color: rgb(133 77 14 / 38%);
+  }
+
+  .dark .text-yellow-600,
+  .dark .text-yellow-700,
+  .dark .text-yellow-800 {
+    color: #fde68a;
+  }
+
+  .dark .bg-purple-50,
+  .dark .bg-purple-100,
+  .dark .bg-purple-200 {
+    background-color: rgb(88 28 135 / 32%);
+  }
+
+  .dark .text-purple-700,
+  .dark .text-purple-800 {
+    color: #d8b4fe;
+  }
+}
+
+/* Compatibilidad visual para pantallas antiguas: todos los estados permanecen
+   dentro de la paleta café/beige, incluso si el componente usa una utilidad
+   semántica histórica como red, green o blue. */
+@layer utilities {
+  .bg-red-50,
+  .bg-red-100,
+  .bg-red-200 {
+    background-color: color-mix(in srgb, var(--destructive) 14%, var(--card)) !important;
+  }
+
+  .bg-green-50,
+  .bg-green-100,
+  .bg-green-200 {
+    background-color: color-mix(in srgb, var(--success) 14%, var(--card)) !important;
+  }
+
+  .bg-blue-50,
+  .bg-blue-100,
+  .bg-blue-200,
+  .bg-purple-100 {
+    background-color: color-mix(in srgb, var(--info) 14%, var(--card)) !important;
+  }
+
+  .bg-yellow-50,
+  .bg-yellow-100,
+  .bg-amber-50,
+  .bg-amber-100,
+  .bg-amber-200 {
+    background-color: color-mix(in srgb, var(--warning) 16%, var(--card)) !important;
+  }
+
+  .bg-red-500,
+  .bg-red-600,
+  .bg-red-700,
+  .bg-red-800 {
+    background-color: var(--destructive) !important;
+  }
+
+  .text-red-600,
+  .text-red-700,
+  .text-red-800 {
+    color: var(--destructive) !important;
+  }
+
+  .text-green-700,
+  .text-green-800,
+  .text-green-900 {
+    color: var(--success) !important;
+  }
+
+  .text-blue-700,
+  .text-blue-800,
+  .text-blue-900,
+  .text-purple-800 {
+    color: var(--info) !important;
+  }
+
+  .text-yellow-600,
+  .text-yellow-700,
+  .text-yellow-800,
+  .text-amber-600,
+  .text-amber-700,
+  .text-amber-900 {
+    color: var(--warning) !important;
+  }
+
+  .border-red-300,
+  .border-red-400 {
+    border-color: color-mix(in srgb, var(--destructive) 45%, var(--border)) !important;
+  }
+
+  .border-green-300 {
+    border-color: color-mix(in srgb, var(--success) 45%, var(--border)) !important;
+  }
+
+  .border-blue-300 {
+    border-color: color-mix(in srgb, var(--info) 45%, var(--border)) !important;
+  }
+
+  .border-yellow-200,
+  .border-amber-300 {
+    border-color: color-mix(in srgb, var(--warning) 45%, var(--border)) !important;
+  }
+
+  .hover\:bg-red-200:hover,
+  .hover\:bg-red-600:hover,
+  .hover\:bg-red-700:hover,
+  .hover\:bg-red-800:hover {
+    background-color: color-mix(in srgb, var(--destructive) 85%, var(--foreground)) !important;
+  }
+
+  .hover\:bg-green-200:hover,
+  .hover\:bg-blue-200:hover,
+  .hover\:bg-yellow-200:hover,
+  .hover\:bg-amber-200:hover {
+    background-color: color-mix(in srgb, var(--primary) 22%, var(--card)) !important;
+  }
+
+  .hover\:text-red-600:hover {
+    color: var(--destructive) !important;
+  }
+
+  .from-red-500,
+  .from-red-600,
+  .hover\:from-red-600:hover {
+    --tw-gradient-from: var(--destructive) !important;
+  }
+
+  .to-red-600,
+  .to-red-700,
+  .hover\:to-red-700:hover {
+    --tw-gradient-to: color-mix(in srgb, var(--destructive) 78%, var(--foreground)) !important;
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "Backend para sistema veterinario UNAVET",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "seed:users": "node src/scripts/seedUsers.js",
+    "backup:database": "node src/scripts/backupDatabase.js",
+    "migrate:remove-runtime-tables": "node src/scripts/removeRuntimeTables.js",
+    "migrate:normalize": "node src/scripts/normalizeBusinessData.js",
+    "migrate:structural-integrity": "node src/scripts/normalizeStructuralIntegrity.js",
+    "migrate:catalog-references": "node src/scripts/normalizeCatalogReferences.js",
+    "migrate:clinical-people-dates": "node src/scripts/normalizeClinicalPeopleAndDates.js",
+    "migrate:clinical-modules": "node src/scripts/normalizeClinicalModules.js",
+    "migrate:inventory-lots": "node src/scripts/normalizeInventoryLots.js",
+    "migrate:remove-unit-abbreviation": "node src/scripts/removeUnitAbbreviation.js",
+    "migrate:remaining-integrity": "node src/scripts/normalizeRemainingIntegrity.js",
+    "migrate:manual-pet-age": "node src/scripts/restoreManualPetAge.js",
+    "migrate:person-names": "node src/scripts/normalizePersonNames.js",
+    "verify:normalization": "node src/scripts/verifyNormalization.js",
+    "verify:email": "node src/scripts/verifyEmail.js",
+    "test:email": "node src/scripts/sendTestEmail.js",
+    "test:person-names": "node src/scripts/smokePersonNames.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "mysql2": "^3.22.5",
+    "nodemailer": "^7.0.13"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}

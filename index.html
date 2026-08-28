@@ -1,0 +1,51 @@
+
+  <!DOCTYPE html>
+  <html lang="en">
+    <head>
+      
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>UNAVET-PROTOTIPO</title>
+      <meta name="description" content="Streamline your tasks with an intuitive web app designed for busy professionals, enhancing productivity and organization in daily workflows." />
+      <meta name="robots" content="noindex, nofollow" />
+      <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }</style>
+      <script>
+        (() => {
+          const now = Date.now();
+          const hour = new Date(now).getHours();
+          let theme = hour >= 6 && hour < 18 ? 'light' : 'dark';
+
+          try {
+            const storedOverride = JSON.parse(
+              localStorage.getItem('unavet_theme_manual_override') || 'null'
+            );
+
+            if (
+              storedOverride &&
+              (storedOverride.theme === 'light' || storedOverride.theme === 'dark') &&
+              storedOverride.expiresAt > now
+            ) {
+              theme = storedOverride.theme;
+            } else {
+              localStorage.removeItem('unavet_theme_manual_override');
+            }
+          } catch {
+            localStorage.removeItem('unavet_theme_manual_override');
+          }
+
+          document.documentElement.classList.toggle('dark', theme === 'dark');
+          document.documentElement.style.colorScheme = theme;
+          localStorage.setItem('unavet_theme', theme);
+        })();
+      </script>
+      
+    </head>
+
+    <body>
+      
+      <div id="root"></div>
+      <script type="module" src="/src/main.tsx"></script>
+      
+    </body>
+  </html>
+  
