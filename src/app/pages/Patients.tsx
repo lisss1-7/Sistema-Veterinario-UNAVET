@@ -15,6 +15,7 @@ import {
   Phone,
   User,
   Calendar,
+  X,
 } from 'lucide-react';
 import type { Patient } from '../utils/types';
 import {
@@ -85,14 +86,22 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [showModal, setShowModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showCloseConfirmation, setShowCloseConfirmation] = useState(false);
   const [patientToDelete, setPatientToDelete] = useState<PatientFormData | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
   const [editingPatient, setEditingPatient] = useState<PatientFormData | null>(null);
   const [formData, setFormData] = useState<PatientFormData>({});
+  const [tutorMode, setTutorMode] = useState<'new' | 'existing'>('new');
+  const [existingTutors, setExistingTutors] = useState<any[]>([]);
+  const [selectedExistingTutorId, setSelectedExistingTutorId] = useState('');
+  const [selectedTutorSearch, setSelectedTutorSearch] = useState('');
+  const [showTutorSuggestions, setShowTutorSuggestions] = useState(false);
+  const [highlightedTutorId, setHighlightedTutorId] = useState<string | null>(null);
 
   useEffect(() => {
     loadPatients();
     loadCatalogs();
+    loadExistingTutors();
   }, []);
 
   useEffect(() => {
@@ -122,6 +131,29 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
       setSpeciesOptions([]);
       setSexOptions([]);
       setReproductiveStatusOptions([]);
+    }
+  };
+
+  const loadExistingTutors = async () => {
+    try {
+      const response = await fetch(`${API_URL}/tutores`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Error al cargar tutores');
+      }
+
+      const tutors = data || [];
+      setExistingTutors(tutors);
+      return tutors;
+    } catch (error) {
+      console.error('Error al cargar tutores:', error);
+      setExistingTutors([]);
+      return [];
     }
   };
 
@@ -271,25 +303,126 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
     });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const getTutorLabel = (tutor: any) =>
+    `${tutor.nombre_completo || `${tutor.primer_nombre || ''} ${tutor.primer_apellido || ''}`.trim()} · ${tutor.telefono || 'Sin teléfono'}`;
 
-    if (
-      !isValidName(formData.petName) ||
-      !isValidName(formData.tutorFirstName) ||
-      !isValidName(formData.tutorFirstSurname) ||
-      (formData.tutorMiddleName && !isValidName(formData.tutorMiddleName)) ||
-      (formData.tutorSecondSurname && !isValidName(formData.tutorSecondSurname))
-    ) {
-      toast.error('Revisa los nombres', {
-        description:
-          'Solo pueden contener letras y deben tener al menos 2 caracteres.',
-      });
+  const filteredTutorSuggestions = existingTutors.filter((tutor) => {
+    const searchValue = selectedTutorSearch.trim().toLowerCase();
+
+    if (!searchValue) {
+      return true;
+    }
+
+    const label = getTutorLabel(tutor).toLowerCase();
+    const phone = (tutor.telefono || '').toLowerCase();
+
+    return label.includes(searchValue) || phone.includes(searchValue);
+  });
+
+  const handleTutorSelection = (tutorId: string) => {
+    const selectedTutor = existingTutors.find((tutor) => String(tutor.id) === String(tutorId));
+
+    if (!selectedTutor) {
       return;
     }
 
-    if (!isValidPhone(formData.tutorPhone)) {
-      alert('El teléfono debe contener únicamente entre 8 y 15 dígitos.');
+    setSelectedExistingTutorId(String(tutorId));
+    setSelectedTutorSearch(getTutorLabel(selectedTutor));
+    setShowTutorSuggestions(false);
+    setFormData({
+      ...formData,
+      tutorId: String(tutorId),
+      tutorFirstName: selectedTutor.primer_nombre || '',
+      tutorMiddleName: selectedTutor.segundo_nombre || '',
+      tutorFirstSurname: selectedTutor.primer_apellido || '',
+      tutorSecondSurname: selectedTutor.segundo_apellido || '',
+      tutorPhone: selectedTutor.telefono || '',
+      tutorEmail: selectedTutor.correo || '',
+      tutorAddress: selectedTutor.direccion || '',
+    });
+  };
+
+  const handleTutorSearchInput = (value: string) => {
+    setSelectedTutorSearch(value);
+    setShowTutorSuggestions(true);
+    setHighlightedTutorId(null);
+
+    const selectedTutor = existingTutors.find((tutor) => getTutorLabel(tutor) === value);
+
+    if (!selectedTutor) {
+      setSelectedExistingTutorId('');
+      setFormData((current) => ({ ...current, tutorId: undefined }));
+      return;
+    }
+
+    handleTutorSelection(String(selectedTutor.id));
+  };
+
+  const handleTutorKeyNavigation = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showTutorSuggestions || filteredTutorSuggestions.length === 0) {
+      return;
+    }
+
+    const currentIndex = filteredTutorSuggestions.findIndex(
+      (tutor) => String(tutor.id) === highlightedTutorId
+    );
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      const nextIndex = currentIndex >= 0 ? currentIndex + 1 : 0;
+      const nextTutor = filteredTutorSuggestions[nextIndex % filteredTutorSuggestions.length];
+      setHighlightedTutorId(String(nextTutor.id));
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      const previousIndex = currentIndex > 0 ? currentIndex - 1 : filteredTutorSuggestions.length - 1;
+      const previousTutor = filteredTutorSuggestions[previousIndex];
+      setHighlightedTutorId(String(previousTutor.id));
+    }
+
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const tutorToSelect = highlightedTutorId
+        ? filteredTutorSuggestions.find((tutor) => String(tutor.id) === highlightedTutorId)
+        : filteredTutorSuggestions[0];
+
+      if (tutorToSelect) {
+        handleTutorSelection(String(tutorToSelect.id));
+      }
+    }
+
+    if (event.key === 'Escape') {
+      setShowTutorSuggestions(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const isExistingTutorFlow = tutorMode === 'existing';
+
+    if (!isExistingTutorFlow) {
+      if (
+        !isValidName(formData.petName) ||
+        !isValidName(formData.tutorFirstName) ||
+        !isValidName(formData.tutorFirstSurname) ||
+        (formData.tutorMiddleName && !isValidName(formData.tutorMiddleName)) ||
+        (formData.tutorSecondSurname && !isValidName(formData.tutorSecondSurname))
+      ) {
+        toast.error('Revisa los nombres', {
+          description:
+            'Solo pueden contener letras y deben tener al menos 2 caracteres.',
+        });
+        return;
+      }
+
+      if (!isValidPhone(formData.tutorPhone)) {
+        alert('El teléfono debe contener únicamente entre 8 y 15 dígitos.');
+        return;
+      }
+    } else if (!selectedExistingTutorId) {
+      alert('Debe seleccionar un tutor existente para continuar.');
       return;
     }
 
@@ -317,6 +450,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
 
       const patientPayload = {
         ...formData,
+        tutorId: isExistingTutorFlow ? selectedExistingTutorId : undefined,
         age: String(formData.age).trim(),
         breed:
           selectedBreedOption === 'Otra'
@@ -361,6 +495,102 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
     setSelectedBreedOption('');
     setCustomBreed('');
     setBreedOptions([]);
+    setTutorMode('new');
+    setSelectedExistingTutorId('');
+    setSelectedTutorSearch('');
+    setShowTutorSuggestions(false);
+    setHighlightedTutorId(null);
+    setShowCloseConfirmation(false);
+  };
+
+  const getFormSignature = () => {
+    const signature = {
+      petName: formData.petName || '',
+      species: formData.species || '',
+      breed: formData.breed || '',
+      age: formData.age || '',
+      sex: formData.sex || '',
+      reproductiveStatus: formData.reproductiveStatus || '',
+      diet: formData.diet || '',
+      color: formData.color || '',
+      observations: formData.observations || '',
+      tutorFirstName: formData.tutorFirstName || '',
+      tutorMiddleName: formData.tutorMiddleName || '',
+      tutorFirstSurname: formData.tutorFirstSurname || '',
+      tutorSecondSurname: formData.tutorSecondSurname || '',
+      tutorPhone: formData.tutorPhone || '',
+      tutorEmail: formData.tutorEmail || '',
+      tutorAddress: formData.tutorAddress || '',
+      tutorId: formData.tutorId || '',
+      photo: formData.photo || '',
+    };
+
+    return JSON.stringify(signature);
+  };
+
+  const isFormDirty = () => {
+    if (!showModal && !isRegistrationPage) {
+      return false;
+    }
+
+    const baseData = editingPatient
+      ? {
+          petName: editingPatient.petName || '',
+          species: editingPatient.species || '',
+          breed: editingPatient.breed || '',
+          age: editingPatient.age || '',
+          sex: editingPatient.sex || '',
+          reproductiveStatus: editingPatient.reproductiveStatus || '',
+          diet: editingPatient.diet || '',
+          color: editingPatient.color || '',
+          observations: editingPatient.observations || '',
+          tutorFirstName: editingPatient.tutorFirstName || '',
+          tutorMiddleName: editingPatient.tutorMiddleName || '',
+          tutorFirstSurname: editingPatient.tutorFirstSurname || '',
+          tutorSecondSurname: editingPatient.tutorSecondSurname || '',
+          tutorPhone: editingPatient.tutorPhone || '',
+          tutorEmail: editingPatient.tutorEmail || '',
+          tutorAddress: editingPatient.tutorAddress || '',
+          tutorId: editingPatient.tutorId || '',
+          photo: editingPatient.photo || '',
+        }
+      : {
+          petName: '',
+          species: '',
+          breed: '',
+          age: '',
+          sex: '',
+          reproductiveStatus: '',
+          diet: '',
+          color: '',
+          observations: '',
+          tutorFirstName: '',
+          tutorMiddleName: '',
+          tutorFirstSurname: '',
+          tutorSecondSurname: '',
+          tutorPhone: '',
+          tutorEmail: '',
+          tutorAddress: '',
+          tutorId: '',
+          photo: '',
+        };
+
+    const currentSignature = getFormSignature();
+    const baseSignature = JSON.stringify(baseData);
+
+    const hasTutorSelection = tutorMode === 'existing' && !!selectedExistingTutorId;
+    const hasSearchText = !!selectedTutorSearch.trim();
+
+    return currentSignature !== baseSignature || hasTutorSelection || hasSearchText;
+  };
+
+  const handleCloseAttempt = () => {
+    if (isFormDirty()) {
+      setShowCloseConfirmation(true);
+      return;
+    }
+
+    cancelForm();
   };
 
   const closeSuccessModal = () => {
@@ -409,18 +639,49 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
     }
   };
 
-  const openModal = (patient?: PatientFormData) => {
+  const openModal = async (patient?: PatientFormData) => {
+    resetForm();
+
+    const tutors = await loadExistingTutors();
+
     if (patient) {
       setEditingPatient(patient);
       setFormData(patient);
       setSelectedBreedOption(patient.breed || '');
       setCustomBreed('');
 
+      const matchingTutor = tutors.find((tutor) => {
+        const tutorName = `${tutor.primer_nombre || ''} ${tutor.primer_apellido || ''}`.trim();
+        const patientName = `${patient.tutorFirstName || ''} ${patient.tutorFirstSurname || ''}`.trim();
+        const tutorPhone = (tutor.telefono || '').replace(/\D/g, '');
+        const patientPhone = (patient.tutorPhone || '').replace(/\D/g, '');
+
+        return (
+          (tutorPhone && patientPhone && tutorPhone === patientPhone) ||
+          (tutorName && patientName && tutorName.toLowerCase() === patientName.toLowerCase())
+        );
+      });
+
+      if (matchingTutor) {
+        setTutorMode('existing');
+        setSelectedExistingTutorId(String(matchingTutor.id));
+        setSelectedTutorSearch(getTutorLabel(matchingTutor));
+        setFormData({
+          ...patient,
+          tutorId: String(matchingTutor.id),
+          tutorFirstName: matchingTutor.primer_nombre || patient.tutorFirstName || '',
+          tutorMiddleName: matchingTutor.segundo_nombre || patient.tutorMiddleName || '',
+          tutorFirstSurname: matchingTutor.primer_apellido || patient.tutorFirstSurname || '',
+          tutorSecondSurname: matchingTutor.segundo_apellido || patient.tutorSecondSurname || '',
+          tutorPhone: matchingTutor.telefono || patient.tutorPhone || '',
+          tutorEmail: matchingTutor.correo || patient.tutorEmail || '',
+          tutorAddress: matchingTutor.direccion || patient.tutorAddress || '',
+        });
+      }
+
       if (patient.species) {
         loadBreedsBySpecies(patient.species);
       }
-    } else {
-      resetForm();
     }
 
     setShowModal(true);
@@ -676,9 +937,20 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
       {(showModal || isRegistrationPage) && (
         <div className={isRegistrationPage ? '' : 'modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-50'}>
           <div className={`bg-card border border-border rounded-xl p-4 md:p-6 w-full shadow-2xl ${isRegistrationPage ? 'max-w-4xl mx-auto' : 'max-w-3xl max-h-[90vh] overflow-y-auto'}`}>
-            <h2 className="text-foreground text-xl mb-4">
-              {editingPatient ? 'Editar paciente' : 'Datos del nuevo paciente'}
-            </h2>
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <h2 className="text-foreground text-xl">
+                {editingPatient ? 'Editar paciente' : 'Datos del nuevo paciente'}
+              </h2>
+
+              <button
+                type="button"
+                onClick={handleCloseAttempt}
+                aria-label="Cerrar formulario"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-secondary text-muted-foreground transition-colors hover:bg-border hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="bg-muted border border-border rounded-xl p-4">
@@ -745,6 +1017,114 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <label className="block text-foreground mb-2 text-sm font-medium">
+                    Tipo de tutor
+                  </label>
+
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <label className="flex items-center gap-2 text-sm text-foreground">
+                      <input
+                        type="radio"
+                        name="tutorMode"
+                        checked={tutorMode === 'new'}
+                                        onChange={() => {
+                          setTutorMode('new');
+                          setSelectedExistingTutorId('');
+                          setSelectedTutorSearch('');
+                          setShowTutorSuggestions(false);
+                          setFormData((current) => ({ ...current, tutorId: undefined }));
+                        }}
+                      />
+                      Nuevo tutor
+                    </label>
+
+                    <label className="flex items-center gap-2 text-sm text-foreground">
+                      <input
+                        type="radio"
+                        name="tutorMode"
+                        checked={tutorMode === 'existing'}
+                        onChange={() => {
+                          setTutorMode('existing');
+                          setSelectedExistingTutorId('');
+                          setSelectedTutorSearch('');
+                          setShowTutorSuggestions(false);
+                          setFormData((current) => ({ ...current, tutorId: undefined }));
+                        }}
+                      />
+                      Tutor existente
+                    </label>
+                  </div>
+                </div>
+
+                {tutorMode === 'existing' && (
+                  <div className="md:col-span-2">
+                    <label className="block text-foreground mb-2 text-sm font-medium">
+                      Seleccionar tutor existente
+                    </label>
+
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary" />
+
+                      <input
+                        type="text"
+                        value={selectedTutorSearch}
+                        onChange={(e) => handleTutorSearchInput(e.target.value)}
+                        onFocus={() => setShowTutorSuggestions(true)}
+                        onBlur={() => {
+                          window.setTimeout(() => setShowTutorSuggestions(false), 120);
+                        }}
+                        onKeyDown={handleTutorKeyNavigation}
+                        placeholder="Buscar por nombre o teléfono"
+                        className="w-full pl-10 pr-4 py-2.5 bg-card border border-primary/20 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-foreground"
+                        aria-expanded={showTutorSuggestions}
+                        aria-autocomplete="list"
+                      />
+                    </div>
+
+                    {showTutorSuggestions && (
+                      <div className="mt-2 max-h-52 overflow-y-auto rounded-lg border border-border bg-card shadow-xl">
+                        {filteredTutorSuggestions.length > 0 ? (
+                          filteredTutorSuggestions.map((tutor) => {
+                            const tutorId = String(tutor.id);
+                            const isHighlighted = highlightedTutorId === tutorId;
+
+                            return (
+                              <button
+                                type="button"
+                                key={tutor.id}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  handleTutorSelection(tutorId);
+                                }}
+                                onMouseEnter={() => setHighlightedTutorId(tutorId)}
+                                className={`flex w-full items-center justify-between gap-3 border-b border-border px-3 py-2.5 text-left text-foreground transition-colors last:border-b-0 ${
+                                  isHighlighted ? 'bg-primary/10' : 'hover:bg-primary/5'
+                                }`}
+                              >
+                                <span className="truncate font-medium">
+                                  {tutor.nombre_completo || `${tutor.primer_nombre || ''} ${tutor.primer_apellido || ''}`.trim()}
+                                </span>
+                                <span className="shrink-0 text-xs text-muted-foreground">
+                                  {tutor.telefono || 'Sin teléfono'}
+                                </span>
+                              </button>
+                            );
+                          })
+                        ) : (
+                          <div className="px-3 py-3 text-sm text-muted-foreground">
+                            No se encontraron tutores con ese nombre o teléfono.
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Escribe para buscar un tutor registrado y selecciona el resultado.
+                    </p>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-foreground mb-2 text-sm">
                     Nombre de la mascota
@@ -939,86 +1319,90 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                   />
                 </div>
 
-                {([
-                  ['Primer nombre del tutor', 'tutorFirstName', true],
-                  ['Segundo nombre del tutor', 'tutorMiddleName', false],
-                  ['Primer apellido del tutor', 'tutorFirstSurname', true],
-                  ['Segundo apellido del tutor', 'tutorSecondSurname', false],
-                ] as const).map(([label, field, required]) => (
-                  <div key={field}>
-                    <label className="block text-foreground mb-2 text-sm">
-                      {label}{required ? ' *' : ' (opcional)'}
-                    </label>
+                {tutorMode !== 'existing' && (
+                  <>
+                    {([
+                      ['Primer nombre del tutor', 'tutorFirstName', true],
+                      ['Segundo nombre del tutor', 'tutorMiddleName', false],
+                      ['Primer apellido del tutor', 'tutorFirstSurname', true],
+                      ['Segundo apellido del tutor', 'tutorSecondSurname', false],
+                    ] as const).map(([label, field, required]) => (
+                      <div key={field}>
+                        <label className="block text-foreground mb-2 text-sm">
+                          {label}{required ? ' *' : ' (opcional)'}
+                        </label>
 
-                    <input
-                      type="text"
-                      value={formData[field] || ''}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          [field]: sanitizeName(e.target.value),
-                        })
-                      }
-                      className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
-                      required={required}
-                      minLength={required ? 2 : undefined}
-                      maxLength={80}
-                    />
-                  </div>
-                ))}
+                        <input
+                          type="text"
+                          value={formData[field] || ''}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              [field]: sanitizeName(e.target.value),
+                            })
+                          }
+                          className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+                          required={required}
+                          minLength={required ? 2 : undefined}
+                          maxLength={80}
+                        />
+                      </div>
+                    ))}
 
-                <div>
-                  <label className="block text-foreground mb-2 text-sm">
-                    Teléfono del tutor
-                  </label>
+                    <div>
+                      <label className="block text-foreground mb-2 text-sm">
+                        Teléfono del tutor
+                      </label>
 
-                  <input
-                    type="tel"
-                    value={formData.tutorPhone || ''}
-                    onChange={(e) =>
-                      setFormData({ ...formData, tutorPhone: sanitizePhone(e.target.value) })
-                    }
-                    className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
-                    required
-                    inputMode="numeric"
-                    pattern="[0-9]{8,15}"
-                    minLength={8}
-                    maxLength={15}
-                    title="Ingrese entre 8 y 15 dígitos, sin letras."
-                  />
-                </div>
+                      <input
+                        type="tel"
+                        value={formData.tutorPhone || ''}
+                        onChange={(e) =>
+                          setFormData({ ...formData, tutorPhone: sanitizePhone(e.target.value) })
+                        }
+                        className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+                        required
+                        inputMode="numeric"
+                        pattern="[0-9]{8,15}"
+                        minLength={8}
+                        maxLength={15}
+                        title="Ingrese entre 8 y 15 dígitos, sin letras."
+                      />
+                    </div>
 
-                <div>
-                  <label className="block text-foreground mb-2 text-sm">
-                    Correo del tutor
-                  </label>
+                    <div>
+                      <label className="block text-foreground mb-2 text-sm">
+                        Correo del tutor
+                      </label>
 
-                  <input
-                    type="email"
-                    value={formData.tutorEmail || ''}
-                    onChange={(e) =>
-                      setFormData({ ...formData, tutorEmail: e.target.value })
-                    }
-                    className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
-                    required
-                  />
-                </div>
+                      <input
+                        type="email"
+                        value={formData.tutorEmail || ''}
+                        onChange={(e) =>
+                          setFormData({ ...formData, tutorEmail: e.target.value })
+                        }
+                        className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+                        required
+                      />
+                    </div>
 
-                <div>
-                  <label className="block text-foreground mb-2 text-sm">
-                    Dirección del tutor
-                  </label>
+                    <div>
+                      <label className="block text-foreground mb-2 text-sm">
+                        Dirección del tutor
+                      </label>
 
-                  <input
-                    type="text"
-                    value={formData.tutorAddress || ''}
-                    onChange={(e) =>
-                      setFormData({ ...formData, tutorAddress: e.target.value })
-                    }
-                    className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
-                    required
-                  />
-                </div>
+                      <input
+                        type="text"
+                        value={formData.tutorAddress || ''}
+                        onChange={(e) =>
+                          setFormData({ ...formData, tutorAddress: e.target.value })
+                        }
+                        className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+                        required
+                      />
+                    </div>
+                  </>
+                )}
               </div>
 
               <div>
@@ -1056,6 +1440,47 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showCloseConfirmation && (
+        <div className="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[70]">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center">
+            <div className="flex justify-center mb-4">
+              <div className="rounded-full bg-warning/10 p-3 text-warning">
+                <AlertTriangle className="h-7 w-7" />
+              </div>
+            </div>
+
+            <h3 className="text-foreground text-xl font-semibold mb-2">
+              ¿Está seguro de cerrar el formulario?
+            </h3>
+
+            <p className="text-muted-foreground text-sm mb-6">
+              Los datos ingresados se perderán si sales sin guardar.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-3 sm:justify-center">
+              <button
+                type="button"
+                onClick={() => setShowCloseConfirmation(false)}
+                className="flex-1 rounded-lg border border-border bg-secondary px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-border"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCloseConfirmation(false);
+                  cancelForm();
+                }}
+                className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-[#F7EFE6] transition-colors hover:bg-primary/90"
+              >
+                Salir
+              </button>
+            </div>
           </div>
         </div>
       )}

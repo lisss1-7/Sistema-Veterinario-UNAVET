@@ -20,7 +20,15 @@ const TRATAMIENTO_SELECT = `
     estado.nombre AS estado_catalogo,
     tratamiento.observaciones,
     categoria.nombre AS categoria,
-    tratamiento.foto_adjunta
+    tratamiento.foto_adjunta,
+    tratamiento.creado_por,
+    CONCAT_WS(
+      ' ',
+      creador.primer_nombre,
+      creador.segundo_nombre,
+      creador.primer_apellido,
+      creador.segundo_apellido
+    ) AS creado_por_nombre
   FROM tratamientos_servicios tratamiento
   INNER JOIN tipos_tratamiento tipo
     ON tipo.tipo_tratamiento_id = tratamiento.tipo_tratamiento_id
@@ -34,6 +42,8 @@ const TRATAMIENTO_SELECT = `
   LEFT JOIN categorias_tratamiento categoria
     ON categoria.categoria_tratamiento_id =
       tratamiento.categoria_tratamiento_id
+  LEFT JOIN usuarios creador
+    ON creador.usuario_id = tratamiento.creado_por
 `;
 
 const mapTratamientoToFrontend = (row) => ({
@@ -52,6 +62,8 @@ const mapTratamientoToFrontend = (row) => ({
   status: row.estado_catalogo,
   observations: row.observaciones || '',
   attachmentPhoto: row.foto_adjunta || '',
+  createdBy: row.creado_por ? String(row.creado_por) : '',
+  createdByName: row.creado_por_nombre || '',
 });
 
 const listarTratamientos = async (req, res) => {

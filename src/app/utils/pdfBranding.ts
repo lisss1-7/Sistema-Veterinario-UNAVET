@@ -32,15 +32,15 @@ export const drawUnavetPdfHeader = (
   const pageWidth = doc.internal.pageSize.getWidth();
 
   doc.setFillColor('#3F3A34');
-  doc.rect(0, 0, pageWidth, 32, 'F');
-  doc.addImage(logoBase64, 'PNG', 15, 4, 24, 24);
+  doc.rect(0, 0, pageWidth, 36, 'F');
+  doc.addImage(logoBase64, 'PNG', 15, 6, 24, 24);
 
   doc.setTextColor('#FFFFFF');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
-  doc.text('UNAVET', 46, 13);
+  doc.text('UNAVET', 46, 15);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.text(subtitle, 46, 23);
+  doc.setFontSize(8.5);
+  doc.text('Granjas Gerona, Zona 8, San Miguel Petapa', 46, 28);
 };

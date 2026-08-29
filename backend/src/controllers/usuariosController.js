@@ -24,6 +24,7 @@ const mapUsuarioToFrontend = (row) => ({
   phone: row.telefono || '',
   specialty: row.especialidad || '',
   status: row.estado,
+  lastAccess: row.ultimo_acceso || null,
   creationDate: row.fecha_creacion,
 });
 
@@ -72,6 +73,7 @@ const listarUsuarios = async (req, res) => {
         u.telefono,
         ${specialtiesSelect('u')},
         estado.nombre AS estado,
+        u.ultimo_acceso,
         DATE_FORMAT(u.creado_en, '%Y-%m-%d') AS fecha_creacion,
         r.nombre AS rol
       FROM usuarios u
@@ -109,6 +111,7 @@ const obtenerUsuarioPorId = async (req, res) => {
         u.telefono,
         ${specialtiesSelect('u')},
         estado.nombre AS estado,
+        u.ultimo_acceso,
         DATE_FORMAT(u.creado_en, '%Y-%m-%d') AS fecha_creacion,
         r.nombre AS rol
       FROM usuarios u

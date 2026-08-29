@@ -15,6 +15,8 @@ const mapRecetaToFrontend = (row, medications = []) => {
       ? String(row.veterinario_id)
       : '',
     veterinarian: row.veterinario || '',
+    createdBy: row.creado_por ? String(row.creado_por) : '',
+    createdByName: row.creado_por_nombre || '',
     diagnosis: row.diagnostico || '',
     observations: row.observaciones || '',
     status: row.estado,
@@ -88,6 +90,7 @@ const listarRecetas = async (req, res) => {
         r.paciente_id,
         r.tutor_id,
         r.veterinario_id,
+        r.creado_por,
         DATE_FORMAT(
           r.fecha_emision,
           '%Y-%m-%d'
@@ -102,6 +105,13 @@ const listarRecetas = async (req, res) => {
           veterinario.primer_apellido,
           veterinario.segundo_apellido
         ) AS veterinario,
+        CONCAT_WS(
+          ' ',
+          creador.primer_nombre,
+          creador.segundo_nombre,
+          creador.primer_apellido,
+          creador.segundo_apellido
+        ) AS creado_por_nombre,
         CONCAT_WS(' ', t.primer_nombre, t.segundo_nombre,
           t.primer_apellido, t.segundo_apellido) AS nombre_tutor,
         t.telefono AS telefono_tutor
@@ -110,6 +120,8 @@ const listarRecetas = async (req, res) => {
         ON r.tutor_id = t.tutor_id
       LEFT JOIN veterinarios veterinario
         ON veterinario.veterinario_id = r.veterinario_id
+      LEFT JOIN usuarios creador
+        ON creador.usuario_id = r.creado_por
       INNER JOIN estados_receta estado
         ON estado.estado_receta_id = r.estado_receta_id
       ORDER BY r.receta_id DESC
@@ -156,6 +168,7 @@ const obtenerRecetaPorId = async (req, res) => {
         r.paciente_id,
         r.tutor_id,
         r.veterinario_id,
+        r.creado_por,
         DATE_FORMAT(
           r.fecha_emision,
           '%Y-%m-%d'
@@ -170,6 +183,13 @@ const obtenerRecetaPorId = async (req, res) => {
           veterinario.primer_apellido,
           veterinario.segundo_apellido
         ) AS veterinario,
+        CONCAT_WS(
+          ' ',
+          creador.primer_nombre,
+          creador.segundo_nombre,
+          creador.primer_apellido,
+          creador.segundo_apellido
+        ) AS creado_por_nombre,
         CONCAT_WS(' ', t.primer_nombre, t.segundo_nombre,
           t.primer_apellido, t.segundo_apellido) AS nombre_tutor,
         t.telefono AS telefono_tutor
@@ -178,6 +198,8 @@ const obtenerRecetaPorId = async (req, res) => {
         ON r.tutor_id = t.tutor_id
       LEFT JOIN veterinarios veterinario
         ON veterinario.veterinario_id = r.veterinario_id
+      LEFT JOIN usuarios creador
+        ON creador.usuario_id = r.creado_por
       INNER JOIN estados_receta estado
         ON estado.estado_receta_id = r.estado_receta_id
       WHERE r.receta_id = ?

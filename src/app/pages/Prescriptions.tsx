@@ -345,11 +345,18 @@ export default function Prescriptions() {
   };
 
   const sanitizeFileName = (name: string) => {
-    return name
+    const cleanName = name
       .trim()
-      .toLowerCase()
-      .replace(/\s+/g, '-')
-      .replace(/[^\w-]/g, '');
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/[^\w\s]/g, '')
+      .trim();
+
+    return cleanName
+      .split(' ')
+      .filter(Boolean)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
   };
 
   const getPatientByPrescription = (prescription: Prescription) => {
@@ -629,10 +636,10 @@ export default function Prescriptions() {
 
   const generatePDF = async (prescription: Prescription) => {
     const patient = getPatientByPrescription(prescription);
-    const petName = sanitizeFileName(patient?.petName || 'mascota');
+    const petName = sanitizeFileName(patient?.petName || 'Mascota');
 
     const doc = await createPrescriptionPDF(prescription);
-    doc.save(`receta-${petName}.pdf`);
+    doc.save(`Receta ${petName}.pdf`);
   };
 
   const previewPDF = async (prescription: Prescription) => {
@@ -852,7 +859,10 @@ export default function Prescriptions() {
                   </p>
 
                   <p className="text-muted-foreground text-sm">
-                    Veterinario registrado internamente
+                    Veterinario: {prescription.veterinarian || 'Sin asignar'}
+                  </p>
+                  <p className="text-muted-foreground text-xs mt-1">
+                    Registrado por: {prescription.createdByName || 'Sistema'}
                   </p>
                 </div>
 

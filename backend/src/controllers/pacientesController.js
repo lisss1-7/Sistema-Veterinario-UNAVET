@@ -94,6 +94,7 @@ const obtenerOCrearRaza = async (connection, especieId, nombreRaza) => {
 
 const obtenerOCrearTutor = async (connection, data) => {
   const {
+    tutorId,
     tutorFirstName,
     tutorMiddleName,
     tutorFirstSurname,
@@ -102,6 +103,17 @@ const obtenerOCrearTutor = async (connection, data) => {
     tutorEmail,
     tutorAddress,
   } = data;
+
+  if (tutorId) {
+    const [existingTutor] = await connection.query(
+      'SELECT tutor_id FROM tutores WHERE tutor_id = ? AND activo = 1 LIMIT 1',
+      [tutorId]
+    );
+
+    if (existingTutor.length > 0) {
+      return Number(tutorId);
+    }
+  }
 
   const [rows] = await connection.query(
     `
@@ -295,6 +307,7 @@ const crearPaciente = async (req, res) => {
       color,
       diet,
       photo,
+      tutorId,
       tutorFirstName,
       tutorMiddleName,
       tutorFirstSurname,
@@ -305,15 +318,19 @@ const crearPaciente = async (req, res) => {
       observations,
     } = req.body;
 
+    const hasSelectedTutor = Boolean(tutorId);
+    const shouldRequireTutorFields = !hasSelectedTutor;
     const tutorNameParts = getTutorNameParts(req.body);
 
     if (
       !petName || !species || !sex || !String(age || '').trim() ||
-      !tutorPhone ||
-      !areValidNameParts(tutorNameParts)
+      (shouldRequireTutorFields && !tutorPhone) ||
+      (shouldRequireTutorFields && !areValidNameParts(tutorNameParts))
     ) {
       return res.status(400).json({
-        message: 'Nombre de mascota, edad, especie, sexo, tutor y teléfono son obligatorios',
+        message: hasSelectedTutor
+          ? 'Nombre de mascota, edad, especie y sexo son obligatorios'
+          : 'Nombre de mascota, edad, especie, sexo, tutor y teléfono son obligatorios',
       });
     }
 
@@ -335,7 +352,7 @@ const crearPaciente = async (req, res) => {
       });
     }
 
-    if (!isValidPhone(tutorPhone)) {
+    if (shouldRequireTutorFields && tutorPhone && !isValidPhone(tutorPhone)) {
       return res.status(400).json({
         message: 'El teléfono debe contener únicamente entre 8 y 15 dígitos',
       });
@@ -374,7 +391,8 @@ const crearPaciente = async (req, res) => {
       });
     }
 
-    const tutorId = await obtenerOCrearTutor(connection, {
+    const resolvedTutorId = await obtenerOCrearTutor(connection, {
+      tutorId,
       tutorFirstName,
       tutorMiddleName,
       tutorFirstSurname,
@@ -404,7 +422,7 @@ const crearPaciente = async (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), 1)
       `,
       [
-        tutorId,
+        resolvedTutorId,
         especie.especie_id,
         razaId,
         petName,
@@ -452,6 +470,7 @@ const actualizarPaciente = async (req, res) => {
       color,
       diet,
       photo,
+      tutorId,
       tutorFirstName,
       tutorMiddleName,
       tutorFirstSurname,
@@ -462,15 +481,19 @@ const actualizarPaciente = async (req, res) => {
       observations,
     } = req.body;
 
+    const hasSelectedTutor = Boolean(tutorId);
+    const shouldRequireTutorFields = !hasSelectedTutor;
     const tutorNameParts = getTutorNameParts(req.body);
 
     if (
       !petName || !species || !sex || !String(age || '').trim() ||
-      !tutorPhone ||
-      !areValidNameParts(tutorNameParts)
+      (shouldRequireTutorFields && !tutorPhone) ||
+      (shouldRequireTutorFields && !areValidNameParts(tutorNameParts))
     ) {
       return res.status(400).json({
-        message: 'Nombre de mascota, edad, especie, sexo, tutor y teléfono son obligatorios',
+        message: hasSelectedTutor
+          ? 'Nombre de mascota, edad, especie y sexo son obligatorios'
+          : 'Nombre de mascota, edad, especie, sexo, tutor y teléfono son obligatorios',
       });
     }
 
@@ -492,7 +515,7 @@ const actualizarPaciente = async (req, res) => {
       });
     }
 
-    if (!isValidPhone(tutorPhone)) {
+    if (shouldRequireTutorFields && tutorPhone && !isValidPhone(tutorPhone)) {
       return res.status(400).json({
         message: 'El teléfono debe contener únicamente entre 8 y 15 dígitos',
       });
@@ -542,24 +565,37 @@ const actualizarPaciente = async (req, res) => {
       });
     }
 
+    const resolvedTutorId = hasSelectedTutor ? Number(tutorId) : pacientes[0].tutor_id;
+
+    if (!hasSelectedTutor) {
+      await connection.query(
+        `
+        UPDATE tutores
+        SET primer_nombre = ?, segundo_nombre = ?,
+            primer_apellido = ?, segundo_apellido = ?,
+            telefono = ?, correo = ?, direccion = ?
+        WHERE tutor_id = ?
+        `,
+        [
+          tutorFirstName,
+          tutorMiddleName || null,
+          tutorFirstSurname,
+          tutorSecondSurname || null,
+          tutorPhone,
+          tutorEmail || null,
+          tutorAddress || null,
+          pacientes[0].tutor_id,
+        ]
+      );
+    }
+
     await connection.query(
       `
-      UPDATE tutores
-      SET primer_nombre = ?, segundo_nombre = ?,
-          primer_apellido = ?, segundo_apellido = ?,
-          telefono = ?, correo = ?, direccion = ?
-      WHERE tutor_id = ?
+      UPDATE pacientes
+      SET tutor_id = ?
+      WHERE paciente_id = ?
       `,
-      [
-        tutorFirstName,
-        tutorMiddleName || null,
-        tutorFirstSurname,
-        tutorSecondSurname || null,
-        tutorPhone,
-        tutorEmail || null,
-        tutorAddress || null,
-        pacientes[0].tutor_id,
-      ]
+      [resolvedTutorId, id]
     );
 
     await connection.query(

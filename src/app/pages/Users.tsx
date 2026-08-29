@@ -45,7 +45,6 @@ type UserFormData = {
   email?: string;
   role?: string;
   phone?: string;
-  specialty?: string;
   status?: string;
   creationDate?: string;
   password?: string;
@@ -126,6 +125,7 @@ export default function Users() {
 
   const [showModal, setShowModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showCloseConfirmation, setShowCloseConfirmation] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -380,7 +380,6 @@ export default function Users() {
         email: formData.email,
         role: formData.role,
         phone: formData.phone,
-        specialty: formData.specialty || '',
         status: formData.status || enabledStatus,
       };
 
@@ -525,9 +524,6 @@ export default function Users() {
 
     if (userItem) {
       setEditingUser(userItem);
-      const userWithSpecialty = userItem as SystemUser & {
-        specialty?: string;
-      };
 
       setFormData({
         id: userItem.id,
@@ -538,7 +534,6 @@ export default function Users() {
         email: userItem.email,
         role: userItem.role || '',
         phone: userItem.phone || '',
-        specialty: userWithSpecialty.specialty || '',
         status: userItem.status,
         creationDate: userItem.creationDate,
         password: '',
@@ -557,7 +552,68 @@ export default function Users() {
     setShowModal(true);
   };
 
+  const getFormSignature = () => {
+    const signature = {
+      firstName: formData.firstName || '',
+      middleName: formData.middleName || '',
+      firstSurname: formData.firstSurname || '',
+      secondSurname: formData.secondSurname || '',
+      email: formData.email || '',
+      role: formData.role || '',
+      phone: formData.phone || '',
+      status: formData.status || '',
+      password: formData.password || '',
+      confirmPassword: formData.confirmPassword || '',
+    };
+
+    return JSON.stringify(signature);
+  };
+
+  const isFormDirty = () => {
+    if (!showModal) {
+      return false;
+    }
+
+    const originalUser = editingUser
+      ? {
+          firstName: editingUser.firstName || '',
+          middleName: editingUser.middleName || '',
+          firstSurname: editingUser.firstSurname || '',
+          secondSurname: editingUser.secondSurname || '',
+          email: editingUser.email || '',
+          role: editingUser.role || '',
+          phone: editingUser.phone || '',
+          status: editingUser.status || '',
+          password: '',
+          confirmPassword: '',
+        }
+      : {
+          firstName: '',
+          middleName: '',
+          firstSurname: '',
+          secondSurname: '',
+          email: '',
+          role: '',
+          phone: '',
+          status: enabledStatus,
+          password: '',
+          confirmPassword: '',
+        };
+
+    return JSON.stringify(originalUser) !== getFormSignature();
+  };
+
+  const handleCloseAttempt = () => {
+    if (isFormDirty()) {
+      setShowCloseConfirmation(true);
+      return;
+    }
+
+    cancelForm();
+  };
+
   const cancelForm = () => {
+    setShowCloseConfirmation(false);
     setShowModal(false);
     setEditingUser(null);
     setFormData({});
@@ -565,6 +621,7 @@ export default function Users() {
   };
 
   const closeSuccessModal = () => {
+    setShowCloseConfirmation(false);
     setShowSuccessModal(false);
     setShowModal(false);
     setEditingUser(null);
@@ -603,11 +660,10 @@ export default function Users() {
           ? enabledStatus || 'Activo'
           : disabledStatus || 'De baja';
       const columns = [
-        { label: 'Nombre completo', width: 46 },
-        { label: 'Correo', width: 56 },
-        { label: 'Rol', width: 38 },
-        { label: 'Especialidad', width: 40 },
-        { label: 'Teléfono', width: 30 },
+        { label: 'Nombre completo', width: 52 },
+        { label: 'Correo', width: 62 },
+        { label: 'Rol', width: 42 },
+        { label: 'Teléfono', width: 32 },
         { label: 'Estado', width: 28 },
         { label: 'Creación', width: 30 },
       ];
@@ -660,7 +716,6 @@ export default function Users() {
           userItem.name || 'Sin nombre',
           userItem.email || 'Sin correo',
           userItem.role || 'Sin rol',
-          userItem.specialty || 'No aplica',
           userItem.phone || 'No registrado',
           userItem.status || reportStatus,
           userItem.creationDate || 'No registrada',
@@ -1173,21 +1228,17 @@ export default function Users() {
               </div>
 
               <div className="min-w-0">
-                <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                  Ficha del usuario #{selectedUser.id}
-                </p>
                 <h2 className="text-foreground text-xl md:text-2xl font-semibold break-words">
                   {selectedUser.name}
                 </h2>
-                <span
-                  className={`inline-flex mt-2 px-3 py-1 rounded-full text-xs font-medium ${
-                    userIsActive(selectedUser, enabledStatus)
-                      ? 'border border-primary/25 bg-primary/10 text-primary'
-                      : 'border border-border bg-muted text-muted-foreground'
-                  }`}
-                >
-                  {selectedUser.status}
-                </span>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {selectedUser.lastAccess
+                    ? `Último acceso: ${new Date(selectedUser.lastAccess).toLocaleString('es-GT', {
+                        dateStyle: 'short',
+                        timeStyle: 'short',
+                      })}`
+                    : 'Último acceso: Nunca'}
+                </p>
               </div>
             </div>
 
@@ -1209,8 +1260,15 @@ export default function Users() {
               <DetailItem label="Teléfono" value={selectedUser.phone || 'No registrado'} />
               <DetailItem label="Rol" value={selectedUser.role || 'No registrado'} />
               <DetailItem
-                label="Especialidad"
-                value={selectedUser.specialty || 'No aplica'}
+                label="Último acceso"
+                value={
+                  selectedUser.lastAccess
+                    ? new Date(selectedUser.lastAccess).toLocaleString('es-GT', {
+                        dateStyle: 'short',
+                        timeStyle: 'short',
+                      })
+                    : 'Nunca'
+                }
               />
               <DetailItem label="Estado" value={selectedUser.status} />
               <DetailItem
@@ -1264,8 +1322,9 @@ export default function Users() {
 
               <button
                 type="button"
-                onClick={cancelForm}
+                onClick={handleCloseAttempt}
                 className="p-2 bg-muted hover:bg-border text-foreground rounded-lg transition-colors"
+                aria-label="Cerrar formulario"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1365,17 +1424,6 @@ export default function Users() {
                   maxLength={15}
                 />
 
-                <FormInput
-                  label="Especialidad"
-                  value={formData.specialty || ''}
-                  onChange={(value) =>
-                    setFormData({
-                      ...formData,
-                      specialty: value,
-                    })
-                  }
-                />
-
                 <div>
                   <label className="block text-foreground mb-2 text-sm">
                     Estado
@@ -1465,7 +1513,7 @@ export default function Users() {
 
                 <button
                   type="button"
-                  onClick={cancelForm}
+                  onClick={handleCloseAttempt}
                   className="w-full sm:w-auto px-4 py-2 bg-muted hover:bg-border text-foreground rounded-lg transition-colors"
                 >
                   Cancelar
@@ -1474,6 +1522,47 @@ export default function Users() {
             </form>
           </div>
         </div>
+      )}
+
+      {showCloseConfirmation && (
+        <ModalOverlay zIndex="z-[70]">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center">
+            <div className="flex justify-center mb-4">
+              <div className="rounded-full bg-warning/10 p-3 text-warning">
+                <AlertTriangle className="h-7 w-7" />
+              </div>
+            </div>
+
+            <h3 className="text-foreground text-xl font-semibold mb-2">
+              ¿Está seguro de cerrar el formulario?
+            </h3>
+
+            <p className="text-muted-foreground text-sm mb-6">
+              Los datos ingresados se perderán si sales sin guardar.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-3 sm:justify-center">
+              <button
+                type="button"
+                onClick={() => setShowCloseConfirmation(false)}
+                className="flex-1 rounded-lg border border-border bg-secondary px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-border"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCloseConfirmation(false);
+                  cancelForm();
+                }}
+                className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-[#F7EFE6] transition-colors hover:bg-primary/90"
+              >
+                Salir
+              </button>
+            </div>
+          </div>
+        </ModalOverlay>
       )}
 
       {showSuccessModal && (

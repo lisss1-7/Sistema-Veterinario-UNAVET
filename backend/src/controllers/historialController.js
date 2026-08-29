@@ -30,12 +30,22 @@ const HISTORIAL_SELECT = `
     historial.tratamiento,
     historial.observaciones,
     historial.origen,
-    historial.estado_clinico
+    historial.estado_clinico,
+    historial.creado_por,
+    CONCAT_WS(
+      ' ',
+      creador.primer_nombre,
+      creador.segundo_nombre,
+      creador.primer_apellido,
+      creador.segundo_apellido
+    ) AS creado_por_nombre
   FROM historial_clinico historial
   INNER JOIN tipos_consulta tipo
     ON tipo.tipo_consulta_id = historial.tipo_consulta_id
   LEFT JOIN veterinarios veterinario
     ON veterinario.veterinario_id = historial.veterinario_id
+  LEFT JOIN usuarios creador
+    ON creador.usuario_id = historial.creado_por
   LEFT JOIN (
     SELECT
       detalle.historial_id,
@@ -107,6 +117,8 @@ const mapHistorialToFrontend = (row) => ({
   observations: row.observaciones || '',
   sourceType: row.origen === 'Cita clínica' ? 'appointment' : 'manual',
   clinicalStatus: row.estado_clinico,
+  createdBy: row.creado_por ? String(row.creado_por) : '',
+  createdByName: row.creado_por_nombre || '',
 });
 
 const normalizePhysicalExam = (body) => ({

@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import type { LucideIcon } from 'lucide-react';
 import {
   BarChart3,
+  Bell,
   Bone,
   CalendarDays,
   ClipboardCheck,
@@ -122,6 +123,21 @@ function FullDashboard() {
     .filter((module) => !['dashboard', 'profile'].includes(module.codigo))
     .slice(0, 4);
 
+  const reminders = [
+    ...todayAppointments.slice(0, 3).map((item) => ({
+      title: item.petName || 'Paciente sin nombre',
+      description: `${item.time || 'Hora por confirmar'} · ${item.tutorName || 'Tutor no registrado'}`,
+      tag: 'Cita',
+      tone: 'amber',
+    })),
+    ...todayGrooming.slice(0, 2).map((item) => ({
+      title: item.petName || 'Paciente sin nombre',
+      description: `${item.time || 'Hora por confirmar'} · ${item.type || 'Grooming'}`,
+      tag: 'Grooming',
+      tone: 'terracotta',
+    })),
+  ];
+
   return (
     <div
       className="dashboard-page relative min-h-full overflow-hidden p-4 md:p-8"
@@ -140,11 +156,12 @@ function FullDashboard() {
       </div>
 
       <div className="relative z-10 mb-8 border-b border-[#d7c1aa] pb-6 dark:border-[#705b4d]">
-        
         <h1 className="mb-2 text-2xl font-bold text-[#422e1f] md:text-3xl dark:text-[#f7efe6]">
           Dashboard
         </h1>
-        
+        <p className="text-sm text-[#735d4f] dark:text-[#d6c7b9]">
+          Resumen general del día y accesos rápidos a la operación clínica.
+        </p>
       </div>
 
       {isLoading && (
@@ -156,7 +173,7 @@ function FullDashboard() {
       <section className="relative z-10 mb-8 rounded-2xl border border-[#ddc9b4] bg-[#fffaf5]/75 p-5 shadow-sm backdrop-blur-[2px] dark:border-[#705b4d] dark:bg-[#40332b]/80 md:p-6">
         <div className="mb-4 flex items-end justify-between gap-4">
           <div>
-            <h1 className="text-xl font-semibold text-[#4a3525] dark:text-[#f7efe6]">Accesos rápidos</h1>
+            <h2 className="text-xl font-semibold text-[#4a3525] dark:text-[#f7efe6]">Accesos rápidos</h2>
           </div>
           <PawPrint className="h-7 w-7 text-[#c9965a]" strokeWidth={1.5} aria-hidden="true" />
         </div>
@@ -204,6 +221,49 @@ function FullDashboard() {
           accent="terracotta"
         />
       </div>
+
+      <section className="relative z-10 mt-8 rounded-2xl border border-[#ddc9b4] bg-[#fffaf5] p-5 shadow-sm dark:border-[#705b4d] dark:bg-[#40332b]">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-xl font-semibold text-foreground dark:text-[#f7efe6]">
+            Recordatorios
+          </h2>
+          <span className="rounded-full border border-[#d9c0a4] bg-[#f6eadb] p-2 text-[#775d48] dark:border-[#826454] dark:bg-[#56453d] dark:text-[#f1d8bc]">
+            <Bell className="h-4 w-4" />
+          </span>
+        </div>
+
+        {reminders.length > 0 ? (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {reminders.map((item, index) => (
+              <div
+                key={`${item.title}-${index}`}
+                className={`rounded-xl border p-4 ${
+                  item.tone === 'amber'
+                    ? 'border-[#ead4aa] bg-[#fff7ec] dark:border-[#7b6147] dark:bg-[#4b382d]'
+                    : 'border-[#e7bfaf] bg-[#fff3ee] dark:border-[#7a564d] dark:bg-[#4b312d]'
+                }`}
+              >
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <span className="rounded-full border border-[#d9c0a4] bg-[#f6eadb] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#775d48] dark:border-[#826454] dark:bg-[#56453d] dark:text-[#f1d8bc]">
+                    {item.tag}
+                  </span>
+                </div>
+
+                <p className="font-semibold text-foreground dark:text-[#f7efe6]">
+                  {item.title}
+                </p>
+                <p className="mt-2 text-sm text-muted-foreground dark:text-[#d7c7ba]">
+                  {item.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-[#dbc8b2] bg-[#fbf6f0] p-6 text-center text-[#8a7664] dark:border-[#705b4d] dark:bg-[#43362e] dark:text-[#c8b5a4]">
+            No tienes recordatorios para hoy.
+          </div>
+        )}
+      </section>
     </div>
   );
 }

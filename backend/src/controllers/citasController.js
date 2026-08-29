@@ -39,6 +39,8 @@ const mapCitaToFrontend = (row) => ({
   reason: row.motivo,
   status: row.estado,
   notes: row.notas,
+  createdBy: row.creado_por ? String(row.creado_por) : '',
+  createdByName: row.creado_por_nombre || '',
 });
 
 const obtenerTutorPorPaciente = async (connection, pacienteId) => {
@@ -372,12 +374,22 @@ const obtenerCitaPorId = async (req, res) => {
         c.hora,
         c.motivo,
         estado.nombre AS estado,
-        c.notas
+        c.notas,
+        c.creado_por,
+        CONCAT_WS(
+          ' ',
+          creador.primer_nombre,
+          creador.segundo_nombre,
+          creador.primer_apellido,
+          creador.segundo_apellido
+        ) AS creado_por_nombre
       FROM citas_clinicas c
       INNER JOIN estados_cita estado
         ON estado.estado_cita_id = c.estado_cita_id
       LEFT JOIN tamanos_animales tamano
         ON tamano.tamano_animal_id = c.tamano_animal_id
+      LEFT JOIN usuarios creador
+        ON creador.usuario_id = c.creado_por
       WHERE c.cita_id = ?
       LIMIT 1
       `,

@@ -16,6 +16,7 @@ const usuariosRoutes = require('./routes/usuariosRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const perfilRoutes = require('./routes/perfilRoutes');
 const catalogosRoutes = require('./routes/catalogosRoutes');
+const tutoresRoutes = require('./routes/tutoresRoutes');
 const aiReportsRoutes = require('./routes/aiReportsRoutes');
 const cierreVentasRoutes = require('./routes/cierreVentasRoutes');
 const { validateRequest } = require('./middleware/requestValidationMiddleware');
@@ -61,6 +62,7 @@ app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/perfil', perfilRoutes);
 app.use('/api/catalogos', catalogosRoutes);
+app.use('/api/tutores', tutoresRoutes);
 app.use('/api/ai-reports', aiReportsRoutes);
 app.use('/api/cierre-ventas', cierreVentasRoutes);
 

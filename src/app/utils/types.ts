@@ -29,6 +29,8 @@ export interface ClinicalRecord {
   consultationType: string;
   veterinarianId?: string;
   veterinarian: string;
+  createdBy?: string;
+  createdByName?: string;
   reason: string;
   previousSurgeries?: string;
   visibleMasses?: string;
@@ -52,6 +54,8 @@ export interface Vaccination {
   applicationDate: string;
   veterinarianId?: string;
   veterinarian: string;
+  createdBy?: string;
+  createdByName?: string;
   totalDoses: number;
   appliedDoses: number;
   interval: number;
@@ -68,6 +72,8 @@ export interface TreatmentService {
   category: string;
   name: string;
   diagnosisOrReason: string;
+  createdBy?: string;
+  createdByName?: string;
   status: string;
   requestDate: string;
   veterinarianId?: string;
@@ -146,6 +152,8 @@ export interface Prescription {
   date: string;
   veterinarianId?: string;
   veterinarian: string;
+  createdBy?: string;
+  createdByName?: string;
   diagnosis: string;
   observations: string;
   medications: PrescriptionMedication[];
@@ -174,5 +182,6 @@ export interface SystemUser {
   phone: string;
   specialty?: string;
   status: string;
+  lastAccess?: string;
   creationDate: string;
 }

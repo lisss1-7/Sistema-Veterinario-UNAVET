@@ -104,6 +104,10 @@ export default function PatientDetail() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showDeleteSuccessModal, setShowDeleteSuccessModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [viewTarget, setViewTarget] = useState<{
+    type: 'clinical' | 'vaccination' | 'treatment';
+    item: ClinicalRecordExtended | VaccinationExtended | TreatmentServiceExtended;
+  } | null>(null);
 
   const [formData, setFormData] = useState<any>({});
 
@@ -487,6 +491,17 @@ export default function PatientDetail() {
     setDeleteTarget(null);
   };
 
+  const openViewModal = (
+    type: 'clinical' | 'vaccination' | 'treatment',
+    item: ClinicalRecordExtended | VaccinationExtended | TreatmentServiceExtended
+  ) => {
+    setViewTarget({ type, item });
+  };
+
+  const closeViewModal = () => {
+    setViewTarget(null);
+  };
+
   const confirmDelete = async () => {
     if (!deleteTarget) return;
 
@@ -560,6 +575,21 @@ export default function PatientDetail() {
 
   const closeDeleteSuccessModal = () => {
     setShowDeleteSuccessModal(false);
+  };
+
+  const formatPdfName = (prefix: string, petName?: string) => {
+    const cleanName = (petName || 'Paciente')
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const formattedName = cleanName
+      .split(' ')
+      .filter(Boolean)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+
+    return `${prefix} ${formattedName}.pdf`;
   };
 
   const createPdfBase = async (title: string) => {
@@ -670,7 +700,111 @@ export default function PatientDetail() {
     doc.text(doc.splitTextToSize(record.treatment || 'N/A', 178), 16, y);
 
     addPdfFooter(doc);
-    doc.save(`registro-clinico-${patient?.petName || 'paciente'}.pdf`);
+    doc.save(formatPdfName('Registro Clinico', patient?.petName));
+  };
+
+  const downloadSingleVaccinationPdf = async (vacc: VaccinationExtended) => {
+    const { doc } = await createPdfBase('Vacuna');
+
+    let y = 96;
+
+    doc.setTextColor('#2F2924');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text(vacc.vaccine || 'Vacuna', 16, y);
+    y += 12;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.text(`Fecha de aplicación: ${vacc.applicationDate || 'N/A'}`, 16, y);
+    y += 8;
+    doc.text(`Veterinario: ${vacc.veterinarian || 'N/A'}`, 16, y);
+    y += 8;
+    doc.text(`Estado: ${vacc.status || 'N/A'}`, 16, y);
+    y += 8;
+    doc.text(`Dosis aplicada: ${vacc.appliedDoses ?? 0} / ${vacc.totalDoses ?? 0}`, 16, y);
+    y += 8;
+    doc.text(`Próxima dosis: ${vacc.nextDose || 'N/A'}`, 16, y);
+    y += 8;
+    doc.text(`Intervalo: ${vacc.interval || 'N/A'} ${vacc.intervalUnit || ''}`.trim(), 16, y);
+    y += 12;
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('Notas', 16, y);
+    y += 7;
+    doc.setFont('helvetica', 'normal');
+    doc.text(doc.splitTextToSize(vacc.notes || 'Sin notas registradas.', 178), 16, y);
+
+    addPdfFooter(doc);
+    doc.save(formatPdfName(vacc.vaccine || 'Vacuna', patient?.petName));
+  };
+
+  const downloadClinicalHistoryPdf = async () => {
+    const { doc, logoBase64 } = await createPdfBase('Historial Clínico Completo');
+
+    let y = 96;
+
+    doc.setFillColor('#6B6258');
+    doc.rect(16, y, 178, 9, 'F');
+
+    doc.setTextColor('#FFFFFF');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+
+    doc.text('Fecha / Tipo', 18, y + 6);
+    doc.text('Diagnóstico', 98, y + 6);
+    doc.text('Tratamiento', 152, y + 6);
+
+    y += 9;
+
+    if (clinicalRecords.length === 0) {
+      doc.setTextColor('#6B5B4D');
+      doc.setFont('helvetica', 'normal');
+      doc.text('No hay registros clínicos.', 16, y + 8);
+      addPdfFooter(doc);
+      doc.save(formatPdfName('Historial Clinico Completo', patient?.petName));
+      return;
+    }
+
+    clinicalRecords.forEach((record) => {
+      if (y > 245) {
+        addPdfFooter(doc);
+        doc.addPage();
+        drawUnavetPdfHeader(doc, logoBase64, 'Sistema de Gestión Veterinaria');
+        y = 43;
+
+        doc.setFillColor('#6B6258');
+        doc.rect(16, y, 178, 9, 'F');
+        doc.setTextColor('#FFFFFF');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.text('Fecha / Tipo', 18, y + 6);
+        doc.text('Diagnóstico', 98, y + 6);
+        doc.text('Tratamiento', 152, y + 6);
+        y += 9;
+      }
+
+      doc.setDrawColor('#D8D2C8');
+      doc.rect(16, y, 178, 22);
+
+      doc.setTextColor('#2F2924');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      const titleLine = doc.splitTextToSize(`${record.date || 'N/A'} • ${record.consultationType || 'Consulta'}`, 72);
+      doc.text(titleLine, 18, y + 6);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      const diagnosis = doc.splitTextToSize(`Diagnóstico: ${record.diagnosis || 'N/A'}`, 48);
+      const treatment = doc.splitTextToSize(`Tratamiento: ${record.treatment || 'N/A'}`, 48);
+      doc.text(diagnosis, 98, y + 6);
+      doc.text(treatment, 152, y + 6);
+
+      y += 22;
+    });
+
+    addPdfFooter(doc);
+    doc.save(formatPdfName('Historial Clinico Completo', patient?.petName));
   };
 
   const downloadVaccinationPdf = async () => {
@@ -723,7 +857,7 @@ export default function PatientDetail() {
     }
 
     addPdfFooter(doc);
-    doc.save(`esquema-vacunacion-${patient?.petName || 'paciente'}.pdf`);
+    doc.save(formatPdfName('Esquema Vacunacion', patient?.petName));
   };
 
   const downloadTreatmentPdf = async (treat: TreatmentServiceExtended) => {
@@ -800,7 +934,7 @@ export default function PatientDetail() {
     }
 
     addPdfFooter(doc);
-    doc.save(`servicio-${patient?.petName || 'paciente'}.pdf`);
+    doc.save(formatPdfName('Servicio', patient?.petName));
   };
 
   if (!patient) {
@@ -939,6 +1073,15 @@ export default function PatientDetail() {
                 title="Historial clínico"
                 buttonText="Nuevo registro"
                 onAdd={openNewClinicalModal}
+                extraButton={
+                  <button
+                    onClick={downloadClinicalHistoryPdf}
+                    className="flex items-center gap-2 px-4 py-2 bg-muted hover:bg-border text-foreground rounded-lg transition-colors"
+                  >
+                    <Download className="w-4 h-4" />
+                    Descargar historial completo
+                  </button>
+                }
               />
 
               <div className="space-y-4">
@@ -982,9 +1125,20 @@ export default function PatientDetail() {
                             ? `Dr. ${record.veterinarian}`
                             : 'Médico pendiente de asignar'}
                         </p>
+                        <p className="text-muted-foreground text-xs mt-1">
+                          Registrado por: {record.createdByName || 'Sistema'}
+                        </p>
                       </div>
 
                       <div className="flex flex-col sm:flex-row gap-2">
+                        <button
+                          onClick={() => openViewModal('clinical', record)}
+                          className="flex items-center justify-center gap-2 px-3 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-sm transition-colors"
+                        >
+                          <FileText className="w-4 h-4" />
+                          Ver
+                        </button>
+
                         <button
                           onClick={() => openEditClinicalModal(record)}
                           className="flex items-center justify-center gap-2 px-3 py-2 bg-muted hover:bg-border text-foreground rounded-lg text-sm transition-colors"
@@ -1117,6 +1271,22 @@ export default function PatientDetail() {
                         </span>
 
                         <button
+                          onClick={() => openViewModal('vaccination', vacc)}
+                          className="flex items-center gap-2 rounded-lg bg-primary/10 px-3 py-2 text-sm text-primary transition-colors hover:bg-primary/20"
+                        >
+                          <FileText className="w-4 h-4" />
+                          Ver
+                        </button>
+
+                        <button
+                          onClick={() => void downloadSingleVaccinationPdf(vacc)}
+                          className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-foreground transition-colors hover:bg-border"
+                        >
+                          <Download className="w-4 h-4" />
+                          PDF
+                        </button>
+
+                        <button
                           onClick={() =>
                             openDeleteModal(
                               vacc.id,
@@ -1182,6 +1352,14 @@ export default function PatientDetail() {
                         >
                           {treat.status}
                         </span>
+
+                        <button
+                          onClick={() => openViewModal('treatment', treat)}
+                          className="flex items-center gap-2 px-3 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-sm transition-colors"
+                        >
+                          <FileText className="w-4 h-4" />
+                          Ver
+                        </button>
 
                         <button
                           onClick={() => downloadTreatmentPdf(treat)}
@@ -1767,8 +1945,100 @@ export default function PatientDetail() {
         </div>
       )}
 
-      {showDeleteModal && deleteTarget && (
+      {viewTarget && (
         <div className="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[70]">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-2xl w-full p-6 relative max-h-[90vh] overflow-y-auto">
+            <button
+              type="button"
+              onClick={closeViewModal}
+              className="absolute top-4 right-4 p-2 bg-muted hover:bg-border text-foreground rounded-lg transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <h3 className="text-foreground text-2xl font-semibold mb-4">
+              {viewTarget.type === 'clinical'
+                ? 'Detalle del historial clínico'
+                : viewTarget.type === 'vaccination'
+                ? 'Detalle de vacunación'
+                : 'Detalle del tratamiento'}
+            </h3>
+
+            {viewTarget.type === 'clinical' && (
+              <div className="space-y-3 text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <InfoItem label="Fecha" value={(viewTarget.item as ClinicalRecordExtended).date} />
+                  <InfoItem label="Tipo de consulta" value={(viewTarget.item as ClinicalRecordExtended).consultationType} />
+                  <InfoItem label="Veterinario" value={(viewTarget.item as ClinicalRecordExtended).veterinarian} />
+                  <InfoItem label="Registrado por" value={(viewTarget.item as ClinicalRecordExtended).createdByName || 'Sistema'} />
+                  <InfoItem label="Estado" value={(viewTarget.item as ClinicalRecordExtended).clinicalStatus} />
+                </div>
+                <InfoItem label="Motivo" value={(viewTarget.item as ClinicalRecordExtended).reason} />
+                <InfoItem label="Cirugías previas" value={(viewTarget.item as ClinicalRecordExtended).previousSurgeries} />
+                <InfoItem label="Masas visibles" value={(viewTarget.item as ClinicalRecordExtended).visibleMasses} />
+                <InfoItem label="Diagnóstico" value={(viewTarget.item as ClinicalRecordExtended).diagnosis} />
+                <InfoItem label="Tratamiento" value={(viewTarget.item as ClinicalRecordExtended).treatment} />
+                <InfoItem label="Observaciones" value={(viewTarget.item as ClinicalRecordExtended).observations} />
+              </div>
+            )}
+
+            {viewTarget.type === 'vaccination' && (
+              <div className="space-y-3 text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <InfoItem label="Vacuna" value={(viewTarget.item as VaccinationExtended).vaccine} />
+                  <InfoItem label="Fecha de aplicación" value={(viewTarget.item as VaccinationExtended).applicationDate} />
+                  <InfoItem label="Veterinario" value={(viewTarget.item as VaccinationExtended).veterinarian} />
+                  <InfoItem label="Registrado por" value={(viewTarget.item as VaccinationExtended).createdByName || 'Sistema'} />
+                  <InfoItem label="Estado" value={(viewTarget.item as VaccinationExtended).status} />
+                  <InfoItem label="Dosis aplicada" value={`${(viewTarget.item as VaccinationExtended).appliedDoses ?? 0} / ${(viewTarget.item as VaccinationExtended).totalDoses ?? 0}`} />
+                  <InfoItem label="Próxima dosis" value={(viewTarget.item as VaccinationExtended).nextDose} />
+                </div>
+                <InfoItem label="Lote" value={(viewTarget.item as VaccinationExtended).lot} />
+                <InfoItem label="Notas" value={(viewTarget.item as VaccinationExtended).notes} />
+              </div>
+            )}
+
+            {viewTarget.type === 'treatment' && (
+              <div className="space-y-3 text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <InfoItem label="Nombre" value={(viewTarget.item as TreatmentServiceExtended).name} />
+                  <InfoItem label="Tipo" value={(viewTarget.item as TreatmentServiceExtended).type} />
+                  <InfoItem label="Categoría" value={(viewTarget.item as TreatmentServiceExtended).category} />
+                  <InfoItem label="Estado" value={(viewTarget.item as TreatmentServiceExtended).status} />
+                  <InfoItem label="Veterinario" value={(viewTarget.item as TreatmentServiceExtended).veterinarian} />
+                  <InfoItem label="Registrado por" value={(viewTarget.item as TreatmentServiceExtended).createdByName || 'Sistema'} />
+                  <InfoItem label="Fecha" value={(viewTarget.item as TreatmentServiceExtended).requestDate} />
+                </div>
+                <InfoItem label="Diagnóstico o motivo" value={(viewTarget.item as TreatmentServiceExtended).diagnosisOrReason} />
+                <InfoItem label="Observaciones" value={(viewTarget.item as TreatmentServiceExtended).observations} />
+                {(viewTarget.item as TreatmentServiceExtended).attachmentPhoto && (
+                  <div>
+                    <p className="text-muted-foreground text-sm mb-2">Fotografía adjunta</p>
+                    <img
+                      src={(viewTarget.item as TreatmentServiceExtended).attachmentPhoto}
+                      alt="Adjunto del registro"
+                      className="max-h-64 rounded-xl border border-border object-cover"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={closeViewModal}
+                className="px-4 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDeleteModal && deleteTarget && (
+        <div className="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[80]">
           <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-md w-full p-6 relative">
             <button
               type="button"

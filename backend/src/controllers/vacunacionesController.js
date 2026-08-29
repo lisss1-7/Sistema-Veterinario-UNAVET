@@ -41,6 +41,14 @@ const VACUNACION_SELECT = `
     ) AS veterinario,
     estado.nombre AS estado_catalogo,
     esquema.observaciones,
+    esquema.creado_por,
+    CONCAT_WS(
+      ' ',
+      creador.primer_nombre,
+      creador.segundo_nombre,
+      creador.primer_apellido,
+      creador.segundo_apellido
+    ) AS creado_por_nombre,
     aplicaciones.dosis_aplicadas,
     esquema.dosis_totales,
     esquema.intervalo,
@@ -48,6 +56,8 @@ const VACUNACION_SELECT = `
   FROM esquemas_vacunacion_paciente esquema
   INNER JOIN vacunas_catalogo vacuna
     ON vacuna.vacuna_id = esquema.vacuna_id
+  LEFT JOIN usuarios creador
+    ON creador.usuario_id = esquema.creado_por
   LEFT JOIN unidades_intervalo unidad
     ON unidad.unidad_intervalo_id = esquema.unidad_intervalo_id
   LEFT JOIN (
@@ -93,6 +103,8 @@ const mapVacunacionToFrontend = (row) => ({
   veterinarian: row.veterinario || '',
   status: row.estado_catalogo,
   notes: row.observaciones || '',
+  createdBy: row.creado_por ? String(row.creado_por) : '',
+  createdByName: row.creado_por_nombre || '',
   appliedDoses: Number(row.dosis_aplicadas || 0),
   totalDoses: Number(row.dosis_totales || 0),
   interval: row.intervalo || '',
