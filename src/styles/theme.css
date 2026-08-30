@@ -152,6 +152,43 @@
     @apply border-border outline-ring/50;
   }
 
+  select option {
+    background-color: var(--card);
+    color: var(--foreground);
+  }
+
+  select option:hover,
+  select option:focus,
+  select option:checked {
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+
+  .themed-select-content {
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+  }
+
+  .themed-select-option {
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+  }
+
+  .themed-select-option[data-state='checked']:not([data-highlighted]) {
+    background-color: color-mix(in srgb, var(--primary) 18%, var(--popover));
+    color: var(--foreground);
+  }
+
+  .themed-select-option[data-highlighted] {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+  }
+
+  .themed-select-trigger[data-state='open'] {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 30%, transparent);
+  }
+
   body {
     @apply text-foreground;
     background: var(--app-background);

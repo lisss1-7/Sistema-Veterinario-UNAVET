@@ -19,6 +19,7 @@ export interface User {
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<boolean>;
+  updateUser: (updates: Partial<User>) => void;
   logout: () => void;
   isAuthenticated: boolean;
   isSessionReady: boolean;
@@ -57,6 +58,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => getStoredUser());
   const [isSessionReady, setIsSessionReady] = useState(false);
 
+  const updateUser = (updates: Partial<User>) => {
+    setUser((currentUser) => {
+      if (!currentUser) return currentUser;
+
+      const updatedUser = {
+        ...currentUser,
+        ...updates,
+      };
+
+      localStorage.setItem('unavet_user', JSON.stringify(updatedUser));
+      return updatedUser;
+    });
+  };
+
   useEffect(() => {
     const token =
       localStorage.getItem('unavet_token') || localStorage.getItem('token');
@@ -69,20 +84,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let disposed = false;
     const controller = new AbortController();
 
-    void fetch(`${API_URL}/catalogos/mis-modulos`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: controller.signal,
-    })
-      .then((response) => {
-        if (response.status === 401 || response.status === 403) {
+    void Promise.all([
+      fetch(`${API_URL}/catalogos/mis-modulos`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      }),
+      fetch(`${API_URL}/perfil/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      }),
+    ])
+      .then(async ([sessionResponse, profileResponse]) => {
+        if (
+          sessionResponse.status === 401 ||
+          sessionResponse.status === 403 ||
+          profileResponse.status === 401 ||
+          profileResponse.status === 403
+        ) {
           clearStoredSession();
           if (!disposed) setUser(null);
           return;
         }
 
-        if (!response.ok) {
+        if (!sessionResponse.ok) {
           throw new Error('No fue posible validar la sesión con el servidor.');
         }
+
+        if (!profileResponse.ok) {
+          throw new Error('No fue posible actualizar los datos de la sesión.');
+        }
+
+        const refreshedUser = (await profileResponse.json()) as User;
+
+        if (!disposed) updateUser(refreshedUser);
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === 'AbortError') return;
@@ -143,6 +177,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         login,
+        updateUser,
         logout,
         isAuthenticated: !!user,
         isSessionReady,

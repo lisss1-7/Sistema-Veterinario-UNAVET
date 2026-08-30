@@ -44,17 +44,16 @@ export default function Layout() {
       />
 
       <div
-        className={`min-h-screen flex flex-col transition-[padding] duration-200 ${
+        className={`min-h-screen min-w-0 flex flex-col transition-[padding] duration-200 ${
           isSidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64'
         }`}
       >
         <Header onMenuClick={() => setIsSidebarOpen(true)} />
 
-        <main className="flex-1 w-full overflow-x-hidden">
+        <main className="flex-1 min-w-0 w-full overflow-x-hidden">
           <Outlet />
         </main>
       </div>
     </div>
   );
 }
-

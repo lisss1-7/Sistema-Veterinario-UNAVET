@@ -4,9 +4,11 @@ import {
   BarChart3,
   Bone,
   CalendarDays,
+  Cat,
   ChevronDown,
   ClipboardCheck,
   ClipboardList,
+  Dog,
   House,
   LayoutDashboard,
   List,
@@ -145,61 +147,101 @@ export function Sidebar({
         className="pointer-events-none absolute inset-0 overflow-hidden text-sidebar-foreground"
         aria-hidden="true"
       >
+        <Cat
+          className="absolute -right-7 top-[3%] h-24 w-24 -rotate-6 text-[#C9962F] opacity-[0.17]"
+          strokeWidth={1.35}
+        />
+        <PawPrint
+          className="absolute left-5 top-[8%] h-9 w-9 -rotate-[18deg] opacity-[0.2]"
+          strokeWidth={1.55}
+        />
         <Bone
-          className="absolute -right-1 top-[16%] h-7 w-7 rotate-[35deg] text-[#C9962F] opacity-[0.11]"
+          className="absolute left-[42%] top-[12%] h-7 w-7 rotate-[62deg] text-[#C9962F] opacity-[0.18]"
+          strokeWidth={1.55}
+        />
+        <Bone
+          className="absolute -right-1 top-[16%] h-7 w-7 rotate-[35deg] text-[#C9962F] opacity-[0.2]"
           strokeWidth={1.5}
         />
+        <PawPrint
+          className="absolute left-[31%] top-[20%] h-6 w-6 rotate-[27deg] opacity-[0.16]"
+          strokeWidth={1.45}
+        />
         <Bone
-          className="absolute left-1 top-[28%] h-8 w-8 -rotate-[22deg] opacity-[0.09]"
+          className="absolute left-1 top-[28%] h-8 w-8 -rotate-[22deg] opacity-[0.16]"
           strokeWidth={1.4}
         />
         <Bone
-          className="absolute right-1 top-[43%] h-9 w-9 rotate-[70deg] opacity-[0.1]"
+          className="absolute right-1 top-[43%] h-9 w-9 rotate-[70deg] opacity-[0.18]"
           strokeWidth={1.4}
         />
         <Bone
-          className="absolute left-0 top-[59%] h-7 w-7 rotate-[18deg] text-[#C9962F] opacity-[0.1]"
+          className="absolute left-0 top-[59%] h-7 w-7 rotate-[18deg] text-[#C9962F] opacity-[0.19]"
           strokeWidth={1.4}
         />
         <Bone
-          className="absolute right-0 top-[73%] h-8 w-8 -rotate-[42deg] opacity-[0.09]"
+          className="absolute right-0 top-[73%] h-8 w-8 -rotate-[42deg] opacity-[0.17]"
           strokeWidth={1.4}
         />
         <Bone
-          className="absolute left-1 bottom-[9%] h-9 w-9 rotate-[52deg] text-[#C9962F] opacity-[0.1]"
+          className="absolute left-1 bottom-[9%] h-9 w-9 rotate-[52deg] text-[#C9962F] opacity-[0.19]"
           strokeWidth={1.4}
         />
         <PawPrint
-          className="absolute right-8 top-[34%] h-8 w-8 rotate-[18deg] text-[#C9962F] opacity-[0.13]"
+          className="absolute right-8 top-[34%] h-8 w-8 rotate-[18deg] text-[#C9962F] opacity-[0.23]"
           strokeWidth={1.45}
         />
         <PawPrint
-          className="absolute left-10 top-[48%] h-7 w-7 -rotate-[28deg] opacity-[0.11]"
+          className="absolute left-10 top-[48%] h-7 w-7 -rotate-[28deg] opacity-[0.19]"
           strokeWidth={1.4}
         />
         <PawPrint
-          className="absolute right-10 top-[66%] h-9 w-9 rotate-[35deg] opacity-[0.1]"
+          className="absolute right-10 top-[66%] h-9 w-9 rotate-[35deg] opacity-[0.18]"
           strokeWidth={1.4}
         />
         <PawPrint
-          className="absolute left-16 bottom-[19%] h-7 w-7 -rotate-[12deg] text-[#C9962F] opacity-[0.12]"
+          className="absolute left-16 bottom-[19%] h-7 w-7 -rotate-[12deg] text-[#C9962F] opacity-[0.21]"
           strokeWidth={1.4}
         />
         <Bone
-          className="absolute right-16 top-[22%] h-6 w-6 -rotate-[58deg] opacity-[0.08]"
+          className="absolute right-16 top-[22%] h-6 w-6 -rotate-[58deg] opacity-[0.15]"
           strokeWidth={1.3}
         />
         <PawPrint
-          className="absolute left-20 top-[38%] h-6 w-6 rotate-[42deg] text-[#C9962F] opacity-[0.09]"
+          className="absolute left-20 top-[38%] h-6 w-6 rotate-[42deg] text-[#C9962F] opacity-[0.17]"
           strokeWidth={1.3}
         />
         <Bone
-          className="absolute right-20 top-[57%] h-7 w-7 rotate-[12deg] opacity-[0.08]"
+          className="absolute right-20 top-[57%] h-7 w-7 rotate-[12deg] opacity-[0.15]"
           strokeWidth={1.3}
         />
         <PawPrint
-          className="absolute right-24 bottom-[27%] h-6 w-6 -rotate-[36deg] opacity-[0.09]"
+          className="absolute right-24 bottom-[27%] h-6 w-6 -rotate-[36deg] opacity-[0.17]"
           strokeWidth={1.3}
+        />
+        <PawPrint
+          className="absolute left-[45%] top-[53%] h-8 w-8 rotate-[16deg] text-[#C9962F] opacity-[0.2]"
+          strokeWidth={1.5}
+        />
+        <Bone
+          className="absolute right-[30%] top-[62%] h-6 w-6 -rotate-[64deg] opacity-[0.16]"
+          strokeWidth={1.45}
+        />
+        <PawPrint
+          className="absolute left-[17%] top-[70%] h-8 w-8 -rotate-[32deg] text-[#C9962F] opacity-[0.19]"
+          strokeWidth={1.5}
+        />
+        <Bone
+          className="absolute left-[48%] top-[77%] h-7 w-7 rotate-[38deg] opacity-[0.16]"
+          strokeWidth={1.45}
+        />
+        <PawPrint
+          className="absolute right-[18%] top-[86%] h-9 w-9 rotate-[21deg] text-[#C9962F] opacity-[0.21]"
+          strokeWidth={1.55}
+        />
+        <Dog
+          className="absolute -left-8 bottom-[1%] h-24 w-24 rotate-6 opacity-[0.16]"
+          strokeWidth={1.35}
         />
       </div>
 

@@ -17,6 +17,7 @@ import type {
   InventoryProduct,
 } from '../utils/types';
 import SearchablePatientSelect from '../components/SearchablePatientSelect';
+import ThemedSelect from '../components/ThemedSelect';
 import { drawUnavetPdfHeader, getUnavetLogoBase64 } from '../utils/pdfBranding';
 
 const API_URL = '/api';
@@ -968,7 +969,7 @@ export default function Prescriptions() {
                     Médico veterinario
                   </label>
 
-                  <select
+                  <ThemedSelect
                     value={formData.veterinarianId || ''}
                     onChange={(e) =>
                       setFormData({
@@ -988,7 +989,7 @@ export default function Prescriptions() {
                         {veterinarian.nombre}
                       </option>
                     ))}
-                  </select>
+                  </ThemedSelect>
 
                   <p className="text-muted-foreground text-xs mt-1">
                     Este dato queda registrado en el sistema, pero no aparecerá
@@ -1055,7 +1056,7 @@ export default function Prescriptions() {
                           Modo de entrega
                         </label>
 
-                        <select
+                        <ThemedSelect
                           value={med.deliveryMode || ''}
                           onChange={(e) =>
                             updateMedicationDeliveryMode(
@@ -1073,7 +1074,7 @@ export default function Prescriptions() {
                               {mode}
                             </option>
                           ))}
-                        </select>
+                        </ThemedSelect>
                       </div>
 
                       <button
@@ -1094,7 +1095,7 @@ export default function Prescriptions() {
                         Desde inventario, opcional
                       </label>
 
-                      <select
+                      <ThemedSelect
                         value={currentMed.productId || ''}
                         onChange={(e) => handleProductSelect(e.target.value)}
                         className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm"
@@ -1106,7 +1107,7 @@ export default function Prescriptions() {
                             {p.name} (Stock: {p.currentStock})
                           </option>
                         ))}
-                      </select>
+                      </ThemedSelect>
                     </div>
 
                     <div>
@@ -1155,7 +1156,7 @@ export default function Prescriptions() {
                         Modo de entrega
                       </label>
 
-                      <select
+                      <ThemedSelect
                         value={currentMed.deliveryMode || ''}
                         onChange={(e) =>
                           setCurrentMed({
@@ -1174,7 +1175,7 @@ export default function Prescriptions() {
                             {mode}
                           </option>
                         ))}
-                      </select>
+                      </ThemedSelect>
                     </div>
 
                     <div className="md:col-span-2">
@@ -1319,5 +1320,3 @@ export default function Prescriptions() {
     </div>
   );
 }
-
-

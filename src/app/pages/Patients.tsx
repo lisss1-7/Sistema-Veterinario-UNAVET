@@ -16,8 +16,10 @@ import {
   User,
   Calendar,
   X,
+  ChevronDown,
 } from 'lucide-react';
 import type { Patient } from '../utils/types';
+import ThemedSelect from '../components/ThemedSelect';
 import {
   isValidName,
   isValidAgeSpacing,
@@ -97,6 +99,8 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
   const [selectedTutorSearch, setSelectedTutorSearch] = useState('');
   const [showTutorSuggestions, setShowTutorSuggestions] = useState(false);
   const [highlightedTutorId, setHighlightedTutorId] = useState<string | null>(null);
+  const [showSpeciesMenu, setShowSpeciesMenu] = useState(false);
+  const [showSortMenu, setShowSortMenu] = useState(false);
 
   useEffect(() => {
     loadPatients();
@@ -727,43 +731,101 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
             </div>
           </div>
 
-          <div>
+          <div className="relative">
             <label className="block text-foreground mb-2 text-sm">
               Filtrar por especie
             </label>
 
-            <select
-              value={filterSpecies}
-              onChange={(e) => setFilterSpecies(e.target.value)}
-              className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+            <button
+              type="button"
+              onClick={() => {
+                setShowSpeciesMenu((current) => !current);
+                setShowSortMenu(false);
+              }}
+              className="flex w-full items-center justify-between rounded-lg border border-border bg-secondary px-4 py-2.5 text-left text-foreground shadow-sm transition-colors hover:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
-              <option value="">Todas</option>
+              <span>{filterSpecies || 'Todas'}</span>
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            </button>
 
-              {speciesOptions.map((species) => (
-                <option key={species.especie_id} value={species.nombre}>
-                  {species.nombre}
-                </option>
-              ))}
-            </select>
+            {showSpeciesMenu && (
+              <div className="absolute z-20 mt-2 w-full rounded-lg border border-border bg-card shadow-xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterSpecies('');
+                    setShowSpeciesMenu(false);
+                  }}
+                  className="flex w-full items-center justify-between px-3 py-2.5 text-left text-foreground transition-colors hover:bg-primary/10"
+                >
+                  <span>Todas</span>
+                </button>
+
+                {speciesOptions.map((species) => (
+                  <button
+                    key={species.especie_id}
+                    type="button"
+                    onClick={() => {
+                      setFilterSpecies(species.nombre);
+                      setShowSpeciesMenu(false);
+                    }}
+                    className="flex w-full items-center justify-between px-3 py-2.5 text-left text-foreground transition-colors hover:bg-primary/10"
+                  >
+                    <span>{species.nombre}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div>
+          <div className="relative">
             <label className="block text-foreground mb-2 text-sm">
               Ordenar por
             </label>
 
-            <select
-              value={sortOrder}
-              onChange={(e) => setSortOrder(e.target.value as PatientSortOrder)}
-              className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+            <button
+              type="button"
+              onClick={() => {
+                setShowSortMenu((current) => !current);
+                setShowSpeciesMenu(false);
+              }}
+              className="flex w-full items-center justify-between rounded-lg border border-border bg-secondary px-4 py-2.5 text-left text-foreground shadow-sm transition-colors hover:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
-              <option value="pet-asc">Mascota: A a Z</option>
-              <option value="pet-desc">Mascota: Z a A</option>
-              <option value="tutor-asc">Tutor: A a Z</option>
-              <option value="tutor-desc">Tutor: Z a A</option>
-              <option value="registration-desc">Registro: más reciente</option>
-              <option value="registration-asc">Registro: más antiguo</option>
-            </select>
+              <span>
+                {sortOrder === 'pet-asc' && 'Mascota: A a Z'}
+                {sortOrder === 'pet-desc' && 'Mascota: Z a A'}
+                {sortOrder === 'tutor-asc' && 'Tutor: A a Z'}
+                {sortOrder === 'tutor-desc' && 'Tutor: Z a A'}
+                {sortOrder === 'registration-desc' && 'Registro: más reciente'}
+                {sortOrder === 'registration-asc' && 'Registro: más antiguo'}
+              </span>
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            </button>
+
+            {showSortMenu && (
+              <div className="absolute z-20 mt-2 w-full rounded-lg border border-border bg-card shadow-xl">
+                {[
+                  ['pet-asc', 'Mascota: A a Z'],
+                  ['pet-desc', 'Mascota: Z a A'],
+                  ['tutor-asc', 'Tutor: A a Z'],
+                  ['tutor-desc', 'Tutor: Z a A'],
+                  ['registration-desc', 'Registro: más reciente'],
+                  ['registration-asc', 'Registro: más antiguo'],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => {
+                      setSortOrder(value as PatientSortOrder);
+                      setShowSortMenu(false);
+                    }}
+                    className="flex w-full items-center justify-between px-3 py-2.5 text-left text-foreground transition-colors hover:bg-primary/10"
+                  >
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -880,7 +942,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
               Por página
-              <select
+              <ThemedSelect
                 value={pageSize}
                 onChange={(e) => setPageSize(Number(e.target.value))}
                 className="px-3 py-2 bg-secondary border border-border rounded-lg text-foreground"
@@ -890,7 +952,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                     {option}
                   </option>
                 ))}
-              </select>
+              </ThemedSelect>
             </label>
 
             <div className="flex items-center gap-2">
@@ -1148,7 +1210,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                     Especie
                   </label>
 
-                  <select
+                  <ThemedSelect
                     value={formData.species || ''}
                     onChange={(e) => {
                       const selectedSpecies = e.target.value;
@@ -1173,7 +1235,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                         {species.nombre}
                       </option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                 </div>
 
                 <div>
@@ -1181,7 +1243,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                     Raza
                   </label>
 
-                  <select
+                  <ThemedSelect
                     value={selectedBreedOption}
                     onChange={(e) => handleBreedSelection(e.target.value)}
                     className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
@@ -1196,7 +1258,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                         {breed.nombre}
                       </option>
                     ))}
-                  </select>
+                  </ThemedSelect>
 
                   {selectedBreedOption === 'Otra' && (
                     <div className="mt-3">
@@ -1243,7 +1305,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                     Sexo
                   </label>
 
-                  <select
+                  <ThemedSelect
                     value={formData.sex || ''}
                     onChange={(e) =>
                       setFormData({ ...formData, sex: e.target.value })
@@ -1258,7 +1320,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                         {sex.nombre}
                       </option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                 </div>
 
                 <div>
@@ -1266,7 +1328,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                     Estado reproductivo
                   </label>
 
-                  <select
+                  <ThemedSelect
                     value={formData.reproductiveStatus || ''}
                     onChange={(e) =>
                       setFormData({ ...formData, reproductiveStatus: e.target.value })
@@ -1284,7 +1346,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                         {status.nombre}
                       </option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                 </div>
 
                 <div>
@@ -1556,5 +1618,3 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
 export function RegisterPatient() {
   return <Patients mode="register" />;
 }
-
-

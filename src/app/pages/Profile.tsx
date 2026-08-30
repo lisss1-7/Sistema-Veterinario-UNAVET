@@ -88,7 +88,7 @@ const getErrorMessage = (
 };
 
 export default function Profile() {
-  const { user, logout } = useAuth();
+  const { user, updateUser, logout } = useAuth();
   const navigate = useNavigate();
 
   const [profile, setProfile] = useState<ProfileData | null>(null);
@@ -154,26 +154,17 @@ export default function Profile() {
       }
 
       setProfile(data);
-
-      const savedUser = localStorage.getItem('unavet_user');
-
-      if (savedUser) {
-        const parsedUser = JSON.parse(savedUser);
-
-        localStorage.setItem(
-          'unavet_user',
-          JSON.stringify({
-            ...parsedUser,
-            firstName: data.firstName,
-            middleName: data.middleName,
-            firstSurname: data.firstSurname,
-            secondSurname: data.secondSurname,
-            name: data.name,
-            phone: data.phone,
-            specialty: data.specialty,
-          })
-        );
-      }
+      updateUser({
+        firstName: data.firstName,
+        middleName: data.middleName,
+        firstSurname: data.firstSurname,
+        secondSurname: data.secondSurname,
+        name: data.name,
+        email: data.email,
+        role: data.role,
+        phone: data.phone,
+        specialty: data.specialty,
+      });
     } catch (error) {
       console.error('Error al cargar perfil:', error);
 
@@ -323,26 +314,17 @@ export default function Profile() {
       const updatedProfile = data.user as ProfileData;
 
       setProfile(updatedProfile);
-
-      const savedUser = localStorage.getItem('unavet_user');
-
-      if (savedUser) {
-        const parsedUser = JSON.parse(savedUser);
-
-        localStorage.setItem(
-          'unavet_user',
-          JSON.stringify({
-            ...parsedUser,
-            firstName: updatedProfile.firstName,
-            middleName: updatedProfile.middleName,
-            firstSurname: updatedProfile.firstSurname,
-            secondSurname: updatedProfile.secondSurname,
-            name: updatedProfile.name,
-            phone: updatedProfile.phone,
-            specialty: updatedProfile.specialty,
-          })
-        );
-      }
+      updateUser({
+        firstName: updatedProfile.firstName,
+        middleName: updatedProfile.middleName,
+        firstSurname: updatedProfile.firstSurname,
+        secondSurname: updatedProfile.secondSurname,
+        name: updatedProfile.name,
+        email: updatedProfile.email,
+        role: updatedProfile.role,
+        phone: updatedProfile.phone,
+        specialty: updatedProfile.specialty,
+      });
 
       setSuccessMessage('Perfil actualizado correctamente');
       setShowSuccessModal(true);

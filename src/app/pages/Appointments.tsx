@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import type { Appointment } from '../utils/types';
 import SearchablePatientSelect from '../components/SearchablePatientSelect';
+import ThemedSelect from '../components/ThemedSelect';
 import {
   getTodayLocal,
   isValidName,
@@ -486,7 +487,7 @@ export default function Appointments() {
               Estado
             </label>
 
-            <select
+            <ThemedSelect
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
               className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
@@ -498,7 +499,7 @@ export default function Appointments() {
                   {status}
                 </option>
               ))}
-            </select>
+            </ThemedSelect>
           </div>
 
           <div>
@@ -690,7 +691,7 @@ export default function Appointments() {
               <label className="block text-foreground text-sm font-bold mb-2">
                 Estado de la cita
               </label>
-              <select
+              <ThemedSelect
                 value={selectedAppointment.status}
                 onChange={(event) =>
                   void changeStatus(selectedAppointment.id, event.target.value)
@@ -704,7 +705,7 @@ export default function Appointments() {
                     {status}
                   </option>
                 ))}
-              </select>
+              </ThemedSelect>
             </div>
 
             <div className="flex gap-3">
@@ -861,7 +862,7 @@ export default function Appointments() {
                     Hora
                   </label>
 
-                  <select
+                  <ThemedSelect
                     value={formData.time || ''}
                     onChange={(e) =>
                       setFormData({ ...formData, time: e.target.value })
@@ -885,7 +886,7 @@ export default function Appointments() {
                         </option>
                       );
                     })}
-                  </select>
+                  </ThemedSelect>
                 </div>
               </div>
 
@@ -1123,5 +1124,3 @@ function ModalCard({ children }: { children: ReactNode }) {
     </div>
   );
 }
-
-

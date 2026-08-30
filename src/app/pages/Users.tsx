@@ -21,9 +21,12 @@ import {
   FileDown,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import type { SystemUser } from '../utils/types';
+import ThemedSelect from '../components/ThemedSelect';
+import { useAuth } from '../context/AuthContext';
 import {
   drawUnavetPdfHeader,
   getUnavetLogoBase64,
@@ -104,6 +107,7 @@ const getAuthHeaders = () => {
 };
 
 export default function Users() {
+  const { user: authenticatedUser, updateUser } = useAuth();
   const [users, setUsers] = useState<SystemUser[]>([]);
   const [canAccess, setCanAccess] = useState<boolean | null>(null);
   const [roleOptions, setRoleOptions] = useState<string[]>([]);
@@ -119,6 +123,11 @@ export default function Users() {
   const [sortDirection, setSortDirection] =
     useState<SortDirection>('asc');
   const [pageSize, setPageSize] = useState(10);
+  const [showRoleMenu, setShowRoleMenu] = useState(false);
+  const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const [showSortFieldMenu, setShowSortFieldMenu] = useState(false);
+  const [showSortDirectionMenu, setShowSortDirectionMenu] = useState(false);
+  const [showPageSizeMenu, setShowPageSizeMenu] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedUser, setSelectedUser] =
     useState<SystemUser | null>(null);
@@ -401,6 +410,24 @@ export default function Users() {
 
       if (!response.ok) {
         throw new Error(data.message || 'Error al guardar usuario');
+      }
+
+      if (
+        editingUser &&
+        String(editingUser.id) === String(authenticatedUser?.id) &&
+        data.user
+      ) {
+        updateUser({
+          firstName: data.user.firstName,
+          middleName: data.user.middleName,
+          firstSurname: data.user.firstSurname,
+          secondSurname: data.user.secondSurname,
+          name: data.user.name,
+          email: data.user.email,
+          role: data.user.role,
+          phone: data.user.phone,
+          specialty: data.user.specialty,
+        });
       }
 
       await loadUsers();
@@ -801,18 +828,16 @@ export default function Users() {
   }
 
   return (
-    <div className="p-4 md:p-8">
+    <div className="min-w-0 p-3 sm:p-4 md:p-6 xl:p-8">
       <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-6">
         <div>
           <h1 className="text-foreground text-2xl md:text-3xl font-bold mb-2">
             Gestión de Usuarios
           </h1>
-          <p className="text-sm text-muted-foreground">
-            Administra el acceso, consulta fichas y genera reportes por estado.
-          </p>
+
         </div>
 
-        <div className="flex flex-col sm:flex-row flex-wrap gap-2">
+        <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-3 xl:flex xl:flex-wrap">
           <button
             type="button"
             onClick={() => void generateUsersPdf('active')}
@@ -867,7 +892,7 @@ export default function Users() {
       </div>
 
       <div className="bg-card rounded-xl p-4 md:p-6 shadow-lg mb-6 border border-border">
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-7 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
           <div className="sm:col-span-2 xl:col-span-2">
             <label className="block text-foreground mb-2 text-sm">
               Buscar
@@ -888,113 +913,250 @@ export default function Users() {
             </div>
           </div>
 
-          <div>
+          <div className="relative">
             <label className="block text-foreground mb-2 text-sm">
               Filtrar por rol
             </label>
 
-            <select
-              value={filterRole}
-              onChange={(event) =>
-                setFilterRole(event.target.value)
-              }
-              className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+            <button
+              type="button"
+              onClick={() => {
+                setShowRoleMenu((current) => !current);
+                setShowStatusMenu(false);
+                setShowSortFieldMenu(false);
+                setShowSortDirectionMenu(false);
+                setShowPageSizeMenu(false);
+              }}
+              className="flex w-full items-center justify-between rounded-lg border border-border bg-secondary px-4 py-2.5 text-left text-foreground shadow-sm transition-colors hover:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
-              <option value="">Todos</option>
+              <span>{filterRole || 'Todos'}</span>
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            </button>
 
-              {roleOptions.map((role) => (
-                <option key={role} value={role}>
-                  {role}
-                </option>
-              ))}
-            </select>
+            {showRoleMenu && (
+              <div className="absolute z-20 mt-2 w-full rounded-lg border border-border bg-card shadow-xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterRole('');
+                    setShowRoleMenu(false);
+                  }}
+                  className="flex w-full items-center justify-between px-3 py-2.5 text-left text-foreground transition-colors hover:bg-primary/10"
+                >
+                  <span>Todos</span>
+                </button>
+
+                {roleOptions.map((role) => (
+                  <button
+                    key={role}
+                    type="button"
+                    onClick={() => {
+                      setFilterRole(role);
+                      setShowRoleMenu(false);
+                    }}
+                    className="flex w-full items-center justify-between px-3 py-2.5 text-left text-foreground transition-colors hover:bg-primary/10"
+                  >
+                    <span>{role}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div>
+          <div className="relative">
             <label className="block text-foreground mb-2 text-sm">
               Filtrar por estado
             </label>
 
-            <select
-              value={filterStatus}
-              onChange={(event) => setFilterStatus(event.target.value)}
-              className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+            <button
+              type="button"
+              onClick={() => {
+                setShowStatusMenu((current) => !current);
+                setShowRoleMenu(false);
+                setShowSortFieldMenu(false);
+                setShowSortDirectionMenu(false);
+                setShowPageSizeMenu(false);
+              }}
+              className="flex w-full items-center justify-between rounded-lg border border-border bg-secondary px-4 py-2.5 text-left text-foreground shadow-sm transition-colors hover:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
-              <option value="">Todos</option>
-              {statusOptions.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
+              <span>{filterStatus || 'Todos'}</span>
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            </button>
+
+            {showStatusMenu && (
+              <div className="absolute z-20 mt-2 w-full rounded-lg border border-border bg-card shadow-xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterStatus('');
+                    setShowStatusMenu(false);
+                  }}
+                  className="flex w-full items-center justify-between px-3 py-2.5 text-left text-foreground transition-colors hover:bg-primary/10"
+                >
+                  <span>Todos</span>
+                </button>
+
+                {statusOptions.map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => {
+                      setFilterStatus(status);
+                      setShowStatusMenu(false);
+                    }}
+                    className="flex w-full items-center justify-between px-3 py-2.5 text-left text-foreground transition-colors hover:bg-primary/10"
+                  >
+                    <span>{status}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div>
+          <div className="relative">
             <label className="block text-foreground mb-2 text-sm">
               Ordenar por
             </label>
 
-            <select
-              value={sortField}
-              onChange={(event) => setSortField(event.target.value as SortField)}
-              className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+            <button
+              type="button"
+              onClick={() => {
+                setShowSortFieldMenu((current) => !current);
+                setShowRoleMenu(false);
+                setShowStatusMenu(false);
+                setShowSortDirectionMenu(false);
+                setShowPageSizeMenu(false);
+              }}
+              className="flex w-full items-center justify-between rounded-lg border border-border bg-secondary px-4 py-2.5 text-left text-foreground shadow-sm transition-colors hover:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
-              <option value="name">Nombre</option>
-              <option value="role">Rol</option>
-              <option value="status">Estado</option>
-              <option value="creationDate">Fecha de creación</option>
-            </select>
+              <span>
+                {sortField === 'name' && 'Nombre'}
+                {sortField === 'role' && 'Rol'}
+                {sortField === 'status' && 'Estado'}
+                {sortField === 'creationDate' && 'Fecha de creación'}
+              </span>
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            </button>
+
+            {showSortFieldMenu && (
+              <div className="absolute z-20 mt-2 w-full rounded-lg border border-border bg-card shadow-xl">
+                {[
+                  ['name', 'Nombre'],
+                  ['role', 'Rol'],
+                  ['status', 'Estado'],
+                  ['creationDate', 'Fecha de creación'],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => {
+                      setSortField(value as SortField);
+                      setShowSortFieldMenu(false);
+                    }}
+                    className="flex w-full items-center justify-between px-3 py-2.5 text-left text-foreground transition-colors hover:bg-primary/10"
+                  >
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div>
+          <div className="relative">
             <label className="block text-foreground mb-2 text-sm">
               Dirección
             </label>
 
-            <select
-              value={sortDirection}
-              onChange={(event) =>
-                setSortDirection(event.target.value as SortDirection)
-              }
-              className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+            <button
+              type="button"
+              onClick={() => {
+                setShowSortDirectionMenu((current) => !current);
+                setShowRoleMenu(false);
+                setShowStatusMenu(false);
+                setShowSortFieldMenu(false);
+                setShowPageSizeMenu(false);
+              }}
+              className="flex w-full items-center justify-between rounded-lg border border-border bg-secondary px-4 py-2.5 text-left text-foreground shadow-sm transition-colors hover:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
-              <option value="asc">Ascendente</option>
-              <option value="desc">Descendente</option>
-            </select>
+              <span>{sortDirection === 'asc' ? 'Ascendente' : 'Descendente'}</span>
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            </button>
+
+            {showSortDirectionMenu && (
+              <div className="absolute z-20 mt-2 w-full rounded-lg border border-border bg-card shadow-xl">
+                {[
+                  ['asc', 'Ascendente'],
+                  ['desc', 'Descendente'],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => {
+                      setSortDirection(value as SortDirection);
+                      setShowSortDirectionMenu(false);
+                    }}
+                    className="flex w-full items-center justify-between px-3 py-2.5 text-left text-foreground transition-colors hover:bg-primary/10"
+                  >
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div>
+          <div className="relative">
             <label className="block text-foreground mb-2 text-sm">
               Por página
             </label>
 
-            <select
-              value={pageSize}
-              onChange={(event) => setPageSize(Number(event.target.value))}
-              className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+            <button
+              type="button"
+              onClick={() => {
+                setShowPageSizeMenu((current) => !current);
+                setShowRoleMenu(false);
+                setShowStatusMenu(false);
+                setShowSortFieldMenu(false);
+                setShowSortDirectionMenu(false);
+              }}
+              className="flex w-full items-center justify-between rounded-lg border border-border bg-secondary px-4 py-2.5 text-left text-foreground shadow-sm transition-colors hover:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
-              {PAGE_SIZE_OPTIONS.map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </select>
+              <span>{pageSize}</span>
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            </button>
+
+            {showPageSizeMenu && (
+              <div className="absolute z-20 mt-2 w-full rounded-lg border border-border bg-card shadow-xl">
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => {
+                      setPageSize(size);
+                      setShowPageSizeMenu(false);
+                    }}
+                    className="flex w-full items-center justify-between px-3 py-2.5 text-left text-foreground transition-colors hover:bg-primary/10"
+                  >
+                    <span>{size}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="lg:hidden space-y-4">
+      <div className="space-y-4 xl:hidden">
         {paginatedUsers.map((userItem) => (
           <article
             key={userItem.id}
             className="rounded-2xl border border-border bg-card p-4 shadow-lg shadow-primary/10"
           >
-            <div className="flex items-start justify-between gap-3 mb-4">
-              <div>
+            <div className="mb-4 flex flex-col items-start gap-3 min-[420px]:flex-row min-[420px]:justify-between">
+              <div className="min-w-0">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   {userItem.role}
                 </p>
-                <h3 className="text-foreground text-lg font-semibold">
+                <h3 className="break-words text-lg font-semibold text-foreground">
                   {userItem.name}
                 </h3>
                 <p className="text-sm text-muted-foreground break-all">{userItem.email}</p>
@@ -1003,7 +1165,7 @@ export default function Users() {
               <button
                 type="button"
                 onClick={() => toggleStatus(userItem.id)}
-                className={`px-3 py-2 rounded-full text-xs ${
+                className={`shrink-0 px-3 py-2 rounded-full text-xs ${
                   userItem.status === enabledStatus
                     ? 'border border-primary/25 bg-primary/10 text-primary'
                     : 'border border-border bg-muted text-muted-foreground'
@@ -1024,11 +1186,11 @@ export default function Users() {
               </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-3 gap-2">
+            <div className="mt-4 grid grid-cols-1 gap-2 min-[380px]:grid-cols-3">
               <button
                 type="button"
                 onClick={() => setSelectedUser(userItem)}
-                className="flex items-center justify-center gap-1 px-3 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-xl transition-colors"
+                className="flex min-w-0 items-center justify-center gap-1 rounded-xl bg-primary px-3 py-2 text-sm text-[#F7EFE6] transition-colors hover:bg-primary"
                 title="Ver ficha del usuario"
               >
                 <Eye className="w-4 h-4" />
@@ -1038,7 +1200,7 @@ export default function Users() {
               <button
                 type="button"
                 onClick={() => openModal(userItem)}
-                className="px-3 py-2 bg-secondary hover:bg-border text-primary rounded-xl transition-colors"
+                className="min-w-0 rounded-xl bg-secondary px-3 py-2 text-sm text-primary transition-colors hover:bg-border"
                 title="Editar usuario"
               >
                 Editar
@@ -1047,7 +1209,7 @@ export default function Users() {
               <button
                 type="button"
                 onClick={() => openDeleteModal(userItem)}
-                className="rounded-xl bg-destructive/10 px-3 py-2 text-destructive transition-colors hover:bg-destructive/20"
+                className="min-w-0 rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive transition-colors hover:bg-destructive/20"
                 title="Eliminar usuario"
               >
                 Eliminar
@@ -1063,7 +1225,7 @@ export default function Users() {
         )}
       </div>
 
-      <div className="hidden lg:block bg-card rounded-2xl shadow-lg overflow-hidden border border-border">
+      <div className="hidden overflow-hidden rounded-2xl border border-border bg-card shadow-lg xl:block">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[850px]">
             <thead className="bg-primary text-[#F7EFE6]">
@@ -1178,7 +1340,7 @@ export default function Users() {
             usuario{filteredUsers.length === 1 ? '' : 's'}
           </p>
 
-          <div className="flex items-center justify-center gap-2">
+          <div className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1 sm:flex sm:w-auto sm:gap-2">
             <button
               type="button"
               onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
@@ -1189,7 +1351,7 @@ export default function Users() {
               <span className="hidden sm:inline">Anterior</span>
             </button>
 
-            <span className="min-w-24 text-center text-sm font-medium text-foreground">
+            <span className="min-w-0 text-center text-sm font-medium text-foreground sm:min-w-24">
               Página {currentPage} de {totalPages}
             </span>
 
@@ -1303,8 +1465,8 @@ export default function Users() {
       )}
 
       {showModal && (
-        <div className="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-50">
-          <div className="bg-card border border-border rounded-2xl p-4 md:p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div className="modal-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-2 sm:items-center sm:p-4">
+          <div className="my-auto max-h-[calc(100dvh-1rem)] w-full max-w-2xl overflow-y-auto rounded-xl border border-border bg-card p-4 shadow-2xl sm:max-h-[90vh] sm:rounded-2xl md:p-6">
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
                 <h2 className="text-foreground text-xl">
@@ -1313,11 +1475,7 @@ export default function Users() {
                     : 'Nuevo usuario'}
                 </h2>
 
-                <p className="text-muted-foreground text-sm mt-1">
-                  {editingUser
-                    ? 'Actualiza los datos del usuario. La contraseña solo cambiará si escribes una nueva.'
-                    : 'Registra un nuevo usuario y asígnale una contraseña inicial.'}
-                </p>
+
               </div>
 
               <button
@@ -1382,7 +1540,7 @@ export default function Users() {
                     Rol
                   </label>
 
-                  <select
+                  <ThemedSelect
                     value={formData.role || ''}
                     onChange={(event) =>
                       setFormData({
@@ -1404,7 +1562,7 @@ export default function Users() {
                         {role}
                       </option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                 </div>
 
                 <FormInput
@@ -1429,7 +1587,7 @@ export default function Users() {
                     Estado
                   </label>
 
-                  <select
+                  <ThemedSelect
                     value={formData.status || enabledStatus}
                     onChange={(event) =>
                       setFormData({
@@ -1447,7 +1605,7 @@ export default function Users() {
                         {status}
                       </option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                 </div>
               </div>
 
@@ -1880,7 +2038,7 @@ function ModalOverlay({
 }) {
   return (
     <div
-      className={`modal-backdrop fixed inset-0 flex items-center justify-center p-4 ${zIndex}`}
+      className={`modal-backdrop fixed inset-0 flex items-start justify-center overflow-y-auto p-2 sm:items-center sm:p-4 ${zIndex}`}
     >
       {children}
     </div>
@@ -1889,7 +2047,7 @@ function ModalOverlay({
 
 function ModalCard({ children }: { children: ReactNode }) {
   return (
-    <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center">
+    <div className="my-auto max-h-[calc(100dvh-1rem)] w-full max-w-sm overflow-y-auto rounded-xl border border-border bg-card p-4 text-center shadow-2xl sm:rounded-2xl sm:p-6">
       {children}
     </div>
   );
@@ -1922,4 +2080,3 @@ function SuccessIcon() {
     </div>
   );
 }
-

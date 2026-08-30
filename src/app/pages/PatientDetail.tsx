@@ -22,6 +22,7 @@ import type {
 } from '../utils/types';
 import { getTodayLocal, isNonNegativeNumber } from '../utils/formValidation';
 import { drawUnavetPdfHeader, getUnavetLogoBase64 } from '../utils/pdfBranding';
+import ThemedSelect from '../components/ThemedSelect';
 
 type PatientWithPhoto = Patient & {
   photo?: string;
@@ -937,6 +938,202 @@ export default function PatientDetail() {
     doc.save(formatPdfName('Servicio', patient?.petName));
   };
 
+  const downloadAllTreatmentsPdf = async () => {
+    const { doc, logoBase64 } = await createPdfBase(
+      'Tratamientos y Servicios'
+    );
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const contentWidth = pageWidth - 32;
+    const bottomLimit = pageHeight - 24;
+    let y = 94;
+    let currentRecordLabel = '';
+
+    const addContinuationPage = () => {
+      addPdfFooter(doc);
+      doc.addPage();
+      drawUnavetPdfHeader(
+        doc,
+        logoBase64,
+        'Sistema de Gestión Veterinaria'
+      );
+
+      doc.setTextColor('#2F2924');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.text('Tratamientos y Servicios (continuación)', 16, 47);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.text(`Paciente: ${patient?.petName || 'N/A'}`, 16, 55);
+
+      if (currentRecordLabel) {
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${currentRecordLabel} (continuación)`, 16, 63);
+      }
+
+      doc.setDrawColor('#D8D2C8');
+      doc.line(
+        16,
+        currentRecordLabel ? 69 : 62,
+        pageWidth - 16,
+        currentRecordLabel ? 69 : 62
+      );
+      y = currentRecordLabel ? 77 : 70;
+    };
+
+    const ensureSpace = (requiredHeight: number) => {
+      if (y + requiredHeight > bottomLimit) {
+        addContinuationPage();
+      }
+    };
+
+    const addTextField = (
+      label: string,
+      value?: string | number | null
+    ) => {
+      const normalizedValue = String(value ?? '').trim() || 'N/A';
+      let remainingLines = [
+        ...(doc.splitTextToSize(normalizedValue, contentWidth - 4) as string[]),
+      ];
+      let continued = false;
+
+      while (remainingLines.length > 0) {
+        ensureSpace(12);
+
+        doc.setTextColor('#6B6255');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.text(continued ? `${label} (continuación)` : label, 18, y);
+        y += 5;
+
+        const availableLines = Math.max(
+          1,
+          Math.floor((bottomLimit - y) / 4.5)
+        );
+        const pageLines = remainingLines.slice(0, availableLines);
+        remainingLines = remainingLines.slice(availableLines);
+
+        doc.setTextColor('#2F2924');
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.text(pageLines, 18, y);
+        y += pageLines.length * 4.5 + 4;
+
+        if (remainingLines.length > 0) {
+          addContinuationPage();
+          continued = true;
+        }
+      }
+    };
+
+    doc.setTextColor('#6B6255');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.text(`Total de registros: ${treatments.length}`, 16, y);
+    y += 10;
+
+    if (treatments.length === 0) {
+      doc.setTextColor('#6B5B4D');
+      doc.text(
+        'No hay tratamientos ni servicios registrados para este paciente.',
+        16,
+        y
+      );
+    }
+
+    treatments.forEach((treat, index) => {
+      ensureSpace(48);
+      currentRecordLabel = `Registro ${index + 1} de ${treatments.length}`;
+
+      doc.setFillColor('#8B6F47');
+      doc.roundedRect(16, y, contentWidth, 10, 2, 2, 'F');
+      doc.setTextColor('#FFFFFF');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.text(
+        `Registro ${index + 1} de ${treatments.length}`,
+        19,
+        y + 6.5
+      );
+      y += 16;
+
+      addTextField('Nombre', treat.name);
+      addTextField('Tipo', treat.type);
+      addTextField('Categoría', treat.category);
+      addTextField('Estado', treat.status);
+      addTextField('Fecha de registro', treat.requestDate);
+      addTextField('Médico veterinario', treat.veterinarian);
+      addTextField('Registrado por', treat.createdByName || 'Sistema');
+      addTextField('Diagnóstico o motivo', treat.diagnosisOrReason);
+
+      if (treat.dose) addTextField('Dosis', treat.dose);
+      if (treat.frequency) addTextField('Frecuencia', treat.frequency);
+      if (treat.duration) addTextField('Duración', treat.duration);
+      if (treat.startDate) addTextField('Fecha de inicio', treat.startDate);
+      if (treat.endDate) addTextField('Fecha de finalización', treat.endDate);
+      if (treat.resultStatus) {
+        addTextField('Estado del resultado', treat.resultStatus);
+      }
+      if (treat.resultDate) {
+        addTextField('Fecha del resultado', treat.resultDate);
+      }
+      if (treat.result) addTextField('Resultado', treat.result);
+
+      addTextField(
+        'Observaciones',
+        treat.observations || 'Sin observaciones registradas.'
+      );
+
+      if (treat.attachmentPhoto) {
+        ensureSpace(70);
+
+        doc.setTextColor('#6B6255');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.text('Fotografía adjunta', 18, y);
+        y += 5;
+
+        try {
+          doc.addImage(treat.attachmentPhoto, 'JPEG', 18, y, 80, 60);
+          y += 65;
+        } catch {
+          try {
+            doc.addImage(treat.attachmentPhoto, 'PNG', 18, y, 80, 60);
+            y += 65;
+          } catch {
+            doc.setTextColor('#2F2924');
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            doc.text('No fue posible cargar la fotografía adjunta.', 18, y);
+            y += 9;
+          }
+        }
+      }
+
+      y += 4;
+      currentRecordLabel = '';
+    });
+
+    addPdfFooter(doc);
+
+    const totalPages = doc.getNumberOfPages();
+
+    for (let page = 1; page <= totalPages; page += 1) {
+      doc.setPage(page);
+      doc.setTextColor('#6B6255');
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text(`Página ${page} de ${totalPages}`, pageWidth / 2, pageHeight - 9, {
+        align: 'center',
+      });
+    }
+
+    doc.save(
+      formatPdfName('Tratamientos y Servicios', patient?.petName)
+    );
+  };
+
   if (!patient) {
     return (
       <div className="p-4 md:p-8">
@@ -1320,6 +1517,16 @@ export default function PatientDetail() {
                   setFormData({});
                   setShowModal('treatment');
                 }}
+                extraButton={
+                  <button
+                    type="button"
+                    onClick={() => void downloadAllTreatmentsPdf()}
+                    className="flex items-center justify-center gap-2 rounded-lg bg-muted px-4 py-2 text-foreground transition-colors hover:bg-border"
+                  >
+                    <Download className="w-4 h-4" />
+                    Descargar todos en PDF
+                  </button>
+                }
               />
 
               <div className="space-y-4">
@@ -2268,7 +2475,7 @@ function SelectField({
         {label}
       </label>
 
-      <select
+      <ThemedSelect
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
@@ -2284,7 +2491,7 @@ function SelectField({
             {typeof option === 'string' ? option : option.label}
           </option>
         ))}
-      </select>
+      </ThemedSelect>
     </div>
   );
 }
@@ -2315,5 +2522,3 @@ function FormActions({
     </div>
   );
 }
-
-

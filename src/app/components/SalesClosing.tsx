@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import type { InventoryProduct } from '../utils/types';
+import ThemedSelect from './ThemedSelect';
 
 type SaleItem = {
   type: 'Producto' | 'Servicio';
@@ -612,7 +613,7 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
                 <Field label="Cliente" value={client} onChange={setClient} />
                 <div>
                   <label className="block text-foreground mb-2 text-sm">Forma de pago</label>
-                  <select
+                  <ThemedSelect
                     value={paymentMethod}
                     onChange={(event) => setPaymentMethod(event.target.value)}
                     className="w-full px-4 py-2 bg-secondary border border-border rounded-lg"
@@ -623,7 +624,7 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
                         {payment.nombre}
                       </option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                 </div>
               </div>
 
@@ -835,5 +836,3 @@ function NumberField({
     </div>
   );
 }
-
-

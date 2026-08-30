@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import type { GroomingAppointment } from '../utils/types';
 import SearchablePatientSelect from '../components/SearchablePatientSelect';
+import ThemedSelect from '../components/ThemedSelect';
 import {
   getTodayLocal,
   isValidName,
@@ -689,7 +690,7 @@ export default function Grooming() {
               Tipo
             </label>
 
-            <select
+            <ThemedSelect
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
               className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
@@ -701,7 +702,7 @@ export default function Grooming() {
                   {type}
                 </option>
               ))}
-            </select>
+            </ThemedSelect>
           </div>
 
           <div>
@@ -709,7 +710,7 @@ export default function Grooming() {
               Estado
             </label>
 
-            <select
+            <ThemedSelect
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
               className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
@@ -721,7 +722,7 @@ export default function Grooming() {
                   {status}
                 </option>
               ))}
-            </select>
+            </ThemedSelect>
           </div>
 
           <div>
@@ -779,7 +780,7 @@ export default function Grooming() {
             </div>
 
             <div className="mt-4">
-              <select
+              <ThemedSelect
                 value={groom.status}
                 onChange={(e) => changeStatus(groom.id, e.target.value)}
                 className={`w-full px-3 py-2 rounded-xl text-sm border border-transparent ${getStatusClass(
@@ -791,7 +792,7 @@ export default function Grooming() {
                     {status}
                   </option>
                 ))}
-              </select>
+              </ThemedSelect>
             </div>
 
             <div className="mt-4 flex items-center gap-2">
@@ -882,7 +883,7 @@ export default function Grooming() {
                   </td>
 
                   <td className="px-6 py-4">
-                    <select
+                    <ThemedSelect
                       value={groom.status}
                       onChange={(e) => changeStatus(groom.id, e.target.value)}
                       className={`px-3 py-1 rounded-full text-sm ${getStatusClass(
@@ -894,7 +895,7 @@ export default function Grooming() {
                           {status}
                         </option>
                       ))}
-                    </select>
+                    </ThemedSelect>
                   </td>
 
                   <td className="px-6 py-4">
@@ -1018,7 +1019,7 @@ export default function Grooming() {
                   Tipo de cita
                 </label>
 
-                <select
+                <ThemedSelect
                   value={formData.type || getDefaultGroomingType()}
                   onChange={(e) =>
                     setFormData({
@@ -1037,7 +1038,7 @@ export default function Grooming() {
                       {type}
                     </option>
                   ))}
-                </select>
+                </ThemedSelect>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1068,7 +1069,7 @@ export default function Grooming() {
                     Hora
                   </label>
 
-                  <select
+                  <ThemedSelect
                     value={formData.time || ''}
                     onChange={(e) =>
                       setFormData({ ...formData, time: e.target.value })
@@ -1087,7 +1088,7 @@ export default function Grooming() {
                         </option>
                       );
                     })}
-                  </select>
+                  </ThemedSelect>
                 </div>
 
                 <div>
@@ -1095,7 +1096,7 @@ export default function Grooming() {
                     Especie
                   </label>
 
-                  <select
+                  <ThemedSelect
                     value={formData.species || ''}
                     onChange={(event) => {
                       const species = event.target.value;
@@ -1113,7 +1114,7 @@ export default function Grooming() {
                         {species.nombre}
                       </option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                 </div>
 
                 <div>
@@ -1121,7 +1122,7 @@ export default function Grooming() {
                     Raza
                   </label>
 
-                  <select
+                  <ThemedSelect
                     value={selectedBreedOption}
                     onChange={(event) => {
                       const breed = event.target.value;
@@ -1151,7 +1152,7 @@ export default function Grooming() {
                         </option>
                       ))}
                     <option value="Otra">Otra</option>
-                  </select>
+                  </ThemedSelect>
 
                   {selectedBreedOption === 'Otra' && (
                     <div className="mt-3">
@@ -1180,7 +1181,7 @@ export default function Grooming() {
                   <label className="block text-foreground mb-2 text-sm">
                     Tamaño de la mascota
                   </label>
-                  <select
+                  <ThemedSelect
                     value={formData.animalSize || ''}
                     onChange={(event) =>
                       setFormData({
@@ -1197,7 +1198,7 @@ export default function Grooming() {
                         {size}
                       </option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                 </div>
 
                 <div className="md:col-span-2">

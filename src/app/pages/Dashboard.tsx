@@ -159,9 +159,7 @@ function FullDashboard() {
         <h1 className="mb-2 text-2xl font-bold text-[#422e1f] md:text-3xl dark:text-[#f7efe6]">
           Dashboard
         </h1>
-        <p className="text-sm text-[#735d4f] dark:text-[#d6c7b9]">
-          Resumen general del día y accesos rápidos a la operación clínica.
-        </p>
+
       </div>
 
       {isLoading && (

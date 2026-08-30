@@ -18,6 +18,7 @@ import {
 
 import type { InventoryProduct } from '../utils/types';
 import SalesClosing from '../components/SalesClosing';
+import ThemedSelect from '../components/ThemedSelect';
 
 type DeleteTarget = {
   id: string;
@@ -549,7 +550,7 @@ export default function Inventory() {
               Categoría
             </label>
 
-            <select
+            <ThemedSelect
               value={filterCategory}
               onChange={(event) =>
                 setFilterCategory(event.target.value)
@@ -566,7 +567,7 @@ export default function Inventory() {
                   {category}
                 </option>
               ))}
-            </select>
+            </ThemedSelect>
           </div>
         </div>
       </div>
@@ -917,7 +918,7 @@ export default function Inventory() {
                     Categoría
                   </label>
 
-                  <select
+                  <ThemedSelect
                     value={formData.category || ''}
                     onChange={(event) =>
                       setFormData({
@@ -940,7 +941,7 @@ export default function Inventory() {
                         {category}
                       </option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                 </div>
 
                 <div className="md:col-span-2">
@@ -961,7 +962,7 @@ export default function Inventory() {
                   <label className="block text-foreground mb-2 text-sm">
                     Unidad de medida
                   </label>
-                  <select
+                  <ThemedSelect
                     value={formData.presentation || ''}
                     onChange={(event) =>
                       setFormData({
@@ -978,7 +979,7 @@ export default function Inventory() {
                         {unit}
                       </option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                 </div>
 
                 <FormInput
@@ -1063,7 +1064,7 @@ export default function Inventory() {
                     Estado administrativo
                   </label>
 
-                  <select
+                  <ThemedSelect
                     value={formData.status || ''}
                     onChange={(event) =>
                       setFormData({
@@ -1088,7 +1089,7 @@ export default function Inventory() {
                         {status}
                       </option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                 </div>
               </div>
 

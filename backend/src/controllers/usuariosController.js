@@ -398,10 +398,39 @@ const actualizarUsuario = async (req, res) => {
       req.body.specialties || specialty
     );
     await syncVeterinarianForUser(connection, id, role);
+
+    const [updatedRows] = await connection.query(
+      `
+      SELECT
+        u.usuario_id,
+        u.primer_nombre,
+        u.segundo_nombre,
+        u.primer_apellido,
+        u.segundo_apellido,
+        CONCAT_WS(' ', u.primer_nombre, u.segundo_nombre,
+          u.primer_apellido, u.segundo_apellido) AS nombre_completo,
+        u.correo,
+        u.telefono,
+        ${specialtiesSelect('u')},
+        estado.nombre AS estado,
+        u.ultimo_acceso,
+        DATE_FORMAT(u.creado_en, '%Y-%m-%d') AS fecha_creacion,
+        r.nombre AS rol
+      FROM usuarios u
+      INNER JOIN roles r ON u.rol_id = r.rol_id
+      INNER JOIN estados_usuario estado
+        ON estado.estado_usuario_id = u.estado_usuario_id
+      WHERE u.usuario_id = ?
+      LIMIT 1
+      `,
+      [id]
+    );
+
     await connection.commit();
 
     res.json({
       message: 'Usuario actualizado correctamente',
+      user: mapUsuarioToFrontend(updatedRows[0]),
     });
   } catch (error) {
     await connection.rollback();

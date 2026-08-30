@@ -297,7 +297,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
   return (
     <div
-      className="relative z-50 flex isolate items-center justify-between gap-3 border-b border-white/10 px-3 py-3 sm:px-4 md:px-8 md:py-4"
+      className="relative z-50 isolate flex items-center justify-between gap-1.5 border-b border-white/10 px-2 py-3 min-[380px]:gap-2 min-[380px]:px-3 sm:px-4 md:gap-3 md:px-8 md:py-4"
       style={{
         background: 'var(--sidebar)',
       }}
@@ -306,57 +306,85 @@ export function Header({ onMenuClick }: HeaderProps) {
         className="pointer-events-none absolute inset-0 overflow-hidden text-sidebar-foreground"
         aria-hidden="true"
       >
-        <PawPrint
-          className="absolute left-[34%] top-1/2 h-10 w-10 -rotate-12 text-[#C9962F] opacity-[0.18]"
+        <Bone
+          className="absolute left-[3%] -top-3 h-9 w-9 rotate-[42deg] text-[#C9962F] opacity-[0.18]"
           strokeWidth={1.5}
         />
         <PawPrint
-          className="absolute left-[58%] -bottom-2 h-7 w-7 rotate-[24deg] opacity-[0.12]"
+          className="absolute left-[12%] -bottom-2 h-8 w-8 -rotate-[22deg] opacity-[0.17]"
+          strokeWidth={1.5}
+        />
+        <PawPrint
+          className="absolute left-[34%] top-1/2 h-10 w-10 -rotate-12 text-[#C9962F] opacity-[0.24]"
+          strokeWidth={1.5}
+        />
+        <PawPrint
+          className="absolute left-[58%] -bottom-2 h-7 w-7 rotate-[24deg] opacity-[0.19]"
           strokeWidth={1.4}
         />
         <PawPrint
-          className="absolute right-[27%] -top-2 h-8 w-8 -rotate-[30deg] text-[#C9962F] opacity-[0.13]"
+          className="absolute right-[27%] -top-2 h-8 w-8 -rotate-[30deg] text-[#C9962F] opacity-[0.21]"
           strokeWidth={1.4}
         />
         <Bone
-          className="absolute left-[47%] -top-2 h-8 w-8 rotate-[28deg] opacity-[0.13]"
+          className="absolute left-[47%] -top-2 h-8 w-8 rotate-[28deg] opacity-[0.2]"
           strokeWidth={1.4}
         />
         <Bone
-          className="absolute left-[61%] bottom-0 h-9 w-9 -rotate-[35deg] text-[#C9962F] opacity-[0.12]"
+          className="absolute left-[61%] bottom-0 h-9 w-9 -rotate-[35deg] text-[#C9962F] opacity-[0.2]"
           strokeWidth={1.4}
         />
         <Bone
-          className="absolute left-[22%] -bottom-2 h-7 w-7 -rotate-[18deg] opacity-[0.1]"
+          className="absolute left-[22%] -bottom-2 h-7 w-7 -rotate-[18deg] opacity-[0.17]"
           strokeWidth={1.3}
         />
         <PawPrint
-          className="absolute left-[27%] -top-2 h-7 w-7 rotate-[36deg] opacity-[0.1]"
+          className="absolute left-[27%] -top-2 h-7 w-7 rotate-[36deg] opacity-[0.17]"
           strokeWidth={1.3}
         />
         <Bone
-          className="absolute left-[72%] -top-2 h-6 w-6 rotate-[58deg] opacity-[0.09]"
+          className="absolute left-[72%] -top-2 h-6 w-6 rotate-[58deg] opacity-[0.16]"
           strokeWidth={1.3}
         />
         <PawPrint
-          className="absolute left-[78%] -bottom-2 h-7 w-7 -rotate-[24deg] text-[#C9962F] opacity-[0.1]"
+          className="absolute left-[78%] -bottom-2 h-7 w-7 -rotate-[24deg] text-[#C9962F] opacity-[0.18]"
           strokeWidth={1.3}
         />
         <Cat
-          className="absolute right-[16%] -bottom-4 h-16 w-16 -rotate-6 opacity-[0.1]"
+          className="absolute right-[16%] -bottom-4 h-16 w-16 -rotate-6 opacity-[0.17]"
           strokeWidth={1.3}
         />
         <Dog
-          className="absolute right-[3%] -top-2 h-14 w-14 rotate-6 text-[#C9962F] opacity-[0.12]"
+          className="absolute right-[3%] -top-2 h-14 w-14 rotate-6 text-[#C9962F] opacity-[0.19]"
           strokeWidth={1.3}
+        />
+        <Bone
+          className="absolute left-[39%] -bottom-3 h-7 w-7 -rotate-[52deg] opacity-[0.17]"
+          strokeWidth={1.4}
+        />
+        <PawPrint
+          className="absolute left-[52%] top-1 h-6 w-6 rotate-[18deg] text-[#C9962F] opacity-[0.18]"
+          strokeWidth={1.4}
+        />
+        <Bone
+          className="absolute left-[66%] -bottom-2 h-7 w-7 rotate-[16deg] opacity-[0.17]"
+          strokeWidth={1.4}
+        />
+        <PawPrint
+          className="absolute left-[84%] top-1 h-6 w-6 rotate-[34deg] opacity-[0.16]"
+          strokeWidth={1.4}
+        />
+        <Bone
+          className="absolute right-[9%] -bottom-3 h-8 w-8 -rotate-[28deg] text-[#C9962F] opacity-[0.18]"
+          strokeWidth={1.45}
         />
       </div>
 
-      <div className="relative z-10 flex min-w-0 items-center gap-3">
+      <div className="relative z-10 flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
         <button
           type="button"
           onClick={onMenuClick}
-          className="rounded-lg border border-white/15 bg-white/10 p-2.5 text-sidebar-foreground hover:bg-white/15 lg:hidden"
+          className="shrink-0 rounded-lg border border-white/15 bg-white/10 p-2.5 text-sidebar-foreground hover:bg-white/15 lg:hidden"
           aria-label="Abrir menu"
         >
           <Menu className="w-5 h-5" strokeWidth={2.5} />
@@ -365,20 +393,20 @@ export function Header({ onMenuClick }: HeaderProps) {
         <button
           type="button"
           onClick={() => navigate('/')}
-          className="min-w-0 rounded-lg px-2 py-1 text-left transition-colors hover:bg-white/10 focus:outline-none"
+          className="hidden min-w-0 overflow-hidden rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-white/10 focus:outline-none min-[420px]:block sm:px-2"
           aria-label="Ir al dashboard"
         >
           <h2 className="truncate text-sm font-medium text-sidebar-foreground sm:text-base md:text-lg">
             Bienvenido, {user?.name}
           </h2>
 
-          <p className="truncate text-xs text-sidebar-foreground/70 sm:text-sm">
+          <p className="hidden truncate text-xs text-sidebar-foreground/70 sm:block sm:text-sm">
             {user?.role}
           </p>
         </button>
       </div>
 
-      <div className="relative z-10 flex shrink-0 items-center gap-2 sm:gap-4">
+      <div className="relative z-10 flex shrink-0 items-center gap-1 min-[380px]:gap-1.5 sm:gap-2 md:gap-4">
         <ThemeToggle />
 
         <div ref={notificationsRef} className="relative">
@@ -387,7 +415,7 @@ export function Header({ onMenuClick }: HeaderProps) {
               setShowNotifications(!showNotifications);
               void loadNotifications();
             }}
-            className="relative rounded-lg border border-white/15 bg-white/10 p-3 text-sidebar-foreground transition-colors hover:bg-white/15"
+            className="relative rounded-lg border border-white/15 bg-white/10 p-2.5 text-sidebar-foreground transition-colors hover:bg-white/15 sm:p-3"
           >
             <Bell className="h-5 w-5" strokeWidth={2} />
 
@@ -477,7 +505,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
         <button
           onClick={handleLogout}
-          className="flex items-center gap-2 rounded-lg border border-white/15 bg-white/10 px-3 py-2.5 text-sidebar-foreground transition-colors hover:bg-white/15 sm:px-4"
+          className="flex items-center gap-2 rounded-lg border border-white/15 bg-white/10 p-2.5 text-sidebar-foreground transition-colors hover:bg-white/15 sm:px-4 sm:py-2.5"
         >
           <LogOut className="h-4 w-4" strokeWidth={2} />
 
@@ -489,5 +517,3 @@ export function Header({ onMenuClick }: HeaderProps) {
     </div>
   );
 }
-
-

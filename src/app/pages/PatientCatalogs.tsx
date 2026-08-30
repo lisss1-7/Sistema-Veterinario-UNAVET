@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import ThemedSelect from '../components/ThemedSelect';
 
 type CatalogKey =
   | 'especies'
@@ -519,7 +520,7 @@ export default function PatientCatalogs() {
             <label className="mb-2 block text-sm font-medium text-foreground">
               Catálogo
             </label>
-            <select
+            <ThemedSelect
               value={selectedCatalog}
               onChange={(event) =>
                 setSelectedCatalog(event.target.value as CatalogKey)
@@ -531,7 +532,7 @@ export default function PatientCatalogs() {
                   {item.label}
                 </option>
               ))}
-            </select>
+            </ThemedSelect>
           </div>
 
           <div className="lg:col-span-5">
@@ -553,7 +554,7 @@ export default function PatientCatalogs() {
             <label className="mb-2 block text-sm font-medium text-foreground">
               Ordenar
             </label>
-            <select
+            <ThemedSelect
               value={sortOption}
               onChange={(event) =>
                 setSortOption(event.target.value as SortOption)
@@ -564,7 +565,7 @@ export default function PatientCatalogs() {
               <option value="name-desc">Nombre Z-A</option>
               <option value="id-asc">Más antiguos</option>
               <option value="id-desc">Más recientes</option>
-            </select>
+            </ThemedSelect>
           </div>
         </div>
       </div>
@@ -723,7 +724,7 @@ export default function PatientCatalogs() {
         <div className="flex flex-col gap-4 border-t border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             Mostrar
-            <select
+            <ThemedSelect
               value={pageSize}
               onChange={(event) => setPageSize(Number(event.target.value))}
               className="rounded-lg border border-border bg-secondary px-3 py-1.5 text-foreground"
@@ -731,7 +732,7 @@ export default function PatientCatalogs() {
               <option value={5}>5</option>
               <option value={10}>10</option>
               <option value={20}>20</option>
-            </select>
+            </ThemedSelect>
             por página
           </label>
 
@@ -791,7 +792,7 @@ export default function PatientCatalogs() {
                   <label className="mb-2 block text-sm font-medium text-foreground">
                     Especie <span className="text-destructive">*</span>
                   </label>
-                  <select
+                  <ThemedSelect
                     value={form.especie_id}
                     onChange={(event) =>
                       setForm((current) => ({
@@ -815,7 +816,7 @@ export default function PatientCatalogs() {
                         </option>
                       );
                     })}
-                  </select>
+                  </ThemedSelect>
                 </div>
               )}
 
