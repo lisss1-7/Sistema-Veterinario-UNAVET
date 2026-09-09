@@ -158,7 +158,7 @@ export default function Login() {
     <div className="login-page relative flex min-h-screen items-center justify-center overflow-hidden p-4">
       <div
         className="pointer-events-none absolute inset-0 overflow-hidden"
-        style={{ filter: 'brightness(0.72)' }}
+        style={{ filter: 'brightness(0.78)' }}
         aria-hidden="true"
       >
         {loginPawprints.map((className, index) => (

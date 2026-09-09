@@ -50,3 +50,22 @@ export const getTodayLocal = () => {
   const offset = now.getTimezoneOffset() * 60_000;
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 };
+
+export const sanitizePetName = (value: string) =>
+  value
+    .replace(/[^\p{L}\p{M}0-9\s'-]/gu, '')
+    .replace(/\s{2,}/g, ' ')
+    .slice(0, 80)
+    .replace(
+      /(^|[\s'-])(\p{L})/gu,
+      (_, separator: string, letter: string) =>
+        `${separator}${letter.toLocaleUpperCase('es-GT')}`
+    );
+
+export const isValidPetName = (value?: string) =>
+  Boolean(
+    value &&
+      value.trim().length >= 2 &&
+      value.trim().length <= 80 &&
+      /^[\p{L}\p{M}0-9]+(?:[\s'-][\p{L}\p{M}0-9]+)*$/u.test(value.trim())
+  );

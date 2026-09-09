@@ -2,7 +2,7 @@ import { createBrowserRouter } from 'react-router';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
-import Patients, { RegisterPatient } from './pages/Patients';
+import Patients from './pages/Patients';
 import PatientDetail from './pages/PatientDetail';
 import PatientCatalogs from './pages/PatientCatalogs';
 import Appointments from './pages/Appointments';
@@ -13,8 +13,6 @@ import AIReports from './pages/AIReports';
 import Users from './pages/Users';
 import DeliveryPlaceholder from './pages/DeliveryPlaceholder';
 import { isModuleContentEnabled } from './config/deliveryScope';
-// TEMPORAL: módulo "Mi perfil" desactivado hasta nueva indicación.
-// import Profile from './pages/Profile';
 import ResetPassword from './pages/ResetPassword';
 
 const AppointmentsRoute = isModuleContentEnabled('appointments')
@@ -48,8 +46,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, Component: Dashboard },
       { path: 'patients', Component: Patients },
-      { path: 'patients/register', Component: RegisterPatient },
-      { path: 'patients/catalogs', Component: PatientCatalogs },
+      { path: 'maintenance', Component: PatientCatalogs },
       { path: 'patients/:id', Component: PatientDetail },
       { path: 'appointments', Component: AppointmentsRoute },
       { path: 'grooming', Component: GroomingRoute },
@@ -57,8 +54,6 @@ export const router = createBrowserRouter([
       { path: 'prescriptions', Component: PrescriptionsRoute },
       { path: 'ai-reports', Component: AIReportsRoute },
       { path: 'users', Component: Users },
-      // TEMPORAL: módulo "Mi perfil" desactivado hasta nueva indicación.
-      // { path: 'profile', Component: Profile },
     ],
   },
 ]);

@@ -27,6 +27,7 @@ const VACUNACION_SELECT = `
   SELECT
     esquema.esquema_id AS vacunacion_id,
     esquema.paciente_id,
+    paciente.nombre AS nombre_mascota,
     vacuna.nombre AS nombre_vacuna,
     DATE_FORMAT(ultima.fecha_aplicacion, '%Y-%m-%d') AS fecha_aplicacion,
     DATE_FORMAT(${NEXT_DOSE_EXPRESSION}, '%Y-%m-%d') AS proxima_dosis,
@@ -54,6 +55,8 @@ const VACUNACION_SELECT = `
     esquema.intervalo,
     unidad.nombre AS unidad_intervalo
   FROM esquemas_vacunacion_paciente esquema
+  INNER JOIN pacientes paciente
+    ON paciente.paciente_id = esquema.paciente_id
   INNER JOIN vacunas_catalogo vacuna
     ON vacuna.vacuna_id = esquema.vacuna_id
   LEFT JOIN usuarios creador
@@ -93,6 +96,7 @@ const VACUNACION_SELECT = `
 const mapVacunacionToFrontend = (row) => ({
   id: String(row.vacunacion_id),
   patientId: String(row.paciente_id),
+  petName: row.nombre_mascota || '',
   vaccine: row.nombre_vacuna,
   applicationDate: row.fecha_aplicacion || '',
   nextDose: row.proxima_dosis || '',

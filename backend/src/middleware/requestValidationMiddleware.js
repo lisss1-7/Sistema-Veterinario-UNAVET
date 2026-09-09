@@ -1,7 +1,6 @@
-const { isValidName, isValidPhone, isTodayOrFuture } = require('../utils/inputValidation');
+const { isValidPetName, isValidName, isValidPhone, isTodayOrFuture } = require('../utils/inputValidation');
 
 const PERSON_NAME_FIELDS = [
-  'petName',
   'tutorFirstName',
   'tutorMiddleName',
   'tutorFirstSurname',
@@ -15,8 +14,9 @@ const NON_NEGATIVE_FIELDS = [
 ];
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const MAX_TEXT_LENGTH = 10000;
-// Patient photos are sent as base64 data URLs. Keep this below the 10 MB
-// JSON body limit while allowing normal compressed images.
+const PHOTO_FIELDS = new Set(['photo', 'attachmentPhoto']);
+// Patient and treatment photos are sent as base64 data URLs. Keep this below
+// the 10 MB JSON body limit while allowing normal compressed images.
 const MAX_PHOTO_LENGTH = 8 * 1024 * 1024;
 
 const reject = (res, message) => res.status(400).json({ message });
@@ -37,11 +37,17 @@ const validateRequest = (req, res, next) => {
       if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(value)) {
         return reject(res, `El campo ${field} contiene caracteres no permitidos`);
       }
-      const maxLength = field === 'photo' ? MAX_PHOTO_LENGTH : MAX_TEXT_LENGTH;
+      const maxLength = PHOTO_FIELDS.has(field)
+        ? MAX_PHOTO_LENGTH
+        : MAX_TEXT_LENGTH;
       if (value.length > maxLength) {
         return reject(res, `El campo ${field} excede la longitud permitida`);
       }
     }
+  }
+
+  if (req.body.petName !== undefined && req.body.petName !== '' && !isValidPetName(req.body.petName)) {
+    return reject(res, 'El nombre de la mascota puede contener letras y números y debe tener entre 2 y 80 caracteres');
   }
 
   const nameFields = [...PERSON_NAME_FIELDS];
@@ -59,7 +65,7 @@ const validateRequest = (req, res, next) => {
   for (const field of PHONE_FIELDS) {
     const value = req.body[field];
     if (value !== undefined && value !== '' && !isValidPhone(String(value))) {
-      return reject(res, `El campo ${field} debe contener entre 8 y 15 dígitos`);
+      return reject(res, `El campo ${field} debe contener entre 8 y 12 dígitos`);
     }
   }
 

@@ -5,21 +5,18 @@ import {
   Bone,
   CalendarDays,
   Cat,
-  ChevronDown,
   ClipboardCheck,
-  ClipboardList,
   Dog,
   House,
   LayoutDashboard,
-  List,
   PanelLeftClose,
   PanelLeftOpen,
   PawPrint,
   Pill,
   Scissors,
   ShieldCheck,
+  Settings,
   UsersRound,
-  UserRound,
   X,
 } from 'lucide-react';
 import unavetLogo from '../assets/unavet-logo.png';
@@ -48,7 +45,6 @@ const iconByModule = {
   prescriptions: Pill,
   aiReports: BarChart3,
   users: ShieldCheck,
-  profile: UserRound,
 } as const;
 
 const authHeaders = () => {
@@ -114,33 +110,28 @@ export function Sidebar({
   }, [permittedModules, systemModules]);
 
   const navClass = (active: boolean) =>
-    `group relative flex items-center gap-3 rounded-lg px-4 py-3 transition-colors ${
-      active
-        ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-        : 'text-sidebar-foreground/70 hover:bg-white/10 hover:text-sidebar-foreground'
+    `group relative flex items-center gap-[0.6375rem] rounded-lg px-[0.85rem] py-[0.6375rem] text-[0.8925rem] transition-colors ${active
+      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+      : 'text-sidebar-foreground/70 hover:bg-white/10 hover:text-sidebar-foreground'
     }`;
 
   const subNavClass = (active: boolean) =>
-    `flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
-      active
-        ? 'bg-white/15 text-sidebar-foreground'
-        : 'text-sidebar-foreground/65 hover:bg-white/10 hover:text-sidebar-foreground'
+    `flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${active
+      ? 'bg-white/15 text-sidebar-foreground'
+      : 'text-sidebar-foreground/65 hover:bg-white/10 hover:text-sidebar-foreground'
     }`;
 
   const iconChipClass = (active: boolean) =>
-    `flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors ${
-      active
-        ? 'border-[#C9962F]/45 bg-[#C9962F]/20 text-[#E3B95F]'
-        : 'border-white/10 bg-white/[0.06] text-sidebar-foreground/75 group-hover:border-white/20 group-hover:bg-white/10 group-hover:text-sidebar-foreground'
+    `flex h-[1.9125rem] w-[1.9125rem] shrink-0 items-center justify-center rounded-lg border transition-colors ${active
+      ? 'border-[#C9962F]/45 bg-[#C9962F]/20 text-[#E3B95F]'
+      : 'border-white/10 bg-white/[0.06] text-sidebar-foreground/75 group-hover:border-white/20 group-hover:bg-white/10 group-hover:text-sidebar-foreground'
     }`;
 
   return (
     <aside
-      className={`fixed left-0 top-0 z-40 flex h-dvh max-w-[82vw] flex-col overflow-hidden transition-[width,transform] duration-200 lg:translate-x-0 ${
-        isCollapsed ? 'lg:w-20' : 'w-72 lg:w-64'
-      } ${
-        isOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full'
-      }`}
+      className={`fixed left-0 top-0 z-[60] flex h-dvh max-w-[82vw] flex-col overflow-hidden transition-[width,transform] duration-200 lg:z-40 lg:translate-x-0 w-[15.3rem] ${isCollapsed ? 'lg:w-[4.25rem]' : 'lg:w-[13.6rem]'
+        } ${isOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full'
+        }`}
       style={{ background: 'var(--sidebar)' }}
     >
       <div
@@ -251,27 +242,12 @@ export function Sidebar({
         onClick={onNavigate}
         className="absolute right-4 top-4 z-20 rounded-lg bg-white/10 p-2 text-sidebar-foreground hover:bg-white/20 lg:hidden"
       >
-        <X className="h-5 w-5" />
-      </button>
-
-      <button
-        type="button"
-        aria-label={isCollapsed ? 'Expandir menú' : 'Contraer menú'}
-        title={isCollapsed ? 'Expandir menú' : 'Contraer menú'}
-        onClick={onToggleCollapse}
-        className="absolute right-4 top-4 z-20 hidden p-1.5 text-sidebar-foreground/65 transition-colors hover:text-sidebar-foreground lg:block"
-      >
-        {isCollapsed ? (
-          <PanelLeftOpen className="h-4 w-4" />
-        ) : (
-          <PanelLeftClose className="h-4 w-4" />
-        )}
+        <X className="h-[1.0625rem] w-[1.0625rem]" />
       </button>
 
       <div
-        className={`relative z-10 flex flex-col items-center pb-5 pt-7 text-center ${
-          isCollapsed ? 'px-2' : 'px-6'
-        }`}
+        className={`relative z-10 flex flex-col items-center pb-[1.0625rem] pt-[1.4875rem] text-center ${isCollapsed ? 'px-[0.425rem]' : 'px-[1.275rem]'
+          }`}
       >
         <NavLink
           to="/"
@@ -279,79 +255,71 @@ export function Sidebar({
           className="group focus:outline-none"
           aria-label="Ir a la página principal"
         >
-          <div className="mb-3 flex justify-center transition-transform group-hover:-translate-y-0.5">
+          <div className="mb-[0.6375rem] flex justify-center transition-transform group-hover:-translate-y-0.5">
             <img
               src={unavetLogo}
               alt="Logo UNAVET"
-              className={`h-auto object-contain ${isCollapsed ? 'w-12' : 'w-24'}`}
+              className={`h-auto object-contain ${isCollapsed ? 'w-[2.55rem]' : 'w-[5.1rem]'}`}
             />
           </div>
-          <p className={`w-full text-center text-sm font-medium text-sidebar-foreground/75 ${isCollapsed ? 'hidden' : ''}`}>
+          <p className={`w-full text-center text-[0.74375rem] font-medium text-sidebar-foreground/75 ${isCollapsed ? 'hidden' : ''}`}>
             Sistema Veterinario
           </p>
         </NavLink>
       </div>
 
-      <nav className={`relative z-10 flex-1 overflow-y-auto py-4 no-scrollbar ${isCollapsed ? 'px-2' : 'px-3'}`}>
+      <div
+        className={`relative z-20 hidden px-[0.6375rem] pb-[0.425rem] lg:flex ${isCollapsed ? 'justify-center' : 'justify-end'
+          }`}
+      >
+        <button
+          type="button"
+          aria-label={isCollapsed ? 'Expandir menú' : 'Contraer menú'}
+          title={isCollapsed ? 'Expandir menú' : 'Contraer menú'}
+          onClick={onToggleCollapse}
+          className="flex h-[2.125rem] w-[2.125rem] items-center justify-center rounded-xl border border-white/15 bg-white/10 text-sidebar-foreground shadow-sm transition-colors hover:bg-white/20 hover:text-sidebar-foreground focus:outline-none focus:ring-2 focus:ring-[#C9962F]/70"
+        >
+          {isCollapsed ? (
+            <PanelLeftOpen className="h-[1.275rem] w-[1.275rem]" strokeWidth={2.2} />
+          ) : (
+            <PanelLeftClose className="h-[1.275rem] w-[1.275rem]" strokeWidth={2.2} />
+          )}
+        </button>
+      </div>
+
+      <nav className={`relative z-10 flex-1 overflow-y-auto py-[0.85rem] no-scrollbar ${isCollapsed ? 'px-[0.425rem]' : 'px-[0.6375rem]'}`}>
         {visibleModules.map((module) => {
           const ModuleIcon =
             iconByModule[module.codigo as keyof typeof iconByModule] || House;
 
           if (module.codigo === 'patients') {
-            const patientsActive = location.pathname.startsWith('/patients');
+            const patientsActive = location.pathname.startsWith('/patients') &&
+              location.pathname !== '/maintenance';
 
             return (
-              <div key={module.codigo} className="mb-2">
-                <NavLink
-                  to={module.ruta}
-                  onClick={() => setPatientsExpanded(true)}
-                  onPointerEnter={preloadPatientsModule}
-                  onFocus={preloadPatientsModule}
-                  className={`${navClass(patientsActive)} ${isCollapsed ? 'justify-center px-2' : ''}`}
-                  title={isCollapsed ? module.nombre : undefined}
-                >
-                  <span className={iconChipClass(patientsActive)}>
-                    <ModuleIcon className="h-5 w-5" strokeWidth={2} />
-                  </span>
-                  <span className={`${isCollapsed ? 'hidden' : 'flex-1'} font-medium`}>
-                    {module.nombre}
-                  </span>
-                  {patientsActive && (
-                    <PawPrint
-                      className={`h-3.5 w-3.5 shrink-0 ${isCollapsed ? 'hidden' : ''}`}
-                      style={{ color: TAG_ACCENT }}
-                      strokeWidth={2.4}
-                    />
-                  )}
-                  <ChevronDown
-                    className={`h-4 w-4 shrink-0 transition-transform ${
-                      patientsExpanded ? 'rotate-180' : ''
-                    } ${isCollapsed ? 'hidden' : ''}`}
+              <NavLink
+                key={module.codigo}
+                to={module.ruta}
+                onClick={onNavigate}
+                onPointerEnter={preloadPatientsModule}
+                onFocus={preloadPatientsModule}
+                className={`${navClass(patientsActive)} mb-[0.425rem] ${isCollapsed ? 'justify-center px-[0.425rem]' : ''}`}
+                title={isCollapsed ? module.nombre : undefined}
+              >
+                <span className={iconChipClass(patientsActive)}>
+                  <ModuleIcon className="h-[1.0625rem] w-[1.0625rem]" strokeWidth={2} />
+                </span>
+                <span className={`${isCollapsed ? 'hidden' : 'flex-1'} font-medium`}>
+                  {module.nombre}
+                </span>
+                {patientsActive && (
+                  <PawPrint
+                    className={`h-[0.74375rem] w-[0.74375rem] shrink-0 ${isCollapsed ? 'hidden' : ''}`}
+                    style={{ color: TAG_ACCENT }}
+                    strokeWidth={2.4}
                   />
-                </NavLink>
-
-                {patientsExpanded && !isCollapsed && (
-                  <div className="ml-5 mt-2 space-y-1 border-l-2 border-dashed border-sidebar-border/70 pl-3">
-                    <NavLink
-                      to="/patients"
-                      end
-                      onClick={onNavigate}
-                      className={({ isActive }) => subNavClass(isActive)}
-                    >
-                      <List className="h-4 w-4" />
-                      Ver pacientes
-                    </NavLink>
-                    <NavLink
-                      to="/patients/register"
-                      onClick={onNavigate}
-                      className={({ isActive }) => subNavClass(isActive)}
-                    >
-                      <ClipboardList className="h-4 w-4" />
-                      Registrar paciente
-                    </NavLink>
-                  </div>
                 )}
-              </div>
+              </NavLink>
             );
           }
 
@@ -361,21 +329,21 @@ export function Sidebar({
               to={module.ruta}
               onClick={onNavigate}
               className={({ isActive }) =>
-                `${navClass(isActive)} mb-2 ${isCollapsed ? 'justify-center px-2' : ''}`
+                `${navClass(isActive)} mb-[0.425rem] ${isCollapsed ? 'justify-center px-[0.425rem]' : ''}`
               }
               title={isCollapsed ? module.nombre : undefined}
             >
               {({ isActive }: { isActive: boolean }) => (
                 <>
                   <span className={iconChipClass(isActive)}>
-                    <ModuleIcon className="h-5 w-5" strokeWidth={2} />
+                    <ModuleIcon className="h-[1.0625rem] w-[1.0625rem]" strokeWidth={2} />
                   </span>
                   <span className={`${isCollapsed ? 'hidden' : 'flex-1'} font-medium`}>
                     {module.nombre}
                   </span>
                   {isActive && (
                     <PawPrint
-                      className={`h-3.5 w-3.5 shrink-0 ${isCollapsed ? 'hidden' : ''}`}
+                      className={`h-[0.74375rem] w-[0.74375rem] shrink-0 ${isCollapsed ? 'hidden' : ''}`}
                       style={{ color: TAG_ACCENT }}
                       strokeWidth={2.4}
                     />
@@ -385,10 +353,33 @@ export function Sidebar({
             </NavLink>
           );
         })}
+        {permittedModules.some((module) =>
+          ['patients', 'inventory', 'prescriptions', 'users'].includes(module.codigo)
+        ) && (
+          <NavLink
+            to="/maintenance"
+            onClick={onNavigate}
+            className={({ isActive }) =>
+              `${navClass(isActive)} mb-[0.425rem] ${isCollapsed ? 'justify-center px-[0.425rem]' : ''}`
+            }
+            title={isCollapsed ? 'Mantenimiento' : undefined}
+          >
+            {({ isActive }: { isActive: boolean }) => (
+              <>
+                <span className={iconChipClass(isActive)}>
+                  <Settings className="h-[1.0625rem] w-[1.0625rem]" strokeWidth={2} />
+                </span>
+                <span className={`${isCollapsed ? 'hidden' : 'flex-1'} font-medium`}>
+                  Mantenimiento
+                </span>
+              </>
+            )}
+          </NavLink>
+        )}
       </nav>
 
-    
-        
+
+
     </aside>
   );
 }

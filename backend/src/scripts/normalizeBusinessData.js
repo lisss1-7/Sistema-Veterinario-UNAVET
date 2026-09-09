@@ -269,8 +269,7 @@ const run = async () => {
       ('inventory', 'Inventario', '/inventory', 5),
       ('prescriptions', 'Recetas', '/prescriptions', 6),
       ('aiReports', 'Reportes IA', '/ai-reports', 7),
-      ('users', 'Usuarios', '/users', 8),
-      ('profile', 'Mi perfil', '/profile', 9)
+      ('users', 'Usuarios', '/users', 8)
     `);
 
     await connection.query(`
@@ -304,7 +303,7 @@ const run = async () => {
       SELECT r.rol_id, m.modulo_id, 1, 1, 1, 0
       FROM roles r
       JOIN modulos_sistema m
-        ON m.codigo IN ('dashboard','patients','appointments','grooming','prescriptions','aiReports','profile')
+        ON m.codigo IN ('dashboard','patients','appointments','grooming','prescriptions','aiReports')
       WHERE r.nombre = 'Médico Veterinario'
     `);
     await connection.query(`
@@ -313,7 +312,7 @@ const run = async () => {
       SELECT r.rol_id, m.modulo_id, 1, 1, 1, 0
       FROM roles r
       JOIN modulos_sistema m
-        ON m.codigo IN ('dashboard','patients','appointments','grooming','inventory','profile')
+        ON m.codigo IN ('dashboard','patients','appointments','grooming','inventory')
       WHERE r.nombre = 'Asistente'
     `);
 

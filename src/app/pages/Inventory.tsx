@@ -17,8 +17,8 @@ import {
 } from 'lucide-react';
 
 import type { InventoryProduct } from '../utils/types';
-import SalesClosing from '../components/SalesClosing';
 import ThemedSelect from '../components/ThemedSelect';
+import InformationCard from '../components/InformationCard';
 
 type DeleteTarget = {
   id: string;
@@ -51,8 +51,6 @@ const getAuthHeaders = () => {
 
 export default function Inventory() {
   const [inventory, setInventory] = useState<InventoryProduct[]>([]);
-  const [activeSection, setActiveSection] =
-    useState<'inventory' | 'sales'>('inventory');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
@@ -417,110 +415,47 @@ export default function Inventory() {
   };
 
   return (
-    <div className="p-4 md:p-8">
+    <div className="w-full p-[0.825rem] md:p-[1.375rem]">
       <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
         <div>
-          <h1 className="text-foreground text-2xl md:text-3xl font-bold mb-2">
+          <h1 className="text-foreground text-xl md:text-2xl font-bold mb-2">
             Inventario
           </h1>
         </div>
 
-        {activeSection === 'inventory' && (
-          <button
-            type="button"
-            onClick={() => openModal()}
-            disabled={loadingCatalogs}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary disabled:opacity-60 disabled:cursor-not-allowed text-[#F7EFE6] rounded-lg transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-
-            {loadingCatalogs
-              ? 'Cargando catálogos...'
-              : 'Nuevo producto'}
-          </button>
-        )}
-      </div>
-
-      <div className="flex gap-2 mb-6 border-b border-border">
         <button
           type="button"
-          onClick={() => setActiveSection('inventory')}
-          className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-            activeSection === 'inventory'
-              ? 'border-primary text-foreground'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
+          onClick={() => openModal()}
+          disabled={loadingCatalogs}
+          className="flex items-center justify-center gap-2 px-4 py-2 text-lg bg-primary hover:bg-primary disabled:opacity-60 disabled:cursor-not-allowed text-[#F7EFE6] rounded-lg transition-colors"
         >
-          Productos y existencias
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveSection('sales')}
-          className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-            activeSection === 'sales'
-              ? 'border-primary text-foreground'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          Cierre de ventas
+          <Plus className="w-4 h-4" />
+
+          {loadingCatalogs
+            ? 'Cargando catálogos...'
+            : 'Nuevo producto'}
         </button>
       </div>
 
-      {activeSection === 'sales' ? (
-        <SalesClosing
-          inventory={inventory}
-          onInventoryChanged={loadInventory}
-        />
-      ) : (
-        <>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-primary text-white rounded-xl p-4 md:p-5 shadow-lg">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm opacity-90 mb-1">
-                Total de productos
-              </p>
-
-              <p className="text-3xl font-bold">
-                {inventory.length}
-              </p>
-            </div>
-
-            <Package className="w-10 h-10 opacity-80" />
-          </div>
-        </div>
-
-        <div className="bg-red-500 text-white rounded-xl p-4 md:p-5 shadow-lg">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm opacity-90 mb-1">
-                Stock bajo
-              </p>
-
-              <p className="text-3xl font-bold">
-                {lowStockProducts.length}
-              </p>
-            </div>
-
-            <AlertTriangle className="w-10 h-10 opacity-80" />
-          </div>
-        </div>
-
-        <div className="bg-red-700 text-white rounded-xl p-4 md:p-5 shadow-lg">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm opacity-90 mb-1">
-                Agotados
-              </p>
-
-              <p className="text-3xl font-bold">
-                {outOfStockProducts.length}
-              </p>
-            </div>
-
-            <AlertTriangle className="w-10 h-10 opacity-80" />
-          </div>
-        </div>
+        <InformationCard
+          label="Total de productos"
+          value={inventory.length}
+          icon={<Package className="h-6 w-6" />}
+          tone="primary"
+        />
+        <InformationCard
+          label="Stock bajo"
+          value={lowStockProducts.length}
+          icon={<AlertTriangle className="h-6 w-6" />}
+          tone="accent"
+        />
+        <InformationCard
+          label="Agotados"
+          value={outOfStockProducts.length}
+          icon={<AlertTriangle className="h-6 w-6" />}
+          tone="destructive"
+        />
       </div>
 
       <div className="bg-card rounded-xl p-4 md:p-6 shadow-lg mb-6 border border-border">
@@ -872,7 +807,7 @@ export default function Inventory() {
 
       {showModal && (
         <div className="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-50">
-          <div className="bg-card border border-border rounded-2xl p-4 md:p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+          <div className="patient-form-shell bg-card border border-border rounded-2xl p-4 md:p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
                 <h2 className="text-foreground text-xl">
@@ -898,7 +833,7 @@ export default function Inventory() {
 
             <form
               onSubmit={handleSubmit}
-              className="space-y-4"
+              className="patient-form space-y-4"
             >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormInput
@@ -1252,9 +1187,7 @@ export default function Inventory() {
           </ModalCard>
         </div>
       )}
-    </>
-  )}
-</div>
+    </div>
   );
 }
 

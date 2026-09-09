@@ -245,7 +245,7 @@ OPENROUTER_MODEL=meta-llama/llama-3.1-8b-instruct:free
 ```env
 AI_PROVIDER=groq
 GROQ_API_KEY=tu_api_key
-GROQ_MODEL=llama-3.1-8b-instant
+GROQ_MODEL=qwen/qwen3.6-27b
 ```
 
 #### Opción D: Auto (recomendado)
@@ -263,7 +263,7 @@ cd backend
 npm run dev
 ```
 
-Si todos los proveedores IA fallan, el sistema devuelve un error y no genera una respuesta local de respaldo.
+Si un proveedor devuelve razonamiento interno, texto en otro idioma, cifras no sustentadas o una respuesta incompleta, se descarta. Si ninguno produce una salida válida, el sistema genera un reporte de respaldo directamente con las métricas registradas, sin inventar contenido.
 
 ## Usuarios iniciales
 

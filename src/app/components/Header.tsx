@@ -16,6 +16,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router';
 import { useState, useEffect, useRef } from 'react';
 import { ThemeToggle } from './ThemeToggle';
+import { formatDateForDisplay } from '../utils/dateFormat';
 
 type NotificationType = 'stock' | 'appointment' | 'grooming';
 
@@ -146,11 +147,13 @@ export function Header({ onMenuClick }: HeaderProps) {
   const formatDateTimeLabel = (date?: string, time?: string) => {
     if (!date && !time) return '';
 
+    const displayDate = date ? formatDateForDisplay(date) : '';
+
     if (date && time) {
-      return `${date} a las ${time}`;
+      return `${displayDate} a las ${time}`;
     }
 
-    return date || time || '';
+    return displayDate || time || '';
   };
 
   const fetchCollection = async (endpoint: string) => {
@@ -478,7 +481,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                           </p>
 
                           {notification.timeLabel && (
-                            <p className="mt-1 text-xs text-[#E3B95F]">
+                            <p className="mt-1 text-sm font-medium text-[#825326]">
                               {notification.timeLabel}
                             </p>
                           )}

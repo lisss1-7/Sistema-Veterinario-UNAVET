@@ -1,4 +1,5 @@
 import { useState, useEffect, type FormEvent, type ReactNode } from 'react';
+import { useLocation } from 'react-router';
 import { toast } from 'sonner';
 import {
   Search,
@@ -23,6 +24,7 @@ import {
   sanitizeName,
   sanitizePhone,
 } from '../utils/formValidation';
+import { formatDateForDisplay } from '../utils/dateFormat';
 
 type AppointmentFormData = Partial<Appointment> & {
   animalSize?: string;
@@ -65,8 +67,14 @@ const getCalendarDays = (month: Date) => {
   const monthIndex = month.getMonth();
   const firstDay = new Date(year, monthIndex, 1);
   const daysBeforeMonth = (firstDay.getDay() + 6) % 7;
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+  const daysAfterMonth =
+    (7 - ((daysBeforeMonth + daysInMonth) % 7)) % 7;
+  const visibleDaysAfterMonth = Math.min(daysAfterMonth, 3);
+  const visibleDayCount =
+    daysBeforeMonth + daysInMonth + visibleDaysAfterMonth;
 
-  return Array.from({ length: 42 }, (_, index) =>
+  return Array.from({ length: visibleDayCount }, (_, index) =>
     new Date(year, monthIndex, 1 - daysBeforeMonth + index)
   );
 };
@@ -79,6 +87,7 @@ const getAppointmentColor = (status?: string) => {
 };
 
 export default function Appointments() {
+  const location = useLocation();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -98,6 +107,7 @@ export default function Appointments() {
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
 
   const [showConflictModal, setShowConflictModal] = useState(false);
+  const [formError, setFormError] = useState<{ title: string; message: string } | null>(null);
 
   const [editingAppointment, setEditingAppointment] =
     useState<Appointment | null>(null);
@@ -114,6 +124,26 @@ export default function Appointments() {
     loadPatients();
     loadCatalogs();
   }, []);
+
+  useEffect(() => {
+    const targetId = location.state && typeof location.state === 'object'
+      ? (location.state as { highlightAppointmentId?: string }).highlightAppointmentId
+      : undefined;
+
+    if (!targetId || appointments.length === 0) return;
+
+    const match = appointments.find(
+      (appointment) => String(appointment.id) === String(targetId)
+    );
+
+    if (match) {
+      setSelectedAppointment(match);
+      setFilterDate(match.date);
+      setCalendarMonth(
+        new Date(match.date ? new Date(`${match.date}T00:00:00`).getFullYear() : new Date().getFullYear(), match.date ? new Date(`${match.date}T00:00:00`).getMonth() : new Date().getMonth(), 1)
+      );
+    }
+  }, [appointments, location.state]);
 
   const loadAppointments = async () => {
     try {
@@ -270,20 +300,34 @@ export default function Appointments() {
       (formData.tutorMiddleName && !isValidName(formData.tutorMiddleName)) ||
       (formData.tutorSecondSurname && !isValidName(formData.tutorSecondSurname))
     ) {
-      toast.error('Revisa los nombres', {
-        description:
-          'Solo pueden contener letras y deben tener al menos 2 caracteres.',
+      setFormError({
+        title: 'Revisa los nombres',
+        message: 'Solo pueden contener letras y deben tener al menos 2 caracteres.',
+      });
+      return;
+    }
+
+    if (!formData.time) {
+      setFormError({
+        title: 'Falta la hora',
+        message: 'Debes seleccionar una hora antes de guardar la cita.',
       });
       return;
     }
 
     if (!isValidPhone(formData.tutorPhone)) {
-      alert('El teléfono debe contener únicamente entre 8 y 15 dígitos.');
+      setFormError({
+        title: 'Teléfono inválido',
+        message: 'El teléfono debe contener únicamente entre 8 y 15 dígitos.',
+      });
       return;
     }
 
     if (!formData.date || formData.date < getTodayLocal()) {
-      alert('La fecha de la cita no puede estar en el pasado.');
+      setFormError({
+        title: 'Fecha inválida',
+        message: 'La fecha de la cita no puede estar en el pasado.',
+      });
       return;
     }
 
@@ -326,7 +370,13 @@ export default function Appointments() {
       setShowSuccessModal(true);
     } catch (error) {
       console.error('Error al guardar cita:', error);
-      alert('No se pudo guardar la cita. Revisa el backend o la consola.');
+      setFormError({
+        title: 'No se pudo guardar la cita',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Revisa el backend o la consola para más detalles.',
+      });
     }
   };
 
@@ -426,6 +476,7 @@ export default function Appointments() {
   };
 
   const closeFormModal = () => {
+    setFormError(null);
     setShowModal(false);
     setEditingAppointment(null);
     setFormData({});
@@ -445,25 +496,24 @@ export default function Appointments() {
   };
 
   return (
-    <div className="p-4 md:p-8">
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
+    <div className="w-full p-[0.825rem] md:p-[1.375rem]">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center">
         <div>
-          <h1 className="text-foreground text-2xl md:text-3xl font-bold mb-2">
-            Citas Clínicas
+          <h1 className="text-foreground text-xl md:text-2xl font-bold mb-2">
+            Citas clínicas
           </h1>
         </div>
 
         <button
           onClick={() => openModal()}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors"
+          className="flex items-center justify-center gap-2 px-4 py-2.5 text-lg bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors"
         >
           <Plus className="w-4 h-4" />
           Nueva cita
         </button>
       </div>
-
-      <div className="bg-card rounded-xl p-4 md:p-6 shadow-lg mb-6 border border-border">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="mb-4 rounded-2xl border border-border/60 bg-gradient-to-br from-card to-muted/20 p-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)] md:p-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
           <div className="md:col-span-2">
             <label className="block text-foreground mb-2 text-sm">
               Buscar
@@ -477,7 +527,7 @@ export default function Appointments() {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Buscar por mascota, tutor o raza"
-                className="w-full pl-10 pr-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+                className="w-full rounded-xl border border-border bg-secondary/80 py-2.5 pl-10 pr-4 text-foreground shadow-sm transition-all placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
           </div>
@@ -490,7 +540,7 @@ export default function Appointments() {
             <ThemedSelect
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+              className="w-full rounded-xl border border-border bg-secondary/80 px-4 py-2.5 text-foreground shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
               <option value="">Todos</option>
 
@@ -511,19 +561,19 @@ export default function Appointments() {
               type="date"
               value={filterDate}
               onChange={(e) => setFilterDate(e.target.value)}
-              className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+              className="w-full rounded-xl border border-border bg-secondary/80 px-4 py-2.5 text-foreground shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
           </div>
         </div>
       </div>
 
-      <section className="bg-card rounded-2xl shadow-lg overflow-hidden border border-border">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 border-b border-border bg-muted">
+      <section className="overflow-hidden rounded-[22px] border border-border/60 bg-card shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+        <div className="flex flex-col gap-3 border-b border-border bg-gradient-to-r from-muted/60 via-card to-muted/50 p-3 sm:flex-row sm:items-center sm:justify-between md:p-3.5">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary text-white rounded-lg">
+            <div className="rounded-xl bg-primary p-2.5 text-white shadow-lg shadow-primary/20">
               <CalendarDays className="w-5 h-5" />
             </div>
-            <h2 className="text-lg font-bold text-foreground capitalize">
+            <h2 className="text-lg font-black capitalize tracking-tight text-foreground md:text-xl">
               {calendarMonthLabel}
             </h2>
           </div>
@@ -532,7 +582,7 @@ export default function Appointments() {
             <button
               type="button"
               onClick={() => changeCalendarMonth(-1)}
-              className="p-2 rounded-lg bg-muted hover:bg-border text-foreground transition-colors"
+              className="rounded-xl bg-muted p-2.5 text-foreground transition-colors hover:bg-border"
               aria-label="Mes anterior"
             >
               <ChevronLeft className="w-5 h-5" />
@@ -540,14 +590,14 @@ export default function Appointments() {
             <button
               type="button"
               onClick={goToCurrentMonth}
-              className="px-4 py-2 rounded-lg bg-muted hover:bg-border text-foreground font-semibold transition-colors"
+              className="rounded-xl bg-muted px-4 py-2 font-semibold text-foreground transition-colors hover:bg-border"
             >
               Hoy
             </button>
             <button
               type="button"
               onClick={() => changeCalendarMonth(1)}
-              className="p-2 rounded-lg bg-muted hover:bg-border text-foreground transition-colors"
+              className="rounded-xl bg-muted p-2.5 text-foreground transition-colors hover:bg-border"
               aria-label="Mes siguiente"
             >
               <ChevronRight className="w-5 h-5" />
@@ -576,9 +626,9 @@ export default function Appointments() {
                 return (
                   <div
                     key={dateKey}
-                    className={`min-h-36 border-r border-b border-border p-2 ${
-                      isCurrentMonth ? 'bg-card' : 'bg-muted/70'
-                    } ${isToday ? 'ring-2 ring-inset ring-accent' : ''}`}
+                    className={`min-h-36 border-r border-b border-border/80 p-2.5 transition-colors ${
+                      isCurrentMonth ? 'bg-card' : 'bg-muted/50'
+                    } ${isToday ? 'bg-primary/5 ring-2 ring-inset ring-primary/20' : ''}`}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <span
@@ -615,10 +665,10 @@ export default function Appointments() {
                             appointment.status
                           )}`}
                         >
-                          <span className="block text-xs font-bold">
+                          <span className="block text-sm font-extrabold leading-tight">
                             {appointment.time.slice(0, 5)} · {appointment.petName}
                           </span>
-                          <span className="block text-[11px] truncate opacity-80">
+                          <span className="block truncate text-[11px] font-semibold opacity-100">
                             {appointment.status}
                           </span>
                         </button>
@@ -639,8 +689,8 @@ export default function Appointments() {
       </section>
 
       {selectedAppointment && (
-        <div className="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-50">
-          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-md w-full p-6 relative">
+        <div className="modal-backdrop fixed inset-0 flex items-center justify-center bg-slate-900/5 p-4 backdrop-blur-[0.5px] z-50">
+          <div className="relative w-full max-w-md rounded-[28px] border border-border/80 bg-card p-6 shadow-[0_30px_80px_rgba(15,23,42,0.12)]">
             <button
               type="button"
               onClick={() => setSelectedAppointment(null)}
@@ -650,10 +700,10 @@ export default function Appointments() {
               <X className="w-4 h-4" />
             </button>
 
-            <p className="text-sm font-semibold text-primary mb-1">
-              {selectedAppointment.date} · {selectedAppointment.time.slice(0, 5)}
+            <p className="mb-1 text-sm font-semibold uppercase tracking-[0.12em] text-primary/80">
+              {formatDateForDisplay(selectedAppointment.date)} · {selectedAppointment.time.slice(0, 5)}
             </p>
-            <h3 className="text-2xl font-bold text-foreground mb-5 pr-10">
+            <h3 className="mb-5 pr-10 text-2xl font-black tracking-tight text-foreground">
               {selectedAppointment.petName}
             </h3>
 
@@ -716,10 +766,12 @@ export default function Appointments() {
                   setSelectedAppointment(null);
                   openModal(appointment);
                 }}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary text-white rounded-lg font-semibold transition-colors"
+                className="flex-1 rounded-xl bg-primary px-4 py-2.5 font-semibold text-[#F7EFE6] shadow-lg shadow-primary/20 transition-all duration-200 hover:-translate-y-0.5 hover:brightness-110"
               >
-                <Edit className="w-4 h-4" />
-                Editar
+                <span className="flex items-center justify-center gap-2">
+                  <Edit className="w-4 h-4" />
+                  Editar
+                </span>
               </button>
               <button
                 type="button"
@@ -728,10 +780,12 @@ export default function Appointments() {
                   setSelectedAppointment(null);
                   openDeleteModal(appointment);
                 }}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-semibold transition-colors"
+                className="flex-1 rounded-xl bg-red-100 px-4 py-2.5 font-semibold text-red-700 transition-colors hover:bg-red-200"
               >
-                <Trash2 className="w-4 h-4" />
-                Eliminar
+                <span className="flex items-center justify-center gap-2">
+                  <Trash2 className="w-4 h-4" />
+                  Eliminar
+                </span>
               </button>
             </div>
           </div>
@@ -739,15 +793,18 @@ export default function Appointments() {
       )}
 
       {showModal && (
-        <div className="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-50">
-          <div className="bg-card border border-border rounded-2xl p-4 md:p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
-            <div className="flex items-start justify-between gap-4 mb-4">
+        <div className="modal-backdrop fixed inset-0 flex items-center justify-center bg-slate-900/5 p-4 backdrop-blur-[0.5px] z-50">
+          <div className="patient-form-shell max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[30px] border border-border/80 bg-card p-4 shadow-[0_30px_80px_rgba(15,23,42,0.12)] md:p-6">
+            <div className="mb-5 flex items-start justify-between gap-4 rounded-2xl border border-border/70 bg-background/60 p-4">
               <div>
-                <h2 className="text-foreground text-xl">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary/80">
+                  Agenda
+                </p>
+                <h2 className="text-foreground text-xl font-black tracking-tight md:text-2xl">
                   {editingAppointment ? 'Editar cita' : 'Nueva cita'}
                 </h2>
 
-                <p className="text-muted-foreground text-sm mt-1">
+                <p className="mt-1 text-sm text-muted-foreground">
                   Completa los datos de la cita clínica.
                 </p>
               </div>
@@ -761,7 +818,7 @@ export default function Appointments() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="patient-form space-y-5">
               <div>
                 <label className="block text-foreground mb-2 text-sm">
                   Vincular a paciente existente, opcional
@@ -794,7 +851,7 @@ export default function Appointments() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {([
                   ['Primer nombre del tutor', 'tutorFirstName', true],
                   ['Segundo nombre del tutor', 'tutorMiddleName', false],
@@ -826,9 +883,10 @@ export default function Appointments() {
                   required
                   type="tel"
                   inputMode="numeric"
-                  pattern="[0-9]{8,15}"
+                  pattern="[0-9]{8,12}"
                   minLength={8}
-                  maxLength={15}
+                  maxLength={12}
+                  title="Entre 8 y 12 dígitos"
                 />
 
                 <FormInput
@@ -867,7 +925,7 @@ export default function Appointments() {
                     onChange={(e) =>
                       setFormData({ ...formData, time: e.target.value })
                     }
-                    className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+                    className="w-full rounded-xl border border-border bg-secondary/80 px-4 py-2.5 text-foreground shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                     required
                     disabled={!formData.date}
                   >
@@ -900,7 +958,7 @@ export default function Appointments() {
                   onChange={(e) =>
                     setFormData({ ...formData, reason: e.target.value })
                   }
-                  className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+                  className="w-full rounded-xl border border-border bg-secondary/80 px-4 py-3 text-foreground shadow-sm transition-all placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                   rows={3}
                   required
                 />
@@ -909,7 +967,7 @@ export default function Appointments() {
               <div className="flex flex-col sm:flex-row sm:justify-start gap-4 pt-4">
                 <button
                   type="submit"
-                  className="w-full sm:w-auto px-4 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors"
+                  className="w-full rounded-xl bg-primary px-4 py-2.5 font-semibold text-[#F7EFE6] shadow-lg shadow-primary/20 transition-all duration-200 hover:-translate-y-0.5 hover:brightness-110 sm:w-auto"
                 >
                   {editingAppointment ? 'Actualizar' : 'Crear'}
                 </button>
@@ -917,7 +975,7 @@ export default function Appointments() {
                 <button
                   type="button"
                   onClick={closeFormModal}
-                  className="w-full sm:w-auto px-4 py-2 bg-muted hover:bg-border text-foreground rounded-lg transition-colors"
+                  className="w-full rounded-xl bg-muted px-4 py-2.5 font-semibold text-foreground transition-colors hover:bg-border sm:w-auto"
                 >
                   Cancelar
                 </button>
@@ -928,7 +986,7 @@ export default function Appointments() {
       )}
 
       {showSuccessModal && (
-        <div className="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[60]">
+        <div className="modal-backdrop fixed inset-0 flex items-center justify-center bg-slate-900/5 p-4 backdrop-blur-[0.5px] z-[60]">
           <ModalCard>
             <div className="flex justify-center mb-4">
               <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
@@ -955,7 +1013,7 @@ export default function Appointments() {
       )}
 
       {showDeleteModal && deleteTarget && (
-        <div className="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[70]">
+        <div className="modal-backdrop fixed inset-0 flex items-center justify-center bg-slate-900/5 p-4 backdrop-blur-[0.5px] z-[70]">
           <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-md w-full p-6 relative">
             <button
               type="button"
@@ -1015,7 +1073,7 @@ export default function Appointments() {
       )}
 
       {showDeleteSuccessModal && (
-        <div className="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[80]">
+        <div className="modal-backdrop fixed inset-0 flex items-center justify-center bg-slate-900/5 p-4 backdrop-blur-[0.5px] z-[80]">
           <ModalCard>
             <div className="flex justify-center mb-4">
               <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
@@ -1042,7 +1100,7 @@ export default function Appointments() {
       )}
 
       {showConflictModal && (
-        <div className="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[90]">
+        <div className="modal-backdrop fixed inset-0 flex items-center justify-center bg-slate-900/5 p-4 backdrop-blur-[0.5px] z-[90]">
           <ModalCard>
             <div className="flex justify-center mb-4">
               <div className="w-16 h-16 rounded-full bg-yellow-100 flex items-center justify-center">
@@ -1061,6 +1119,30 @@ export default function Appointments() {
 
             <button
               onClick={() => setShowConflictModal(false)}
+              className="w-full px-4 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors"
+            >
+              Aceptar
+            </button>
+          </ModalCard>
+        </div>
+      )}
+
+      {formError && (
+        <div className="modal-backdrop fixed inset-0 flex items-center justify-center bg-slate-900/5 p-4 backdrop-blur-[0.5px] z-[95]">
+          <ModalCard>
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
+                <AlertTriangle className="w-10 h-10 text-red-700" />
+              </div>
+            </div>
+
+            <h3 className="text-foreground text-xl mb-2">{formError.title}</h3>
+
+            <p className="text-muted-foreground text-sm mb-6">{formError.message}</p>
+
+            <button
+              type="button"
+              onClick={() => setFormError(null)}
               className="w-full px-4 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors"
             >
               Aceptar
@@ -1105,7 +1187,7 @@ function FormInput({
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+        className="w-full rounded-xl border border-border bg-secondary/80 px-4 py-2.5 text-foreground shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
         required={required}
         min={min}
         minLength={minLength}

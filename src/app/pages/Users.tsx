@@ -26,7 +26,9 @@ import {
 import { jsPDF } from 'jspdf';
 import type { SystemUser } from '../utils/types';
 import ThemedSelect from '../components/ThemedSelect';
+import PdfPreviewModal from '../components/PdfPreviewModal';
 import { useAuth } from '../context/AuthContext';
+import { formatDateForDisplay } from '../utils/dateFormat';
 import {
   drawUnavetPdfHeader,
   getUnavetLogoBase64,
@@ -147,6 +149,11 @@ export default function Users() {
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [statusModalError, setStatusModalError] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<{
+    url: string;
+    title: string;
+    filename: string;
+  } | null>(null);
 
   const [editingUser, setEditingUser] =
     useState<SystemUser | null>(null);
@@ -156,6 +163,8 @@ export default function Users() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] =
     useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const loadUsers = async () => {
     try {
@@ -376,10 +385,12 @@ export default function Users() {
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
 
+    if (isSubmitting) return;
     if (!validateForm()) {
       return;
     }
 
+    setIsSubmitting(true);
     try {
       const payload: Record<string, unknown> = {
         firstName: formData.firstName,
@@ -447,10 +458,18 @@ export default function Users() {
           ? error.message
           : 'No se pudo guardar el usuario.'
       );
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const toggleStatus = async (id: string) => {
+    if (String(id) === String(authenticatedUser?.id)) {
+      setStatusMessage('No puedes cambiar el estado de tu propio usuario.');
+      setStatusModalError(true);
+      setShowStatusModal(true);
+      return;
+    }
     try {
       const changedUser = users.find((item) => item.id === id);
       const newStatus =
@@ -495,6 +514,12 @@ export default function Users() {
   };
 
   const openDeleteModal = (userItem: SystemUser) => {
+    if (String(userItem.id) === String(authenticatedUser?.id)) {
+      setStatusMessage('No puedes eliminar tu propio usuario.');
+      setStatusModalError(true);
+      setShowStatusModal(true);
+      return;
+    }
     setDeleteTarget({
       id: userItem.id,
       name: userItem.name,
@@ -512,7 +537,14 @@ export default function Users() {
     ) {
       return;
     }
-
+    if (String(deleteTarget.id) === String(authenticatedUser?.id)) {
+      setStatusMessage('No puedes eliminar tu propio usuario.');
+      setStatusModalError(true);
+      setShowStatusModal(true);
+      return;
+    }
+    if (isDeleting) return;
+    setIsDeleting(true);
     try {
       const response = await fetch(
         `${API_URL}/usuarios/${deleteTarget.id}`,
@@ -541,10 +573,18 @@ export default function Users() {
           ? error.message
           : 'No se pudo eliminar el usuario.'
       );
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   const openModal = (userItem?: SystemUser) => {
+    if (userItem && String(userItem.id) === String(authenticatedUser?.id)) {
+      setStatusMessage('No puedes modificar tu propio usuario desde este módulo. Usa tu perfil para actualizar tus datos.');
+      setStatusModalError(true);
+      setShowStatusModal(true);
+      return;
+    }
     setFormError('');
     setShowPassword(false);
     setShowConfirmPassword(false);
@@ -656,7 +696,7 @@ export default function Users() {
     setFormError('');
   };
 
-  const generateUsersPdf = async (reportType: UserReportType) => {
+  const createUsersPdf = async (reportType: UserReportType) => {
     const reportUsers = [
       ...(reportType === 'active' ? activeUsers : inactiveUsers),
     ].sort((firstUser, secondUser) =>
@@ -669,7 +709,7 @@ export default function Users() {
           ? 'No hay usuarios activos para incluir en el reporte.'
           : 'No hay usuarios de baja para incluir en el reporte.'
       );
-      return;
+      return null;
     }
 
     try {
@@ -798,20 +838,53 @@ export default function Users() {
         });
       }
 
-      doc.save(
-        reportType === 'active'
-          ? 'reporte-usuarios-activos-unavet.pdf'
-          : 'reporte-usuarios-de-baja-unavet.pdf'
-      );
+      return {
+        doc,
+        filename:
+          reportType === 'active'
+            ? 'reporte-usuarios-activos-unavet.pdf'
+            : 'reporte-usuarios-de-baja-unavet.pdf',
+        title: reportTitle,
+      };
     } catch (error) {
       console.error('Error al generar reporte de usuarios:', error);
       alert('No se pudo generar el reporte de usuarios.');
+      return null;
     }
+  };
+
+  const generateUsersPdf = async (reportType: UserReportType) => {
+    const report = await createUsersPdf(reportType);
+    if (report) report.doc.save(report.filename);
+  };
+
+  const previewUsersPdf = async (reportType: UserReportType) => {
+    const report = await createUsersPdf(reportType);
+    if (!report) return;
+    if (pdfPreview?.url) URL.revokeObjectURL(pdfPreview.url);
+    setPdfPreview({
+      url: URL.createObjectURL(report.doc.output('blob')),
+      filename: report.filename,
+      title: `Vista previa: ${report.title}`,
+    });
+  };
+
+  const closePdfPreview = () => {
+    if (pdfPreview?.url) URL.revokeObjectURL(pdfPreview.url);
+    setPdfPreview(null);
+  };
+
+  const downloadPdfPreview = () => {
+    if (!pdfPreview) return;
+    const link = document.createElement('a');
+    link.href = pdfPreview.url;
+    link.download = pdfPreview.filename;
+    link.click();
   };
 
   if (canAccess === null) {
     return (
-      <div className="p-4 md:p-8 text-muted-foreground">
+      <div className="w-full p-[0.825rem] md:p-[1.375rem] text-muted-foreground">
         Validando permisos...
       </div>
     );
@@ -819,7 +892,7 @@ export default function Users() {
 
   if (!canAccess) {
     return (
-      <div className="p-4 md:p-8">
+      <div className="w-full p-[0.825rem] md:p-[1.375rem]">
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-destructive">
           No tiene permisos para acceder a esta sección
         </div>
@@ -828,16 +901,36 @@ export default function Users() {
   }
 
   return (
-    <div className="min-w-0 p-3 sm:p-4 md:p-6 xl:p-8">
+    <div className="min-w-0 w-full p-[0.825rem] md:p-[1.375rem]">
       <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-foreground text-2xl md:text-3xl font-bold mb-2">
-            Gestión de Usuarios
-          </h1>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <div>
+            <h1 className="text-foreground text-xl md:text-2xl font-bold mb-2">
+              Gestión de Usuarios
+            </h1>
+          </div>
 
+          <button
+            type="button"
+            onClick={() => openModal()}
+            disabled={loadingRoles || roleOptions.length === 0}
+            className="flex items-center justify-center gap-2 px-4 py-2 text-lg bg-primary hover:bg-primary disabled:opacity-60 disabled:cursor-not-allowed text-[#F7EFE6] rounded-lg transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            {loadingRoles ? 'Cargando roles...' : 'Nuevo usuario'}
+          </button>
         </div>
 
-        <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-3 xl:flex xl:flex-wrap">
+        <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-2 xl:flex xl:flex-wrap">
+          <button
+            type="button"
+            onClick={() => void previewUsersPdf('active')}
+            disabled={activeUsers.length === 0}
+            className="flex items-center justify-center gap-2 rounded-lg border border-primary/25 bg-primary/10 px-4 py-2 text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Eye className="w-4 h-4" />
+            Vista activos
+          </button>
           <button
             type="button"
             onClick={() => void generateUsersPdf('active')}
@@ -850,6 +943,15 @@ export default function Users() {
 
           <button
             type="button"
+            onClick={() => void previewUsersPdf('inactive')}
+            disabled={inactiveUsers.length === 0}
+            className="flex items-center justify-center gap-2 rounded-lg border border-border bg-muted px-4 py-2 text-foreground transition-colors hover:bg-border disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Eye className="w-4 h-4" />
+            Vista de baja
+          </button>
+          <button
+            type="button"
             onClick={() => void generateUsersPdf('inactive')}
             disabled={inactiveUsers.length === 0}
             className="flex items-center justify-center gap-2 rounded-lg border border-border bg-muted px-4 py-2 text-foreground transition-colors hover:bg-border disabled:cursor-not-allowed disabled:opacity-50"
@@ -858,15 +960,6 @@ export default function Users() {
             PDF de baja
           </button>
 
-          <button
-            type="button"
-            onClick={() => openModal()}
-            disabled={loadingRoles || roleOptions.length === 0}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary disabled:opacity-60 disabled:cursor-not-allowed text-[#F7EFE6] rounded-lg transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            {loadingRoles ? 'Cargando roles...' : 'Nuevo usuario'}
-          </button>
         </div>
       </div>
 
@@ -1165,7 +1258,9 @@ export default function Users() {
               <button
                 type="button"
                 onClick={() => toggleStatus(userItem.id)}
-                className={`shrink-0 px-3 py-2 rounded-full text-xs ${
+                disabled={String(userItem.id) === String(authenticatedUser?.id)}
+                title={String(userItem.id) === String(authenticatedUser?.id) ? 'No puedes cambiar tu propio estado' : undefined}
+                className={`shrink-0 px-3 py-2 rounded-full text-xs disabled:opacity-50 disabled:cursor-not-allowed ${
                   userItem.status === enabledStatus
                     ? 'border border-primary/25 bg-primary/10 text-primary'
                     : 'border border-border bg-muted text-muted-foreground'
@@ -1182,7 +1277,7 @@ export default function Users() {
               </div>
               <div className="col-span-2">
                 <p className="text-muted-foreground">Creado</p>
-                <p className="text-foreground font-medium">{userItem.creationDate}</p>
+                <p className="text-foreground font-medium">{formatDateForDisplay(userItem.creationDate)}</p>
               </div>
             </div>
 
@@ -1200,8 +1295,9 @@ export default function Users() {
               <button
                 type="button"
                 onClick={() => openModal(userItem)}
-                className="min-w-0 rounded-xl bg-secondary px-3 py-2 text-sm text-primary transition-colors hover:bg-border"
-                title="Editar usuario"
+                disabled={String(userItem.id) === String(authenticatedUser?.id)}
+                title={String(userItem.id) === String(authenticatedUser?.id) ? 'No puedes modificar tu propio usuario' : 'Editar usuario'}
+                className="min-w-0 rounded-xl bg-secondary px-3 py-2 text-sm text-primary transition-colors hover:bg-border disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Editar
               </button>
@@ -1209,8 +1305,9 @@ export default function Users() {
               <button
                 type="button"
                 onClick={() => openDeleteModal(userItem)}
-                className="min-w-0 rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive transition-colors hover:bg-destructive/20"
-                title="Eliminar usuario"
+                disabled={String(userItem.id) === String(authenticatedUser?.id)}
+                title={String(userItem.id) === String(authenticatedUser?.id) ? 'No puedes eliminar tu propio usuario' : 'Eliminar usuario'}
+                className="min-w-0 rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Eliminar
               </button>
@@ -1268,7 +1365,9 @@ export default function Users() {
                     <button
                       type="button"
                       onClick={() => toggleStatus(userItem.id)}
-                      className={`px-3 py-1 rounded-full text-sm ${
+                      disabled={String(userItem.id) === String(authenticatedUser?.id)}
+                      title={String(userItem.id) === String(authenticatedUser?.id) ? 'No puedes cambiar tu propio estado' : undefined}
+                      className={`px-3 py-1 rounded-full text-sm disabled:opacity-50 disabled:cursor-not-allowed ${
                         userItem.status === enabledStatus
                           ? 'border border-primary/25 bg-primary/10 text-primary'
                           : 'border border-border bg-muted text-muted-foreground'
@@ -1279,7 +1378,7 @@ export default function Users() {
                   </td>
 
                   <td className="px-6 py-4 text-foreground">
-                    {userItem.creationDate}
+                    {formatDateForDisplay(userItem.creationDate)}
                   </td>
 
                   <td className="px-6 py-4">
@@ -1297,8 +1396,9 @@ export default function Users() {
                       <button
                         type="button"
                         onClick={() => openModal(userItem)}
-                        className="p-2 bg-secondary hover:bg-border text-primary rounded-lg transition-colors"
-                        title="Editar usuario"
+                        disabled={String(userItem.id) === String(authenticatedUser?.id)}
+                        title={String(userItem.id) === String(authenticatedUser?.id) ? 'No puedes modificar tu propio usuario' : 'Editar usuario'}
+                        className="p-2 bg-secondary hover:bg-border text-primary rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Edit className="w-4 h-4" />
                       </button>
@@ -1308,8 +1408,9 @@ export default function Users() {
                         onClick={() =>
                           openDeleteModal(userItem)
                         }
-                        className="rounded-lg bg-destructive/10 p-2 text-destructive transition-colors hover:bg-destructive/20"
-                        title="Eliminar usuario"
+                        disabled={String(userItem.id) === String(authenticatedUser?.id)}
+                        title={String(userItem.id) === String(authenticatedUser?.id) ? 'No puedes eliminar tu propio usuario' : 'Eliminar usuario'}
+                        className="rounded-lg bg-destructive/10 p-2 text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -1577,9 +1678,10 @@ export default function Users() {
                   }
                   required
                   inputMode="numeric"
-                  pattern="[0-9]{8,15}"
+                  pattern="[0-9]{8,12}"
                   minLength={8}
-                  maxLength={15}
+                  maxLength={12}
+                  title="Entre 8 y 12 dígitos"
                 />
 
                 <div>
@@ -1664,9 +1766,10 @@ export default function Users() {
               <div className="flex flex-col sm:flex-row sm:justify-start gap-4 pt-4">
                 <button
                   type="submit"
-                  className="w-full sm:w-auto px-4 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors"
+                  disabled={isSubmitting}
+                  className="w-full sm:w-auto px-4 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {editingUser ? 'Actualizar' : 'Crear'}
+                  {isSubmitting ? 'Guardando...' : editingUser ? 'Actualizar' : 'Crear'}
                 </button>
 
                 <button
@@ -1803,11 +1906,11 @@ export default function Users() {
               <button
                 type="button"
                 onClick={confirmDelete}
-                disabled={deleteConfirmation.trim().toLowerCase() !== 'eliminar'}
+                disabled={deleteConfirmation.trim().toLowerCase() !== 'eliminar' || isDeleting}
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-destructive px-4 py-2 text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-destructive"
               >
                 <Trash2 className="w-4 h-4" />
-                Sí, eliminar
+                {isDeleting ? 'Eliminando...' : 'Sí, eliminar'}
               </button>
 
               <button
@@ -1888,6 +1991,16 @@ export default function Users() {
           </ModalCard>
         </ModalOverlay>
       )}
+
+      {pdfPreview && (
+        <PdfPreviewModal
+          url={pdfPreview.url}
+          title={pdfPreview.title}
+          description="Revise el reporte en cualquier dispositivo antes de descargarlo."
+          onClose={closePdfPreview}
+          onDownload={downloadPdfPreview}
+        />
+      )}
     </div>
   );
 }
@@ -1904,15 +2017,26 @@ function SummaryCard({
   tone: 'primary' | 'success' | 'danger';
 }) {
   const styles = {
-    primary: 'bg-secondary text-primary',
-    success: 'border border-primary/25 bg-primary/10 text-primary',
-    danger: 'border border-destructive/25 bg-destructive/10 text-destructive',
+    primary: {
+      card: 'border-primary/35 bg-primary/10',
+      icon: 'bg-primary text-primary-foreground shadow-sm',
+    },
+    success: {
+      card: 'border-accent/40 bg-accent/10',
+      icon: 'bg-accent text-accent-foreground shadow-sm',
+    },
+    danger: {
+      card: 'border-destructive/35 bg-destructive/10',
+      icon: 'bg-destructive text-destructive-foreground shadow-sm',
+    },
   };
 
   return (
-    <article className="bg-card border border-border rounded-2xl p-4 shadow-md flex items-center gap-4">
+    <article
+      className={`rounded-2xl border p-4 shadow-md flex items-center gap-4 transition-colors ${styles[tone].card}`}
+    >
       <div
-        className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${styles[tone]}`}
+        className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${styles[tone].icon}`}
       >
         {icon}
       </div>
@@ -1947,6 +2071,7 @@ function FormInput({
   maxLength,
   pattern,
   inputMode,
+  title,
 }: {
   label: string;
   value: string;
@@ -1957,6 +2082,7 @@ function FormInput({
   maxLength?: number;
   pattern?: string;
   inputMode?: 'none' | 'text' | 'tel' | 'url' | 'email' | 'numeric' | 'decimal' | 'search';
+  title?: string;
 }) {
   return (
     <div>
@@ -1974,6 +2100,7 @@ function FormInput({
         maxLength={maxLength}
         pattern={pattern}
         inputMode={inputMode}
+        title={title}
       />
     </div>
   );

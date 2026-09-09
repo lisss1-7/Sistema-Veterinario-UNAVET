@@ -465,7 +465,7 @@ const crearCita = async (req, res) => {
 
     if (!isValidPhone(tutorPhone)) {
       return res.status(400).json({
-        message: 'El teléfono debe contener únicamente entre 8 y 15 dígitos',
+        message: 'El tel\u00e9fono debe contener \u00fanicamente entre 8 y 12 d\u00edgitos',
       });
     }
 
@@ -649,7 +649,7 @@ const actualizarCita = async (req, res) => {
 
     if (!isValidPhone(tutorPhone)) {
       return res.status(400).json({
-        message: 'El teléfono debe contener únicamente entre 8 y 15 dígitos',
+        message: 'El teléfono debe contener únicamente entre 8 y 12 dígitos',
       });
     }
 

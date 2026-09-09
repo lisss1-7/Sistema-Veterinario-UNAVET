@@ -1,8 +1,10 @@
 import { useState, useEffect, type FormEvent, type ReactNode } from 'react';
+import { useLocation } from 'react-router';
 import { toast } from 'sonner';
 import {
   Search,
   Plus,
+  Eye,
   Edit,
   Trash2,
   Scissors,
@@ -13,10 +15,16 @@ import {
   AlertTriangle,
   X,
   Clock,
+  ChevronLeft,
+  ChevronRight,
+  CalendarDays,
+  List,
 } from 'lucide-react';
 import type { GroomingAppointment } from '../utils/types';
 import SearchablePatientSelect from '../components/SearchablePatientSelect';
 import ThemedSelect from '../components/ThemedSelect';
+import InformationCard from '../components/InformationCard';
+import { formatDateForDisplay } from '../utils/dateFormat';
 import {
   getTodayLocal,
   isValidName,
@@ -58,14 +66,52 @@ type CatalogItem = {
   [key: string]: any;
 };
 
+const toLocalDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getCalendarDays = (month: Date) => {
+  const year = month.getFullYear();
+  const monthIndex = month.getMonth();
+  const firstDay = new Date(year, monthIndex, 1);
+  const daysBeforeMonth = (firstDay.getDay() + 6) % 7;
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+  const daysAfterMonth =
+    (7 - ((daysBeforeMonth + daysInMonth) % 7)) % 7;
+  const visibleDayCount = daysBeforeMonth + daysInMonth + daysAfterMonth;
+
+  return Array.from({ length: visibleDayCount }, (_, index) =>
+    new Date(year, monthIndex, 1 - daysBeforeMonth + index)
+  );
+};
+
 export default function Grooming() {
+  const location = useLocation();
   const [grooming, setGrooming] = useState<GroomingAppointment[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterDate, setFilterDate] = useState('');
+  const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
+  const [calendarMonth, setCalendarMonth] = useState(
+    () => new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+  );
+
+  useEffect(() => {
+    if (filterDate) {
+      const date = new Date(`${filterDate}T00:00:00`);
+      if (!Number.isNaN(date.getTime())) {
+        setCalendarMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+      }
+    }
+  }, [filterDate]);
 
   const [showModal, setShowModal] = useState(false);
+  const [selectedGrooming, setSelectedGrooming] =
+    useState<GroomingAppointment | null>(null);
   const [editingGrooming, setEditingGrooming] =
     useState<GroomingAppointment | null>(null);
 
@@ -95,6 +141,7 @@ export default function Grooming() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showDeleteSuccessModal, setShowDeleteSuccessModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [formError, setFormError] = useState<{ title: string; message: string } | null>(null);
 
   const [infoModalType, setInfoModalType] = useState<InfoModalType>(null);
 
@@ -103,6 +150,23 @@ export default function Grooming() {
     loadPatients();
     loadCatalogs();
   }, []);
+
+  useEffect(() => {
+    const targetId = location.state && typeof location.state === 'object'
+      ? (location.state as { highlightGroomingId?: string }).highlightGroomingId
+      : undefined;
+
+    if (!targetId || grooming.length === 0) return;
+
+    const match = grooming.find(
+      (groomingItem) => String(groomingItem.id) === String(targetId)
+    );
+
+    if (match) {
+      setSelectedGrooming(match);
+      setFilterDate(match.date);
+    }
+  }, [grooming, location.state]);
 
   const mapCatalogNames = (items: CatalogItem[]) =>
     items.map((item) => item.nombre);
@@ -269,8 +333,8 @@ export default function Grooming() {
 
   const getTypeClass = (type?: string) => {
     return isClinicType(type)
-      ? 'bg-blue-100 text-blue-800'
-      : 'bg-purple-100 text-purple-800';
+      ? 'bg-primary/15 text-foreground'
+      : 'bg-accent/20 text-foreground';
   };
 
   const getTypeLabel = (type?: string) => {
@@ -325,7 +389,7 @@ export default function Grooming() {
     const today = new Date().toISOString().split('T')[0];
 
     const todayGrooming = data.filter(
-      (g: GroomingAppointment) => g.date === today
+      (g: GroomingAppointment) => g.date === today && !isCancelledStatus(g.status)
     );
 
     const inClinic = todayGrooming.filter((g: GroomingAppointment) =>
@@ -367,6 +431,20 @@ export default function Grooming() {
     return matchesSearch && matchesType && matchesStatus && matchesDate;
   });
 
+  const calendarDays = getCalendarDays(calendarMonth);
+  const groomingByDate = filteredGrooming.reduce<Record<string, GroomingAppointment[]>>((days, item) => {
+    (days[item.date] ||= []).push(item);
+    return days;
+  }, {});
+  Object.values(groomingByDate).forEach((items) => items.sort((a, b) => a.time.localeCompare(b.time)));
+  const visibleGroomingCount = calendarDays.reduce(
+    (count, day) => count + (groomingByDate[toLocalDateKey(day)]?.length || 0), 0
+  );
+  const changeCalendarMonth = (offset: number) => {
+    setFilterDate('');
+    setCalendarMonth((month) => new Date(month.getFullYear(), month.getMonth() + offset, 1));
+  };
+
   const isTimeUnavailable = (time: string) => {
     return grooming.some(
       (g: GroomingAppointment) =>
@@ -387,33 +465,48 @@ export default function Grooming() {
       (formData.tutorMiddleName && !isValidName(formData.tutorMiddleName)) ||
       (formData.tutorSecondSurname && !isValidName(formData.tutorSecondSurname))
     ) {
-      toast.error('Revisa los nombres', {
-        description:
-          'Solo pueden contener letras y deben tener al menos 2 caracteres.',
+      setFormError({
+        title: 'Revisa los nombres',
+        message: 'Solo pueden contener letras y deben tener al menos 2 caracteres.',
       });
       return;
     }
     if (!isValidPhone(formData.tutorPhone)) {
-      alert('El teléfono debe contener únicamente entre 8 y 15 dígitos.');
+      setFormError({
+        title: 'Teléfono inválido',
+        message: 'El teléfono debe contener únicamente entre 8 y 15 dígitos.',
+      });
       return;
     }
     if (!formData.date || formData.date < getTodayLocal()) {
-      alert('La fecha de la cita no puede estar en el pasado.');
+      setFormError({
+        title: 'Fecha inválida',
+        message: 'La fecha de la cita no puede estar en el pasado.',
+      });
       return;
     }
     if (!formData.patientId && !String(formData.age || '').trim()) {
-      alert('Debe escribir la edad de la mascota.');
+      setFormError({
+        title: 'Falta la edad',
+        message: 'Debe escribir la edad de la mascota.',
+      });
       return;
     }
     if (!isValidAgeSpacing(formData.age)) {
-      alert('Separe el número de la unidad de edad. Ejemplo: 2 años.');
+      setFormError({
+        title: 'Edad inválida',
+        message: 'Separe el número de la unidad de edad. Ejemplo: 2 años.',
+      });
       return;
     }
     if (
       !isNonNegativeNumber(formData.groomingCost) ||
       (isTransportType(formData.type) && !isNonNegativeNumber(formData.transportCost))
     ) {
-      alert('Los costos deben ser números válidos mayores o iguales a cero.');
+      setFormError({
+        title: 'Costos inválidos',
+        message: 'Los costos deben ser números válidos mayores o iguales a cero.',
+      });
       return;
     }
 
@@ -458,7 +551,13 @@ export default function Grooming() {
       setShowSuccessModal(true);
     } catch (error) {
       console.error('Error al guardar grooming:', error);
-      alert('No se pudo guardar la cita de grooming. Revisa el backend o la consola.');
+      setFormError({
+        title: 'No se pudo guardar la cita',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Revisa el backend o la consola para más detalles.',
+      });
     }
   };
 
@@ -535,13 +634,18 @@ export default function Grooming() {
       }
 
       await loadGrooming();
+      setSelectedGrooming((current) =>
+        current?.id === id
+          ? { ...current, status: newStatus as GroomingAppointment['status'] }
+          : current
+      );
     } catch (error) {
       console.error('Error al cambiar estado de grooming:', error);
       alert('No se pudo cambiar el estado de la cita de grooming.');
     }
   };
 
-  const openModal = (groomingItem?: GroomingAppointment) => {
+  const openModal = (groomingItem?: GroomingAppointment, date?: string) => {
     if (groomingItem) {
       const linkedPatient = patients.find(
         (patient) => patient.id === (groomingItem as GroomingFormData).patientId
@@ -565,7 +669,7 @@ export default function Grooming() {
       setCustomBreed('');
       setFormData({
         type: getDefaultGroomingType(),
-        date: new Date().toISOString().split('T')[0],
+        date: date || getTodayLocal(),
       });
     }
 
@@ -573,6 +677,7 @@ export default function Grooming() {
   };
 
   const closeFormModal = () => {
+    setFormError(null);
     setShowModal(false);
     setEditingGrooming(null);
     setFormData({ type: getDefaultGroomingType() });
@@ -586,114 +691,95 @@ export default function Grooming() {
   };
 
   return (
-    <div className="p-4 md:p-8">
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
+    <div className="p-[0.825rem] md:p-[1.375rem]">
+      <div className="flex flex-wrap items-center gap-[0.825rem] mb-[0.825rem]">
         <div>
-          <h1 className="text-foreground text-2xl md:text-3xl font-bold mb-2">
+          <h1 className="text-foreground text-xl md:text-2xl font-bold">
             Grooming
           </h1>
         </div>
 
         <button
           onClick={() => openModal()}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-br from-primary to-primary hover:from-[#7a5f3c] hover:to-primary text-[#F7EFE6] rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105"
+          className="flex items-center justify-center gap-2 px-[0.825rem] py-[0.55rem] text-[0.9625rem] bg-gradient-to-br from-primary to-primary hover:from-[#7a5f3c] hover:to-primary text-[#F7EFE6] rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105"
         >
           <Plus className="w-4 h-4 drop-shadow-sm" strokeWidth={2.5} />
           Nueva cita de grooming
         </button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        <div className="bg-gradient-to-br from-primary to-muted-foreground text-white rounded-xl p-4 md:p-5 shadow-xl transform transition-all duration-300 hover:scale-[1.03] hover:shadow-2xl group">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm opacity-90 mb-1 font-medium">
-                Grooming en clínica hoy
-              </p>
-              <p className="text-3xl font-bold drop-shadow-md">{stats.inClinic}</p>
-            </div>
-
-            <div className="bg-white/20 backdrop-blur-sm rounded-xl p-2.5 shadow-lg group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
-              <Scissors className="w-10 h-10 drop-shadow-md" strokeWidth={2} />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-gradient-to-br from-muted-foreground to-muted-foreground text-white rounded-xl p-4 md:p-5 shadow-xl transform transition-all duration-300 hover:scale-[1.03] hover:shadow-2xl group">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm opacity-90 mb-1 font-medium">Con transporte hoy</p>
-              <p className="text-3xl font-bold drop-shadow-md">{stats.withTransport}</p>
-            </div>
-
-            <div className="bg-white/20 backdrop-blur-sm rounded-xl p-2.5 shadow-lg group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
-              <Truck className="w-10 h-10 drop-shadow-md" strokeWidth={2} />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-gradient-to-br from-accent to-[#d4a574] text-white rounded-xl p-4 md:p-5 shadow-xl transform transition-all duration-300 hover:scale-[1.03] hover:shadow-2xl group">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm opacity-90 mb-1 font-medium">
-                Ingresos estimados hoy
-              </p>
-              <p className="text-3xl font-bold drop-shadow-md">Q{stats.estimatedIncome}</p>
-            </div>
-
-            <div className="bg-white/20 backdrop-blur-sm rounded-xl p-2.5 shadow-lg group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
-              <Wallet className="w-10 h-10 drop-shadow-md" strokeWidth={2} />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-gradient-to-br from-primary to-primary text-white rounded-xl p-4 md:p-5 shadow-xl transform transition-all duration-300 hover:scale-[1.03] hover:shadow-2xl group">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm opacity-90 mb-1 font-medium">
-                Domicilios disponibles
-              </p>
-              <p className="text-3xl font-bold drop-shadow-md">
-                {stats.availableTransport}/{transportCapacity}
-              </p>
-            </div>
-
-            <div className="bg-white/20 backdrop-blur-sm rounded-xl p-2.5 shadow-lg group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
-              <MapPin className="w-10 h-10 drop-shadow-md" strokeWidth={2} />
-            </div>
+        <div className="sm:ml-auto">
+          <div className="flex gap-1 rounded-xl border border-border bg-card p-1" aria-label="Vista de grooming">
+            <button type="button" aria-pressed={viewMode === 'calendar'} onClick={() => setViewMode('calendar')}
+              className={`flex items-center gap-2 rounded-lg px-[0.6875rem] py-[0.4125rem] text-[0.825rem] font-semibold transition-colors ${viewMode === 'calendar' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>
+              <CalendarDays className="h-4 w-4" /> Calendario
+            </button>
+            <button type="button" aria-pressed={viewMode === 'list'} onClick={() => setViewMode('list')}
+              className={`flex items-center gap-2 rounded-lg px-[0.6875rem] py-[0.4125rem] text-[0.825rem] font-semibold transition-colors ${viewMode === 'list' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>
+              <List className="h-4 w-4" /> Lista
+            </button>
           </div>
         </div>
       </div>
 
-      <div className="bg-card rounded-xl p-4 md:p-6 shadow-lg mb-6 border border-border">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-[0.6875rem] mb-[0.825rem]">
+        <InformationCard
+          compact
+          label="Grooming en clínica hoy"
+          value={stats.inClinic}
+          icon={<Scissors className="h-6 w-6" strokeWidth={2} />}
+          tone="primary"
+        />
+        <InformationCard
+          compact
+          label="Grooming con transporte hoy"
+          value={stats.withTransport}
+          icon={<Truck className="h-6 w-6" strokeWidth={2} />}
+          tone="secondary"
+        />
+        <InformationCard
+          compact
+          label="Ingresos estimados hoy"
+          value={`Q${stats.estimatedIncome}`}
+          icon={<Wallet className="h-6 w-6" strokeWidth={2} />}
+          tone="accent"
+        />
+        <InformationCard
+          compact
+          label="Domicilios disponibles"
+          value={`${stats.availableTransport}/${transportCapacity}`}
+          icon={<MapPin className="h-6 w-6" strokeWidth={2} />}
+          tone="earth"
+        />
+      </div>
+
+      <div className="bg-card rounded-xl p-[0.825rem] shadow-sm mb-[0.825rem] border border-border">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-[0.825rem]">
           <div className="md:col-span-2">
-            <label className="block text-foreground mb-2 text-sm">
+            <label className="block text-foreground mb-1 text-[0.825rem]">
               Buscar
             </label>
 
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
 
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Buscar por mascota o tutor"
-                className="w-full pl-10 pr-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+                className="w-full pl-9 pr-3 py-[0.4125rem] text-[0.9625rem] bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-foreground mb-2 text-sm">
+            <label className="block text-foreground mb-1 text-[0.825rem]">
               Tipo
             </label>
 
             <ThemedSelect
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
-              className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+              className="w-full px-[0.825rem] py-[0.4125rem] text-[0.9625rem] bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
             >
               <option value="">Todos</option>
 
@@ -706,14 +792,14 @@ export default function Grooming() {
           </div>
 
           <div>
-            <label className="block text-foreground mb-2 text-sm">
+            <label className="block text-foreground mb-1 text-[0.825rem]">
               Estado
             </label>
 
             <ThemedSelect
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+              className="w-full px-[0.825rem] py-[0.4125rem] text-[0.9625rem] bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
             >
               <option value="">Todos</option>
 
@@ -726,7 +812,7 @@ export default function Grooming() {
           </div>
 
           <div>
-            <label className="block text-foreground mb-2 text-sm">
+            <label className="block text-foreground mb-1 text-[0.825rem]">
               Fecha
             </label>
 
@@ -734,12 +820,72 @@ export default function Grooming() {
               type="date"
               value={filterDate}
               onChange={(e) => setFilterDate(e.target.value)}
-              className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+              className="w-full px-[0.825rem] py-[0.4125rem] text-[0.9625rem] bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
             />
           </div>
         </div>
       </div>
 
+      {viewMode === 'calendar' ? (
+        <section aria-label="Calendario de grooming" className="overflow-hidden rounded-2xl border border-primary/30 bg-card shadow-lg">
+          <div className="flex flex-col gap-2 border-b border-primary/20 bg-primary/5 px-[0.825rem] py-[0.6875rem] sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-[0.825rem]">
+              <div className="rounded-xl bg-primary p-2 text-primary-foreground"><Scissors className="h-5 w-5" /></div>
+              <div>
+                <h2 className="text-base font-bold capitalize text-foreground">{calendarMonth.toLocaleDateString('es-GT', { month: 'long', year: 'numeric' })}</h2>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button type="button" aria-label="Mes anterior" onClick={() => changeCalendarMonth(-1)} className="rounded-lg bg-secondary p-2 text-foreground hover:bg-border"><ChevronLeft className="h-5 w-5" /></button>
+              <button type="button" onClick={() => { setFilterDate(''); const today = new Date(); setCalendarMonth(new Date(today.getFullYear(), today.getMonth(), 1)); }} className="rounded-lg bg-secondary px-[0.825rem] py-[0.55rem] text-[0.825rem] font-semibold text-foreground hover:bg-border">Hoy</button>
+              <button type="button" aria-label="Mes siguiente" onClick={() => changeCalendarMonth(1)} className="rounded-lg bg-secondary p-2 text-foreground hover:bg-border"><ChevronRight className="h-5 w-5" /></button>
+            </div>
+          </div>
+          {filterDate && (
+            <div className="flex border-b border-border px-4 py-3 text-[0.825rem] text-muted-foreground">
+            <button type="button" onClick={() => setFilterDate('')} className="ml-auto flex items-center gap-1 rounded-lg bg-secondary px-2 py-1 text-foreground hover:bg-border">{formatDateForDisplay(filterDate)} <X className="h-3.5 w-3.5" /><span className="sr-only">Quitar filtro de fecha</span></button>
+            </div>
+          )}
+          <div className="overflow-x-auto">
+            <div className="min-w-[840px]">
+              <div className="grid grid-cols-7 bg-primary/10">
+                {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((day) => <div key={day} className="py-[0.4125rem] text-center text-[0.825rem] font-bold uppercase tracking-wider text-foreground">{day}</div>)}
+              </div>
+              <div className="grid grid-cols-7">
+                {calendarDays.map((day) => {
+                  const dateKey = toLocalDateKey(day);
+                  const items = groomingByDate[dateKey] || [];
+                  const isToday = dateKey === getTodayLocal();
+                  const isCurrentMonth = day.getMonth() === calendarMonth.getMonth();
+                  return (
+                    <div key={dateKey} className={`flex h-[8.8rem] flex-col border-b border-r border-border p-2 ${isCurrentMonth ? 'bg-card' : 'bg-muted/40'} ${isToday || filterDate === dateKey ? 'ring-2 ring-inset ring-primary/50' : ''}`}>
+                      <div className="mb-1 flex shrink-0 items-center justify-between">
+                        <span className={`flex h-7 w-7 items-center justify-center rounded-lg text-[0.9625rem] font-bold ${isToday ? 'bg-primary text-primary-foreground' : isCurrentMonth ? 'text-foreground' : 'text-muted-foreground'}`}>{day.getDate()}</span>
+                        {dateKey >= getTodayLocal() && <button type="button" aria-label={`Agendar grooming el ${formatDateForDisplay(dateKey)}`} title="Nuevo grooming en este día" onClick={() => openModal(undefined, dateKey)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary"><Plus className="h-4 w-4" /></button>}
+                      </div>
+                      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto">
+                        {items.map((item) => (
+                          <button type="button" key={item.id} onClick={() => setSelectedGrooming(item)}
+                            className={`w-full rounded-lg border border-border border-l-4 bg-secondary/40 px-1.5 py-1 text-left transition-colors hover:bg-secondary ${isTransportType(item.type) ? 'border-l-accent' : 'border-l-primary'}`}>
+                            <span className="flex items-center justify-between gap-1 text-[0.825rem] font-semibold text-muted-foreground"><span>{item.time.slice(0, 5)}</span>{isTransportType(item.type) ? <Truck aria-label="Con transporte" className="h-3.5 w-3.5" /> : <Scissors aria-label={getTypeLabel(item.type)} className="h-3.5 w-3.5" />}</span>
+                            <span className="mt-1 block truncate text-[0.825rem] font-bold text-foreground" title={item.petName}>{item.petName}</span>
+                            <span className="block truncate text-[11px] text-muted-foreground">{getTypeLabel(item.type)}</span>
+                            <span className={`mt-1.5 inline-block rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${getStatusClass(item.status)}`}>{item.status}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+          <div className="border-t border-border px-[0.825rem] py-[0.55rem] text-[0.825rem] text-muted-foreground">
+            {visibleGroomingCount === 0 ? 'No hay servicios de grooming en este calendario con los filtros seleccionados.' : `${visibleGroomingCount} servicio${visibleGroomingCount === 1 ? '' : 's'} en el calendario`}
+          </div>
+        </section>
+      ) : (
+        <>
       <div className="lg:hidden space-y-4">
         {filteredGrooming.map((groom) => (
           <article
@@ -749,7 +895,7 @@ export default function Grooming() {
             <div className="flex items-start justify-between gap-3 mb-4">
               <div>
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                  {groom.date} • {groom.time}
+                  {formatDateForDisplay(groom.date)} • {groom.time}
                 </p>
                 <h3 className="text-foreground text-lg font-semibold">
                   {groom.petName}
@@ -797,6 +943,16 @@ export default function Grooming() {
 
             <div className="mt-4 flex items-center gap-2">
               <button
+                type="button"
+                onClick={() => setSelectedGrooming(groom)}
+                className="flex-1 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-xl transition-colors"
+                title="Ver detalles"
+              >
+                Ver
+              </button>
+
+              <button
+                type="button"
                 onClick={() => openModal(groom)}
                 className="flex-1 px-4 py-2 bg-secondary hover:bg-border text-primary rounded-xl transition-colors"
                 title="Editar"
@@ -805,6 +961,7 @@ export default function Grooming() {
               </button>
 
               <button
+                type="button"
                 onClick={() => openDeleteModal(groom)}
                 className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-600 rounded-xl transition-colors"
                 title="Eliminar"
@@ -843,7 +1000,7 @@ export default function Grooming() {
               {filteredGrooming.map((groom) => (
                 <tr key={groom.id} className="hover:bg-muted">
                   <td className="px-6 py-4 text-foreground">
-                    {groom.date}
+                    {formatDateForDisplay(groom.date)}
                   </td>
 
                   <td className="px-6 py-4 text-foreground">
@@ -901,6 +1058,17 @@ export default function Grooming() {
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
                       <button
+                        type="button"
+                        onClick={() => setSelectedGrooming(groom)}
+                        className="p-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg transition-colors"
+                        title="Ver detalles"
+                        aria-label={`Ver cita de grooming de ${groom.petName}`}
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        type="button"
                         onClick={() => openModal(groom)}
                         className="p-2 bg-secondary hover:bg-border text-primary rounded-lg transition-colors"
                         title="Editar"
@@ -909,6 +1077,7 @@ export default function Grooming() {
                       </button>
 
                       <button
+                        type="button"
                         onClick={() => openDeleteModal(groom)}
                         className="p-2 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg transition-colors"
                         title="Eliminar"
@@ -935,9 +1104,165 @@ export default function Grooming() {
         </div>
       </div>
 
+        </>
+      )}
+
+      {selectedGrooming && (
+        <div className="modal-backdrop fixed inset-0 flex items-center justify-center bg-slate-900/5 p-4 backdrop-blur-[0.5px] z-50">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="grooming-detail-title"
+            className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-[28px] border border-border/80 bg-card p-6 shadow-[0_30px_80px_rgba(15,23,42,0.12)]"
+          >
+            <button
+              type="button"
+              onClick={() => setSelectedGrooming(null)}
+              className="absolute top-4 right-4 p-2 bg-muted hover:bg-border text-foreground rounded-lg transition-colors"
+              aria-label="Cerrar detalle"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <p className="mb-1 text-sm font-semibold uppercase tracking-[0.12em] text-primary/80">
+              {formatDateForDisplay(selectedGrooming.date)} · {selectedGrooming.time.slice(0, 5)}
+            </p>
+            <h3
+              id="grooming-detail-title"
+              className="mb-5 pr-10 text-2xl font-black tracking-tight text-foreground"
+            >
+              {selectedGrooming.petName}
+            </h3>
+
+            <div className="grid grid-cols-2 gap-4 text-sm mb-4">
+              <div>
+                <p className="text-muted-foreground font-semibold">Tutor</p>
+                <p className="text-foreground">{selectedGrooming.tutorName}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground font-semibold">Teléfono</p>
+                <p className="text-foreground">{selectedGrooming.tutorPhone}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground font-semibold">Raza</p>
+                <p className="text-foreground">
+                  {selectedGrooming.breed || 'No especificada'}
+                </p>
+              </div>
+              <div>
+                <p className="text-muted-foreground font-semibold">Tamaño</p>
+                <p className="text-foreground">
+                  {selectedGrooming.animalSize || 'No especificado'}
+                </p>
+              </div>
+              <div>
+                <p className="text-muted-foreground font-semibold">Edad</p>
+                <p className="text-foreground">
+                  {selectedGrooming.age || 'No especificada'}
+                </p>
+              </div>
+              <div>
+                <p className="text-muted-foreground font-semibold">Tipo</p>
+                <p className="text-foreground">{getTypeLabel(selectedGrooming.type)}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground font-semibold">Grooming</p>
+                <p className="text-foreground">
+                  Q{Number(selectedGrooming.groomingCost || 0).toFixed(2)}
+                </p>
+              </div>
+              <div>
+                <p className="text-muted-foreground font-semibold">Transporte</p>
+                <p className="text-foreground">
+                  {selectedGrooming.transportCost
+                    ? `Q${Number(selectedGrooming.transportCost).toFixed(2)}`
+                    : 'No aplica'}
+                </p>
+              </div>
+            </div>
+
+            {isTransportType(selectedGrooming.type) && (
+              <div className="grid grid-cols-2 gap-4 text-sm mb-4">
+                <div>
+                  <p className="text-muted-foreground font-semibold">Dirección</p>
+                  <p className="text-foreground">
+                    {selectedGrooming.address || 'No especificada'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground font-semibold">Código de acceso</p>
+                  <p className="text-foreground">
+                    {selectedGrooming.accessCode || 'No especificado'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="mb-4">
+              <p className="text-muted-foreground text-sm font-semibold">Observaciones</p>
+              <p className="whitespace-pre-wrap text-foreground text-sm leading-6">
+                {selectedGrooming.observations || 'Sin observaciones registradas.'}
+              </p>
+            </div>
+
+            <div className="mb-5">
+              <label className="block text-foreground text-sm font-bold mb-2">
+                Estado de la cita
+              </label>
+              <ThemedSelect
+                value={selectedGrooming.status}
+                onChange={(event) =>
+                  void changeStatus(selectedGrooming.id, event.target.value)
+                }
+                className={`w-full px-3 py-2 rounded-lg border font-semibold ${getStatusClass(
+                  selectedGrooming.status
+                )}`}
+              >
+                {groomingStatusOptions.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </ThemedSelect>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  const groomingItem = selectedGrooming;
+                  setSelectedGrooming(null);
+                  openModal(groomingItem);
+                }}
+                className="flex-1 rounded-xl bg-primary px-4 py-2.5 font-semibold text-[#F7EFE6] shadow-lg shadow-primary/20 transition-all duration-200 hover:-translate-y-0.5 hover:brightness-110"
+              >
+                <span className="flex items-center justify-center gap-2">
+                  <Edit className="w-4 h-4" />
+                  Editar
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const groomingItem = selectedGrooming;
+                  setSelectedGrooming(null);
+                  openDeleteModal(groomingItem);
+                }}
+                className="flex-1 rounded-xl bg-red-100 px-4 py-2.5 font-semibold text-red-700 transition-colors hover:bg-red-200"
+              >
+                <span className="flex items-center justify-center gap-2">
+                  <Trash2 className="w-4 h-4" />
+                  Eliminar
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showModal && (
         <div className="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-50">
-          <div className="bg-card border border-border rounded-2xl p-4 md:p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+          <div className="patient-form-shell bg-card border border-border rounded-2xl p-4 md:p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
                 <h2 className="text-foreground text-xl">
@@ -960,7 +1285,7 @@ export default function Grooming() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="patient-form space-y-4">
               <div>
                 <label className="block text-foreground mb-2 text-sm">
                   Vincular a paciente existente, opcional
@@ -1250,9 +1575,10 @@ export default function Grooming() {
                   required
                   type="tel"
                   inputMode="numeric"
-                  pattern="[0-9]{8,15}"
+                  pattern="[0-9]{8,12}"
                   minLength={8}
-                  maxLength={15}
+                  maxLength={12}
+                  title="Entre 8 y 12 dígitos"
                 />
 
                 <FormInput
@@ -1553,5 +1879,3 @@ function ModalCard({ children }: { children: ReactNode }) {
     </div>
   );
 }
-
-

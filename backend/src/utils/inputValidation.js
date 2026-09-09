@@ -1,5 +1,5 @@
 const NAME_PATTERN = /^[\p{L}\p{M}]+(?:[\s'-][\p{L}\p{M}]+)*$/u;
-const PHONE_PATTERN = /^\d{8,15}$/;
+const PHONE_PATTERN = /^\d{8,12}$/;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const isValidName = (value) =>
@@ -7,6 +7,12 @@ const isValidName = (value) =>
   value.trim().length >= 2 &&
   value.trim().length <= 80 &&
   NAME_PATTERN.test(value.trim());
+
+const isValidPetName = (value) =>
+  typeof value === 'string' &&
+  value.trim().length >= 2 &&
+  value.trim().length <= 80 &&
+  /^[\p{L}\p{M}0-9]+(?:[\s'-][\p{L}\p{M}0-9]+)*$/u.test(value.trim());
 
 const isValidPhone = (value) =>
   typeof value === 'string' && PHONE_PATTERN.test(value);
@@ -32,6 +38,7 @@ const getTodayLocal = () => {
 
 module.exports = {
   isValidName,
+  isValidPetName,
   isValidPhone,
   isValidAgeSpacing,
   isValidIsoDate,

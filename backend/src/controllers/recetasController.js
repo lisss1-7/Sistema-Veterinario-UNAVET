@@ -363,14 +363,12 @@ const crearReceta = async (req, res) => {
       patientId,
       diagnosis,
       observations,
-      veterinarianId,
       medications,
     } = req.body;
 
-    if (!patientId || !diagnosis || !veterinarianId) {
+    if (!patientId || !diagnosis) {
       return res.status(400).json({
-        message:
-          'Paciente, veterinario y diagnóstico son obligatorios',
+        message: 'Paciente y diagnóstico son obligatorios',
       });
     }
 
@@ -410,6 +408,17 @@ const crearReceta = async (req, res) => {
     }
 
     const tutorId = patientRows[0].tutor_id;
+
+    const [veterinarianRows] = await connection.query(
+      `
+      SELECT veterinario_id
+      FROM veterinarios
+      WHERE usuario_id = ? AND activo = 1
+      LIMIT 1
+      `,
+      [req.user?.id || null]
+    );
+    const veterinarianId = veterinarianRows[0]?.veterinario_id || null;
 
     const [recetaResult] =
       await connection.query(

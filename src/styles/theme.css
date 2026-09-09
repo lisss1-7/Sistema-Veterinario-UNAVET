@@ -2,6 +2,7 @@
 
 :root {
   color-scheme: light;
+  --font-sans: 'Manrope', 'Segoe UI', sans-serif;
   --font-size: 19px;
   --background: #f5f0eb;
   --app-background: linear-gradient(135deg, #f5f0eb 0%, #e8ddd0 100%);
@@ -191,9 +192,27 @@
 
   body {
     @apply text-foreground;
+    font-family: var(--font-sans);
     background: var(--app-background);
     background-attachment: fixed;
     transition: background-color 200ms ease, color 200ms ease;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  p,
+  label,
+  button,
+  input,
+  select,
+  textarea,
+  span,
+  div {
+    font-family: var(--font-sans);
   }
 
   .login-page {
@@ -340,6 +359,168 @@
       linear-gradient(315deg, rgb(201 150 90 / 5%) 25%, transparent 25%),
       radial-gradient(circle at 88% 4%, rgb(201 150 90 / 13%), transparent 26%),
       radial-gradient(circle at 4% 88%, rgb(185 120 88 / 10%), transparent 28%);
+  }
+
+  .patient-form-shell {
+    --patient-form-accent: #8b6f47;
+    --patient-form-accent-hover: #6b5236;
+    --patient-form-accent-soft: #efe2d2;
+    --patient-form-warm: #c9965a;
+    --patient-form-surface: #fffaf5;
+    --patient-form-input: #ffffff;
+    --patient-form-panel: #f7eee4;
+    --patient-form-border: #d9bea0;
+    --patient-form-heading: #4a3422;
+    position: relative;
+    overflow: hidden;
+    border-color: var(--patient-form-border) !important;
+    background:
+      radial-gradient(circle at 100% 0%, rgb(200 120 98 / 13%), transparent 30%),
+      linear-gradient(145deg, var(--patient-form-surface), #f4e8db) !important;
+    box-shadow: 0 24px 60px rgb(75 50 30 / 16%);
+  }
+
+  .patient-form-shell::before {
+    position: absolute;
+    inset: 0 0 auto;
+    height: 4px;
+    content: '';
+    background: linear-gradient(
+      90deg,
+      var(--patient-form-accent),
+      #b99572 58%,
+      var(--patient-form-warm)
+    );
+  }
+
+  .patient-form-shell h2 {
+    color: var(--patient-form-heading);
+    font-weight: 700;
+  }
+
+  .patient-form-shell .patient-form-section,
+  .patient-form-shell form .bg-muted.border {
+    border-color: color-mix(in srgb, var(--patient-form-accent) 24%, white) !important;
+    background: linear-gradient(
+      135deg,
+      var(--patient-form-panel),
+      color-mix(in srgb, var(--patient-form-panel) 74%, white)
+    ) !important;
+  }
+
+  .patient-form-shell .patient-form-section .bg-secondary {
+    border-color: var(--patient-form-border) !important;
+    background-color: var(--patient-form-accent-soft) !important;
+  }
+
+  .patient-form-shell .patient-form input:not([type='file']):not([type='radio']):not([type='checkbox']),
+  .patient-form-shell .patient-form textarea,
+  .patient-form-shell .patient-form .themed-select-trigger {
+    border-color: var(--patient-form-border) !important;
+    background-color: var(--patient-form-input) !important;
+    box-shadow: 0 1px 2px rgb(75 50 30 / 7%);
+    transition: border-color 160ms ease, box-shadow 160ms ease,
+      background-color 160ms ease;
+  }
+
+  .patient-form-shell .patient-form input:not([type='file']):not([type='radio']):not([type='checkbox']):hover,
+  .patient-form-shell .patient-form textarea:hover,
+  .patient-form-shell .patient-form .themed-select-trigger:hover {
+    border-color: color-mix(in srgb, var(--patient-form-accent) 62%, white) !important;
+  }
+
+  .patient-form-shell .patient-form input:not([type='file']):not([type='radio']):not([type='checkbox']):focus,
+  .patient-form-shell .patient-form textarea:focus,
+  .patient-form-shell .patient-form .themed-select-trigger:focus,
+  .patient-form-shell .patient-form .themed-select-trigger[data-state='open'] {
+    border-color: var(--patient-form-accent) !important;
+    background-color: #ffffff !important;
+    box-shadow: 0 0 0 3px rgb(139 111 71 / 20%) !important;
+  }
+
+  .patient-form-shell .patient-form input[type='radio'],
+  .patient-form-shell .patient-form input[type='checkbox'] {
+    accent-color: var(--patient-form-accent);
+  }
+
+  .patient-form-primary {
+    border: 1px solid color-mix(in srgb, var(--patient-form-accent) 82%, black);
+    background: linear-gradient(
+      135deg,
+      var(--patient-form-accent),
+      var(--patient-form-accent-hover)
+    ) !important;
+    color: #ffffff !important;
+    box-shadow: 0 8px 18px rgb(107 82 54 / 22%);
+  }
+
+  .patient-form-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 22px rgb(107 82 54 / 28%);
+  }
+
+  .patient-form-secondary,
+  .patient-form-close {
+    border-color: var(--patient-form-border) !important;
+    background-color: var(--patient-form-accent-soft) !important;
+    color: var(--patient-form-heading) !important;
+  }
+
+  .patient-form-secondary:hover,
+  .patient-form-close:hover {
+    border-color: var(--patient-form-accent) !important;
+    background-color: color-mix(
+      in srgb,
+      var(--patient-form-accent-soft) 74%,
+      white
+    ) !important;
+  }
+
+  .patient-form-choice {
+    cursor: pointer;
+    border: 1px solid var(--patient-form-border);
+    border-radius: 0.75rem;
+    background-color: var(--patient-form-input);
+    padding: 0.65rem 0.9rem;
+    color: var(--patient-form-heading);
+    transition: border-color 160ms ease, background-color 160ms ease,
+      box-shadow 160ms ease;
+  }
+
+  .patient-form-choice:hover,
+  .patient-form-choice-active {
+    border-color: var(--patient-form-accent);
+    background-color: var(--patient-form-accent-soft);
+    box-shadow: 0 0 0 2px rgb(139 111 71 / 12%);
+  }
+
+  .dark .patient-form-shell {
+    --patient-form-accent: #d4a574;
+    --patient-form-accent-hover: #b98758;
+    --patient-form-accent-soft: #594331;
+    --patient-form-warm: #e2b47d;
+    --patient-form-surface: #30241d;
+    --patient-form-input: #47352a;
+    --patient-form-panel: #3d2e24;
+    --patient-form-border: #80634d;
+    --patient-form-heading: #f4dfc5;
+    background:
+      radial-gradient(circle at 100% 0%, rgb(212 165 116 / 14%), transparent 30%),
+      linear-gradient(145deg, var(--patient-form-surface), #392b22) !important;
+    box-shadow: 0 24px 60px rgb(0 0 0 / 32%);
+  }
+
+  .dark .patient-form-shell .patient-form-section,
+  .dark .patient-form-shell form .bg-muted.border {
+    border-color: var(--patient-form-border) !important;
+    background: linear-gradient(135deg, #3d2e24, #49362a) !important;
+  }
+
+  .dark .patient-form-shell .patient-form input:not([type='file']):not([type='radio']):not([type='checkbox']):focus,
+  .dark .patient-form-shell .patient-form textarea:focus,
+  .dark .patient-form-shell .patient-form .themed-select-trigger:focus,
+  .dark .patient-form-shell .patient-form .themed-select-trigger[data-state='open'] {
+    background-color: #513b2e !important;
   }
 }
 

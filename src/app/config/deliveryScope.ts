@@ -18,7 +18,7 @@ export type SystemModule = {
 };
 
 const configuredMode = String(
-  import.meta.env.VITE_DELIVERY_MODE || 'first-delivery'
+  import.meta.env.VITE_DELIVERY_MODE || 'full'
 )
   .trim()
   .toLowerCase();

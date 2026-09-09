@@ -19,6 +19,7 @@ import type {
 import SearchablePatientSelect from '../components/SearchablePatientSelect';
 import ThemedSelect from '../components/ThemedSelect';
 import { drawUnavetPdfHeader, getUnavetLogoBase64 } from '../utils/pdfBranding';
+import PdfPreviewModal from '../components/PdfPreviewModal';
 
 const API_URL = '/api';
 
@@ -648,6 +649,10 @@ export default function Prescriptions() {
     const blob = doc.output('blob');
     const url = URL.createObjectURL(blob);
 
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+
     setPreviewPrescription(prescription);
     setPreviewUrl(url);
     setShowPreviewModal(true);
@@ -758,7 +763,9 @@ export default function Prescriptions() {
           patientId: formData.patientId,
           diagnosis: formData.diagnosis,
           observations: formData.observations,
-          veterinarianId: formData.veterinarianId,
+          ...(editingPrescription
+            ? { veterinarianId: formData.veterinarianId }
+            : {}),
           medications,
         }),
       });
@@ -806,16 +813,16 @@ export default function Prescriptions() {
   };
 
   return (
-    <div className="p-4 md:p-8">
+    <div className="w-full p-[0.825rem] md:p-[1.375rem]">
       <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
-        <h1 className="text-foreground text-2xl md:text-3xl font-bold mb-2">
+        <h1 className="text-foreground text-xl md:text-2xl font-bold mb-2">
           Recetas Médicas
         </h1>
 
         <button
           onClick={openCreateModal}
           disabled={loadingCatalogs}
-          className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary disabled:opacity-60 disabled:cursor-not-allowed text-[#F7EFE6] rounded-lg transition-colors"
+          className="flex items-center gap-2 px-4 py-2 text-lg bg-primary hover:bg-primary disabled:opacity-60 disabled:cursor-not-allowed text-[#F7EFE6] rounded-lg transition-colors"
         >
           <Plus className="w-4 h-4" />
           Nueva receta
@@ -936,14 +943,14 @@ export default function Prescriptions() {
 
       {showModal && (
         <div className="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-card border border-border rounded-xl p-4 md:p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto my-4 md:my-8 shadow-2xl">
+          <div className="patient-form-shell bg-card border border-border rounded-xl p-4 md:p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto my-4 md:my-8 shadow-2xl">
             <h2 className="text-foreground text-xl mb-4">
               {editingPrescription ? 'Editar receta' : 'Nueva receta'}
             </h2>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="patient-form space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
+                <div className={editingPrescription ? '' : 'md:col-span-2'}>
                   <label className="block text-foreground mb-2 text-sm">
                     Paciente
                   </label>
@@ -964,38 +971,40 @@ export default function Prescriptions() {
                   )}
                 </div>
 
-                <div>
-                  <label className="block text-foreground mb-2 text-sm">
-                    Médico veterinario
-                  </label>
+                {editingPrescription && (
+                  <div>
+                    <label className="block text-foreground mb-2 text-sm">
+                      Médico veterinario
+                    </label>
 
-                  <ThemedSelect
-                    value={formData.veterinarianId || ''}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        veterinarianId: e.target.value,
-                      })
-                    }
-                    className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
-                    required
-                  >
-                    <option value="">Seleccionar veterinario</option>
-                    {veterinarianOptions.map((veterinarian) => (
-                      <option
-                        key={veterinarian.veterinario_id || veterinarian.id}
-                        value={veterinarian.veterinario_id || veterinarian.id}
-                      >
-                        {veterinarian.nombre}
-                      </option>
-                    ))}
-                  </ThemedSelect>
+                    <ThemedSelect
+                      value={formData.veterinarianId || ''}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          veterinarianId: e.target.value,
+                        })
+                      }
+                      className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+                      required
+                    >
+                      <option value="">Seleccionar veterinario</option>
+                      {veterinarianOptions.map((veterinarian) => (
+                        <option
+                          key={veterinarian.veterinario_id || veterinarian.id}
+                          value={veterinarian.veterinario_id || veterinarian.id}
+                        >
+                          {veterinarian.nombre}
+                        </option>
+                      ))}
+                    </ThemedSelect>
 
-                  <p className="text-muted-foreground text-xs mt-1">
-                    Este dato queda registrado en el sistema, pero no aparecerá
-                    en el PDF.
-                  </p>
-                </div>
+                    <p className="text-muted-foreground text-xs mt-1">
+                      Este dato queda registrado en el sistema, pero no aparecerá
+                      en el PDF.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {selectedPatient && (
@@ -1276,46 +1285,17 @@ export default function Prescriptions() {
       )}
 
       {showPreviewModal && previewUrl && (
-        <div className="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[70]">
-          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-5xl w-full h-[90vh] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-              <div>
-                <h3 className="text-foreground text-lg font-medium">
-                  Vista previa de receta
-                </h3>
-
-                <p className="text-muted-foreground text-sm">
-                  Revisa el documento antes de descargarlo.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {previewPrescription && (
-                  <button
-                    onClick={() => generatePDF(previewPrescription)}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors"
-                  >
-                    <Download className="w-4 h-4" />
-                    Descargar
-                  </button>
-                )}
-
-                <button
-                  onClick={closePreviewModal}
-                  className="p-2 bg-muted hover:bg-border text-foreground rounded-lg transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            <iframe
-              src={previewUrl}
-              title="Vista previa de receta"
-              className="w-full flex-1 bg-white"
-            />
-          </div>
-        </div>
+        <PdfPreviewModal
+          url={previewUrl}
+          title="Vista previa de receta"
+          description="Revise la receta en cualquier dispositivo antes de descargarla."
+          onClose={closePreviewModal}
+          onDownload={
+            previewPrescription
+              ? () => void generatePDF(previewPrescription)
+              : undefined
+          }
+        />
       )}
     </div>
   );

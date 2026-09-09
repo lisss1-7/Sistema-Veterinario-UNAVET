@@ -1,7 +1,7 @@
 const pool = require('../config/db');
 const {
   isValidAgeSpacing,
-  isValidName,
+  isValidPetName,
   isValidPhone,
 } = require('../utils/inputValidation');
 const {
@@ -346,15 +346,15 @@ const crearPaciente = async (req, res) => {
       });
     }
 
-    if (!isValidName(petName)) {
+    if (!isValidPetName(petName)) {
       return res.status(400).json({
-        message: 'Los nombres solo pueden contener letras y deben tener entre 2 y 80 caracteres',
+        message: 'El nombre de la mascota puede contener letras y números y debe tener entre 2 y 80 caracteres',
       });
     }
 
     if (shouldRequireTutorFields && tutorPhone && !isValidPhone(tutorPhone)) {
       return res.status(400).json({
-        message: 'El teléfono debe contener únicamente entre 8 y 15 dígitos',
+        message: 'El teléfono debe contener únicamente entre 8 y 12 dígitos',
       });
     }
 
@@ -509,15 +509,15 @@ const actualizarPaciente = async (req, res) => {
       });
     }
 
-    if (!isValidName(petName)) {
+    if (!isValidPetName(petName)) {
       return res.status(400).json({
-        message: 'Los nombres solo pueden contener letras y deben tener entre 2 y 80 caracteres',
+        message: 'El nombre de la mascota puede contener letras y números y debe tener entre 2 y 80 caracteres',
       });
     }
 
     if (shouldRequireTutorFields && tutorPhone && !isValidPhone(tutorPhone)) {
       return res.status(400).json({
-        message: 'El teléfono debe contener únicamente entre 8 y 15 dígitos',
+        message: 'El teléfono debe contener únicamente entre 8 y 12 dígitos',
       });
     }
 

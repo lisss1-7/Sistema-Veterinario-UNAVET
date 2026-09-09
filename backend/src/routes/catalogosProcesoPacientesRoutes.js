@@ -11,34 +11,51 @@ const { verificarPermiso } = require('../middleware/permissionMiddleware');
 
 const router = express.Router();
 
+const MODULE_BY_CATALOG = Object.freeze({
+  'categorias-inventario': 'inventory',
+  'unidades-medida': 'inventory',
+  'tipos-tratamiento': 'prescriptions',
+  'modos-entrega': 'prescriptions',
+  'estados-tratamiento': 'prescriptions',
+  'categorias-servicio': 'prescriptions',
+  servicios: 'prescriptions',
+  roles: 'users',
+  'estados-usuario': 'users',
+});
+
+const verificarPermisoCatalogo = (accion) => (req, res, next) => {
+  const modulo = MODULE_BY_CATALOG[req.params.catalogo] || 'patients';
+  return verificarPermiso(modulo, accion)(req, res, next);
+};
+
 router.get(
   '/:catalogo',
   verificarToken,
-  verificarPermiso('patients', 'ver'),
+  verificarPermisoCatalogo('ver'),
   listarCatalogo
 );
 router.post(
   '/:catalogo',
   verificarToken,
-  verificarPermiso('patients', 'crear'),
+  verificarPermisoCatalogo('crear'),
   crearCatalogo
 );
 router.put(
   '/:catalogo/:id',
   verificarToken,
-  verificarPermiso('patients', 'editar'),
+  verificarPermisoCatalogo('editar'),
   actualizarCatalogo
 );
 router.patch(
   '/:catalogo/:id/estado',
   verificarToken,
-  verificarPermiso('patients', 'editar'),
+  verificarPermisoCatalogo('editar'),
   cambiarEstadoCatalogo
 );
 router.delete(
   '/:catalogo/:id',
   verificarToken,
-  verificarPermiso('patients', 'eliminar'),
+  verificarPermisoCatalogo('eliminar'),
   eliminarCatalogo
 );
 

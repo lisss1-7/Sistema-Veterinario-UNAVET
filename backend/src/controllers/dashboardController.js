@@ -10,6 +10,42 @@ const formatTime = (timeValue) => {
   return String(timeValue).slice(0, 5);
 };
 
+const formatDateForDisplay = (dateValue) => {
+  const normalized = String(dateValue || '').trim();
+  const isoMatch = normalized.match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+  return isoMatch
+    ? `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1]}`
+    : normalized;
+};
+
+const buildUpcomingVaccinationReminders = (rows = []) => {
+  return rows
+    .filter((row) => row && row.proxima_dosis)
+    .filter((row) => {
+      const days = Number(row.dias_restantes || 0);
+      return days >= 0 && days <= 14;
+    })
+    .slice(0, 3)
+    .map((row) => {
+      const days = Number(row.dias_restantes || 0);
+      const relativeText =
+        days === 0 ? 'hoy' : days === 1 ? 'mañana' : `en ${days} días`;
+
+      const patientLabel = row.nombre_mascota || 'Paciente sin nombre';
+      const tutorLabel = row.nombre_tutor ? ` · Tutor: ${row.nombre_tutor}` : '';
+      const nextDoseDate = formatDateForDisplay(row.proxima_dosis);
+
+      return {
+        patientId: row.paciente_id ? String(row.paciente_id) : '',
+        title: patientLabel,
+        description: `${row.nombre_vacuna || 'Vacuna'} · Próxima dosis ${relativeText} (${nextDoseDate})${tutorLabel}`,
+        tag: 'Vacuna',
+        tone: 'amber',
+      };
+    });
+};
+
 const getCount = async (query, params = []) => {
   const [rows] = await pool.query(query, params);
   return Number(rows[0]?.total || 0);
@@ -134,6 +170,91 @@ const obtenerResumenDashboard = async (req, res) => {
       `
     );
 
+    const [upcomingVaccinationRows] = await pool.query(
+      `
+      SELECT * FROM (
+        SELECT
+          p.paciente_id,
+          p.nombre AS nombre_mascota,
+          CONCAT_WS(
+            ' ',
+            t.primer_nombre,
+            t.segundo_nombre,
+            t.primer_apellido,
+            t.segundo_apellido
+          ) AS nombre_tutor,
+          vc.nombre AS nombre_vacuna,
+          DATE_FORMAT(
+            CASE
+              WHEN COALESCE(aplicaciones.dosis_aplicadas, 0) >= esquema.dosis_totales
+                OR aplicaciones.ultima_fecha IS NULL
+                OR esquema.intervalo IS NULL
+                THEN NULL
+              WHEN unidad.meses_por_unidad IS NOT NULL
+                AND unidad.meses_por_unidad > 0
+                THEN DATE_ADD(
+                  aplicaciones.ultima_fecha,
+                  INTERVAL ROUND(esquema.intervalo * unidad.meses_por_unidad) MONTH
+                )
+              WHEN unidad.dias_por_unidad IS NOT NULL
+                AND unidad.dias_por_unidad > 0
+                THEN DATE_ADD(
+                  aplicaciones.ultima_fecha,
+                  INTERVAL ROUND(esquema.intervalo * unidad.dias_por_unidad) DAY
+                )
+              ELSE NULL
+            END,
+            '%Y-%m-%d'
+          ) AS proxima_dosis,
+          DATEDIFF(
+            CASE
+              WHEN COALESCE(aplicaciones.dosis_aplicadas, 0) >= esquema.dosis_totales
+                OR aplicaciones.ultima_fecha IS NULL
+                OR esquema.intervalo IS NULL
+                THEN NULL
+              WHEN unidad.meses_por_unidad IS NOT NULL
+                AND unidad.meses_por_unidad > 0
+                THEN DATE_ADD(
+                  aplicaciones.ultima_fecha,
+                  INTERVAL ROUND(esquema.intervalo * unidad.meses_por_unidad) MONTH
+                )
+              WHEN unidad.dias_por_unidad IS NOT NULL
+                AND unidad.dias_por_unidad > 0
+                THEN DATE_ADD(
+                  aplicaciones.ultima_fecha,
+                  INTERVAL ROUND(esquema.intervalo * unidad.dias_por_unidad) DAY
+                )
+              ELSE NULL
+            END,
+            CURDATE()
+          ) AS dias_restantes
+        FROM esquemas_vacunacion_paciente esquema
+        INNER JOIN pacientes p
+          ON p.paciente_id = esquema.paciente_id
+        INNER JOIN tutores t
+          ON t.tutor_id = p.tutor_id
+        INNER JOIN vacunas_catalogo vc
+          ON vc.vacuna_id = esquema.vacuna_id
+        LEFT JOIN unidades_intervalo unidad
+          ON unidad.unidad_intervalo_id = esquema.unidad_intervalo_id
+        LEFT JOIN (
+          SELECT
+            esquema_id,
+            COUNT(*) AS dosis_aplicadas,
+            MAX(fecha_aplicacion) AS ultima_fecha
+          FROM aplicaciones_vacuna
+          GROUP BY esquema_id
+        ) aplicaciones
+          ON aplicaciones.esquema_id = esquema.esquema_id
+      ) AS vacuna_proxima
+      WHERE vacuna_proxima.proxima_dosis IS NOT NULL
+        AND vacuna_proxima.proxima_dosis >= CURDATE()
+        AND vacuna_proxima.proxima_dosis <= DATE_ADD(CURDATE(), INTERVAL 14 DAY)
+      ORDER BY vacuna_proxima.proxima_dosis ASC
+      LIMIT 5
+      `
+    );
+
     const todayAppointmentsList = appointmentsRows.map((row) => ({
       id: String(row.cita_id),
       petName: row.nombre_mascota,
@@ -152,6 +273,10 @@ const obtenerResumenDashboard = async (req, res) => {
       status: row.estado,
     }));
 
+    const upcomingVaccinationsList = buildUpcomingVaccinationReminders(
+      upcomingVaccinationRows
+    );
+
     res.json({
       stats: {
         totalPatients,
@@ -166,6 +291,7 @@ const obtenerResumenDashboard = async (req, res) => {
       },
       todayAppointments: todayAppointmentsList,
       todayGrooming: todayGroomingList,
+      upcomingVaccinations: upcomingVaccinationsList,
     });
   } catch (error) {
     res.status(500).json({
@@ -176,5 +302,6 @@ const obtenerResumenDashboard = async (req, res) => {
 };
 
 module.exports = {
+  buildUpcomingVaccinationReminders,
   obtenerResumenDashboard,
 };

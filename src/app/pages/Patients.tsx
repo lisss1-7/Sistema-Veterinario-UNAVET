@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { toast } from 'sonner';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router';
 import {
   Search,
@@ -22,10 +21,13 @@ import type { Patient } from '../utils/types';
 import ThemedSelect from '../components/ThemedSelect';
 import {
   isValidName,
+  isValidPetName,
+  isValidEmail,
   isValidAgeSpacing,
   isValidPhone,
   sanitizeAgeText,
   sanitizeName,
+  sanitizePetName,
   sanitizePhone,
 } from '../utils/formValidation';
 import {
@@ -90,9 +92,11 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showCloseConfirmation, setShowCloseConfirmation] = useState(false);
   const [patientToDelete, setPatientToDelete] = useState<PatientFormData | null>(null);
+  const [formError, setFormError] = useState<{ title: string; message: string } | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
   const [editingPatient, setEditingPatient] = useState<PatientFormData | null>(null);
   const [formData, setFormData] = useState<PatientFormData>({});
+  const [isTutorEmailFocused, setIsTutorEmailFocused] = useState(false);
   const [tutorMode, setTutorMode] = useState<'new' | 'existing'>('new');
   const [existingTutors, setExistingTutors] = useState<any[]>([]);
   const [selectedExistingTutorId, setSelectedExistingTutorId] = useState('');
@@ -101,6 +105,9 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
   const [highlightedTutorId, setHighlightedTutorId] = useState<string | null>(null);
   const [showSpeciesMenu, setShowSpeciesMenu] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const photoGalleryInputRef = useRef<HTMLInputElement>(null);
+  const photoCameraInputRef = useRef<HTMLInputElement>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     loadPatients();
@@ -252,24 +259,129 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
     }
   }, [currentPage, totalPages]);
 
-  const handlePhotoUpload = (file?: File) => {
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      try {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Error al leer imagen'));
+        reader.onload = () => {
+          try {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onerror = () => reject(new Error('Imagen inválida'));
+            img.onload = () => {
+              try {
+                let { width, height } = img;
+                if (!width || !height) {
+                  resolve(reader.result as string);
+                  return;
+                }
+                const maxSize = 800;
+                if (width > maxSize || height > maxSize) {
+                  if (width > height) {
+                    height = Math.round((height * maxSize) / width);
+                    width = maxSize;
+                  } else {
+                    width = Math.round((width * maxSize) / height);
+                    height = maxSize;
+                  }
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d', { alpha: false } as any);
+                if (!ctx) {
+                  resolve(reader.result as string);
+                  return;
+                }
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, width, height);
+                ctx.drawImage(img, 0, 0, width, height);
+                try {
+                  let compressed = canvas.toDataURL('image/jpeg', 0.65);
+                  if (compressed.length > 1.2 * 1024 * 1024) {
+                    compressed = canvas.toDataURL('image/jpeg', 0.45);
+                  }
+                  if (compressed.length > 7 * 1024 * 1024) {
+                    reject(new Error('La imagen sigue siendo muy grande. Elige una más pequeña.'));
+                    return;
+                  }
+                  resolve(compressed);
+                } catch {
+                  resolve(reader.result as string);
+                }
+              } catch {
+                resolve(reader.result as string);
+              }
+            };
+            img.src = reader.result as string;
+          } catch {
+            reject(new Error('No se pudo procesar la imagen'));
+          }
+        };
+        reader.readAsDataURL(file);
+      } catch {
+        reject(new Error('No se pudo leer la imagen'));
+      }
+    });
+  };
+
+  const handlePhotoUpload = async (file?: File) => {
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
+    const isImage = file.type
+      ? file.type.startsWith('image/')
+      : /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name || '');
+    if (!isImage) {
       alert('Debe seleccionar una imagen válida');
       return;
     }
+    if (file.size > 15 * 1024 * 1024) {
+      alert('La imagen es demasiado grande (más de 15MB). Elige una más pequeña.');
+      return;
+    }
 
-    const reader = new FileReader();
+    try {
+      const compressedPhoto = await compressImage(file);
+      if (compressedPhoto.length > 6 * 1024 * 1024) {
+        alert('La imagen sigue siendo muy grande. Intenta con otra foto más pequeña o sin foto.');
+        return;
+      }
+      setFormData((prev) => ({
+        ...prev,
+        photo: compressedPhoto,
+      }));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'No se pudo procesar la imagen';
+      alert(msg);
+      if (file.size > 2 * 1024 * 1024) return;
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        if (result && result.length > 7 * 1024 * 1024) {
+          alert('La imagen es demasiado grande para enviar. Elige otra más pequeña.');
+          return;
+        }
+        setFormData((prev) => ({
+          ...prev,
+          photo: result,
+        }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
-    reader.onloadend = () => {
-      setFormData({
-        ...formData,
-        photo: reader.result as string,
-      });
-    };
+  const handlePhotoAreaClick = () => {
+    const isMobileDevice =
+      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+      (typeof window !== 'undefined' &&
+        window.matchMedia('(pointer: coarse)').matches);
 
-    reader.readAsDataURL(file);
+    if (isMobileDevice) {
+      photoCameraInputRef.current?.click();
+    } else {
+      photoGalleryInputRef.current?.click();
+    }
   };
 
   const removePhoto = () => {
@@ -404,47 +516,79 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (isSubmitting) return;
+
     const isExistingTutorFlow = tutorMode === 'existing';
 
+    if (!isValidPetName(formData.petName)) {
+      setFormError({
+        title: 'Revisa el nombre de la mascota',
+        message: 'Puede contener letras y números y debe tener entre 2 y 80 caracteres.',
+      });
+      return;
+    }
+
     if (!isExistingTutorFlow) {
+      if (!isValidEmail(formData.tutorEmail)) {
+        setFormError({
+          title: 'Revisa el correo del tutor',
+          message: 'Ingresa un correo con el formato nombre@dominio.com.',
+        });
+        return;
+      }
       if (
-        !isValidName(formData.petName) ||
         !isValidName(formData.tutorFirstName) ||
         !isValidName(formData.tutorFirstSurname) ||
         (formData.tutorMiddleName && !isValidName(formData.tutorMiddleName)) ||
         (formData.tutorSecondSurname && !isValidName(formData.tutorSecondSurname))
       ) {
-        toast.error('Revisa los nombres', {
-          description:
-            'Solo pueden contener letras y deben tener al menos 2 caracteres.',
+        setFormError({
+          title: 'Revisa los nombres',
+          message: 'Solo pueden contener letras y deben tener al menos 2 caracteres.',
         });
         return;
       }
 
       if (!isValidPhone(formData.tutorPhone)) {
-        alert('El teléfono debe contener únicamente entre 8 y 15 dígitos.');
+        setFormError({
+          title: 'Teléfono inválido',
+          message: 'El teléfono debe contener únicamente entre 8 y 15 dígitos.',
+        });
         return;
       }
     } else if (!selectedExistingTutorId) {
-      alert('Debe seleccionar un tutor existente para continuar.');
+      setFormError({
+        title: 'Falta el tutor',
+        message: 'Debe seleccionar un tutor existente para continuar.',
+      });
       return;
     }
 
     if (selectedBreedOption === 'Otra' && !customBreed.trim()) {
-      alert('Debe especificar la raza del paciente.');
+      setFormError({
+        title: 'Falta la raza',
+        message: 'Debe especificar la raza del paciente.',
+      });
       return;
     }
 
     if (!String(formData.age || '').trim()) {
-      alert('Debe escribir la edad del paciente.');
+      setFormError({
+        title: 'Falta la edad',
+        message: 'Debe escribir la edad del paciente.',
+      });
       return;
     }
 
     if (!isValidAgeSpacing(formData.age)) {
-      alert('Separe el número de la unidad de edad. Ejemplo: 2 años.');
+      setFormError({
+        title: 'Edad inválida',
+        message: 'Separe el número de la unidad de edad. Ejemplo: 2 años.',
+      });
       return;
     }
 
+    setIsSubmitting(true);
     try {
       const url = editingPatient
         ? `${API_URL}/pacientes/${editingPatient.id}`
@@ -462,16 +606,39 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
             : formData.breed,
       };
 
+      // Validación previa: si la foto sigue siendo enorme, no intentes enviarla (evita el error "not valid json" por payload truncado en algunos teléfonos)
+      const photoLen = String(patientPayload.photo || '').length;
+      if (photoLen > 7 * 1024 * 1024) {
+        throw new Error('La imagen es demasiado grande para enviar. Elige una foto más pequeña o sin foto.');
+      }
+
+      let bodyStr: string;
+      try {
+        bodyStr = JSON.stringify(patientPayload);
+      } catch {
+        throw new Error('No se pudo preparar los datos para enviar. Intenta sin foto o con una imagen más pequeña.');
+      }
+
       const response = await fetch(url, {
         method,
         headers: getAuthHeaders(),
-        body: JSON.stringify(patientPayload),
+        body: bodyStr,
       });
 
-      const data = await response.json();
+      const rawText = await response.text();
+      let data: any = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        // Algunos teléfonos reciben HTML en 413; aquí evitamos el "not valid json"
+        if (!response.ok) {
+          throw new Error(rawText && rawText.length < 500 ? rawText : 'Error al guardar paciente. Intenta sin foto o con una imagen más pequeña.');
+        }
+        data = {};
+      }
 
       if (!response.ok) {
-        throw new Error(data.error || data.message || 'Error al guardar paciente');
+        throw new Error(data.error || data.message || data.Message || rawText || 'Error al guardar paciente');
       }
 
       setSuccessMessage(
@@ -480,8 +647,9 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
           : 'Paciente agregado correctamente'
       );
 
-      await loadPatients();
       setShowSuccessModal(true);
+      // Carga en segundo plano para no bloquear la respuesta en móvil (antes había await que duplicaba el tiempo)
+      void loadPatients().catch(() => {});
     } catch (error) {
       console.error('Error al guardar paciente:', error);
       const message =
@@ -489,11 +657,17 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
           ? error.message
           : 'Revisa la consola o el backend.';
 
-      alert(`No se pudo guardar el paciente. ${message}`);
+      setFormError({
+        title: 'No se pudo guardar el paciente',
+        message,
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const resetForm = () => {
+    setFormError(null);
     setEditingPatient(null);
     setFormData({});
     setSelectedBreedOption('');
@@ -701,13 +875,23 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
   };
 
   return (
-    <div className="p-4 md:p-8">
+    <div className="w-full p-[0.825rem] md:p-[1.375rem]">
       <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
         <div>
-          <h1 className="text-foreground text-2xl md:text-3xl font-bold mb-2">
+          <h1 className="text-foreground text-xl md:text-2xl font-bold mb-2">
             {isRegistrationPage ? 'Registrar paciente' : 'Pacientes'}
           </h1>
         </div>
+        {!isRegistrationPage && (
+          <button
+            type="button"
+            onClick={() => openModal()}
+            className="flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-lg text-[#F7EFE6] shadow-lg transition-all duration-300 hover:bg-primary/90 hover:shadow-xl"
+          >
+            <Plus className="h-4 w-4" strokeWidth={2.5} />
+            Agregar paciente
+          </button>
+        )}
       </div>
 
       {!isRegistrationPage && <>
@@ -852,7 +1036,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                   <img
                     src={patient.photo}
                     alt={`Foto de ${patient.petName}`}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    className="w-full h-full object-cover"
                   />
                 ) : (
                   <div className="flex h-full w-full flex-col items-center justify-center bg-muted text-muted-foreground">
@@ -998,7 +1182,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
 
       {(showModal || isRegistrationPage) && (
         <div className={isRegistrationPage ? '' : 'modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-50'}>
-          <div className={`bg-card border border-border rounded-xl p-4 md:p-6 w-full shadow-2xl ${isRegistrationPage ? 'max-w-4xl mx-auto' : 'max-w-3xl max-h-[90vh] overflow-y-auto'}`}>
+          <div className={`patient-form-shell bg-card border border-border rounded-2xl p-4 md:p-6 w-full shadow-2xl ${isRegistrationPage ? 'max-w-4xl mx-auto' : 'max-w-3xl max-h-[90vh] overflow-y-auto'}`}>
             <div className="mb-4 flex items-center justify-between gap-4">
               <h2 className="text-foreground text-xl">
                 {editingPatient ? 'Editar paciente' : 'Datos del nuevo paciente'}
@@ -1008,38 +1192,76 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                 type="button"
                 onClick={handleCloseAttempt}
                 aria-label="Cerrar formulario"
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-secondary text-muted-foreground transition-colors hover:bg-border hover:text-foreground"
+                className="patient-form-close flex h-9 w-9 items-center justify-center rounded-full border text-muted-foreground transition-colors"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="bg-muted border border-border rounded-xl p-4">
+            <form onSubmit={handleSubmit} className="patient-form space-y-4">
+              <div className="patient-form-section bg-muted border border-border rounded-xl p-4">
                 <label className="block text-foreground mb-3 text-sm font-medium">
                   Foto de perfil del paciente
                 </label>
 
                 <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                  {formData.photo ? (
-                    <img
-                      src={formData.photo}
-                      alt="Foto del paciente"
-                      className="w-28 h-28 rounded-2xl object-cover border-4 border-border shadow-md"
-                    />
-                  ) : (
-                    <div className="w-28 h-28 rounded-2xl bg-secondary border-4 border-border flex items-center justify-center">
-                      <Camera className="w-10 h-10 text-primary" />
-                    </div>
-                  )}
+                  <button
+                    type="button"
+                    onClick={handlePhotoAreaClick}
+                    className="group relative w-28 h-28 shrink-0 rounded-2xl overflow-hidden border-4 border-border shadow-md flex items-center justify-center cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-card"
+                    aria-label={formData.photo ? 'Cambiar foto del paciente' : 'Subir foto del paciente'}
+                    title={formData.photo ? 'Cambiar foto (clic para seleccionar)' : 'Subir foto (clic para seleccionar)'}
+                  >
+                    {formData.photo ? (
+                      <img
+                        src={formData.photo}
+                        alt="Foto del paciente"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-secondary flex items-center justify-center">
+                        <Camera className="w-10 h-10 text-primary" />
+                      </div>
+                    )}
+                    <span className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/0 group-hover:bg-black/45 opacity-0 group-hover:opacity-100 transition-all duration-200 text-white text-xs font-medium">
+                      <Upload className="w-5 h-5" />
+                      {formData.photo ? 'Cambiar' : 'Subir'}
+                    </span>
+                  </button>
+
+                  <input
+                    ref={photoGalleryInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      handlePhotoUpload(e.target.files?.[0]);
+                      e.target.value = '';
+                    }}
+                    className="hidden"
+                    aria-hidden="true"
+                    tabIndex={-1}
+                  />
+                  <input
+                    ref={photoCameraInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={(e) => {
+                      handlePhotoUpload(e.target.files?.[0]);
+                      e.target.value = '';
+                    }}
+                    className="hidden"
+                    aria-hidden="true"
+                    tabIndex={-1}
+                  />
 
                   <div className="flex-1">
                     <p className="text-muted-foreground text-sm mb-3">
-                      Puedes tomar una foto desde la cámara o seleccionar una imagen del dispositivo.
+                      Puedes tomar una foto desde la cámara o seleccionar una imagen del dispositivo. También puedes hacer clic sobre la imagen para seleccionar.
                     </p>
 
                     <div className="flex flex-col sm:flex-row gap-2">
-                      <label className="flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg cursor-pointer transition-colors text-sm">
+                      <label className="patient-form-primary flex items-center justify-center gap-2 px-4 py-2 rounded-lg cursor-pointer transition-colors text-sm">
                         <Camera className="w-4 h-4" />
                         Tomar foto
 
@@ -1047,19 +1269,25 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                           type="file"
                           accept="image/*"
                           capture="environment"
-                          onChange={(e) => handlePhotoUpload(e.target.files?.[0])}
+                          onChange={(e) => {
+                            handlePhotoUpload(e.target.files?.[0]);
+                            e.currentTarget.value = '';
+                          }}
                           className="hidden"
                         />
                       </label>
 
-                      <label className="flex items-center justify-center gap-2 px-4 py-2 bg-muted hover:bg-border text-foreground rounded-lg cursor-pointer transition-colors text-sm">
+                      <label className="patient-form-secondary flex items-center justify-center gap-2 px-4 py-2 rounded-lg cursor-pointer transition-colors text-sm">
                         <Upload className="w-4 h-4" />
                         Subir imagen
 
                         <input
                           type="file"
                           accept="image/*"
-                          onChange={(e) => handlePhotoUpload(e.target.files?.[0])}
+                          onChange={(e) => {
+                            handlePhotoUpload(e.target.files?.[0]);
+                            e.currentTarget.value = '';
+                          }}
                           className="hidden"
                         />
                       </label>
@@ -1085,7 +1313,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                   </label>
 
                   <div className="flex flex-col sm:flex-row gap-3">
-                    <label className="flex items-center gap-2 text-sm text-foreground">
+                    <label className={`patient-form-choice flex items-center gap-2 text-sm ${tutorMode === 'new' ? 'patient-form-choice-active' : ''}`}>
                       <input
                         type="radio"
                         name="tutorMode"
@@ -1101,7 +1329,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                       Nuevo tutor
                     </label>
 
-                    <label className="flex items-center gap-2 text-sm text-foreground">
+                    <label className={`patient-form-choice flex items-center gap-2 text-sm ${tutorMode === 'existing' ? 'patient-form-choice-active' : ''}`}>
                       <input
                         type="radio"
                         name="tutorMode"
@@ -1196,7 +1424,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                     type="text"
                     value={formData.petName || ''}
                     onChange={(e) =>
-                      setFormData({ ...formData, petName: sanitizeName(e.target.value) })
+                      setFormData({ ...formData, petName: sanitizePetName(e.target.value) })
                     }
                     className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
                     required
@@ -1351,22 +1579,6 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
 
                 <div>
                   <label className="block text-foreground mb-2 text-sm">
-                    Alimentación (qué come)
-                  </label>
-
-                  <input
-                    type="text"
-                    value={formData.diet || ''}
-                    onChange={(e) =>
-                      setFormData({ ...formData, diet: e.target.value })
-                    }
-                    className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-foreground mb-2 text-sm">
                     Color
                   </label>
 
@@ -1375,6 +1587,22 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                     value={formData.color || ''}
                     onChange={(e) =>
                       setFormData({ ...formData, color: sanitizeName(e.target.value) })
+                    }
+                    className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-foreground mb-2 text-sm">
+                    Alimentación (qué come)
+                  </label>
+
+                  <input
+                    type="text"
+                    value={formData.diet || ''}
+                    onChange={(e) =>
+                      setFormData({ ...formData, diet: e.target.value })
                     }
                     className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
                     required
@@ -1425,27 +1653,49 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                         className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
                         required
                         inputMode="numeric"
-                        pattern="[0-9]{8,15}"
+                        pattern="[0-9]{8,12}"
                         minLength={8}
-                        maxLength={15}
-                        title="Ingrese entre 8 y 15 dígitos, sin letras."
+                        maxLength={12}
+                        title="Entre 8 y 12 dígitos"
                       />
                     </div>
 
-                    <div>
+                    <div className="relative">
                       <label className="block text-foreground mb-2 text-sm">
                         Correo del tutor
                       </label>
 
                       <input
                         type="email"
+                        aria-describedby={isTutorEmailFocused && !isValidEmail(formData.tutorEmail) ? 'tutor-email-help' : undefined}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') setIsTutorEmailFocused(false);
+                        }}
+                        onFocus={() => setIsTutorEmailFocused(true)}
+                        onBlur={() => setIsTutorEmailFocused(false)}
+                        aria-invalid={Boolean(formData.tutorEmail && !isValidEmail(formData.tutorEmail))}
                         value={formData.tutorEmail || ''}
                         onChange={(e) =>
-                          setFormData({ ...formData, tutorEmail: e.target.value })
+                          {
+                            setIsTutorEmailFocused(true);
+                            setFormData({ ...formData, tutorEmail: e.target.value });
+                          }
                         }
                         className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
                         required
                       />
+                      {isTutorEmailFocused && !isValidEmail(formData.tutorEmail) && (
+                        <div
+                          id="tutor-email-help"
+                          role="tooltip"
+                          aria-live="polite"
+                          className="absolute left-4 top-full z-50 mt-2 flex max-w-[calc(100%-2rem)] items-center gap-2 rounded border border-gray-400 bg-white px-2 py-2 text-xs text-gray-900 shadow-md pointer-events-none"
+                        >
+                          <span aria-hidden="true" className="absolute -top-1 left-4 h-2 w-2 rotate-45 border-l border-t border-gray-400 bg-white" />
+                          <span aria-hidden="true" className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-orange-600 text-sm font-bold text-white">!</span>
+                          <span>Usa el formato nombre@dominio.com.</span>
+                        </div>
+                      )}
                     </div>
 
                     <div>
@@ -1469,7 +1719,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
 
               <div>
                 <label className="block text-foreground mb-2 text-sm">
-                  Observaciones
+                  Observaciones de la mascota
                 </label>
 
                 <textarea
@@ -1480,6 +1730,13 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                       observations: e.target.value,
                     })
                   }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      (e.target as HTMLTextAreaElement).blur();
+                    }
+                  }}
+                  enterKeyHint="done"
                   className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
                   rows={3}
                 />
@@ -1488,20 +1745,47 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
               <div className="flex flex-col sm:flex-row sm:justify-start gap-4 pt-4">
                 <button
                   type="submit"
-                  className="w-full sm:w-auto px-4 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors"
+                  disabled={isSubmitting}
+                  className="patient-form-primary w-full rounded-lg px-5 py-2.5 transition-colors sm:w-auto disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {editingPatient ? 'Actualizar' : 'Crear'}
+                  {isSubmitting ? 'Guardando...' : editingPatient ? 'Actualizar' : 'Crear'}
                 </button>
 
                 <button
                   type="button"
                   onClick={cancelForm}
-                  className="w-full sm:w-auto px-4 py-2 bg-muted hover:bg-border text-foreground rounded-lg transition-colors"
+                  className="patient-form-secondary w-full rounded-lg px-5 py-2.5 transition-colors sm:w-auto"
                 >
                   Cancelar
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {formError && (
+        <div className="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[95]">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center">
+            <div className="flex justify-center mb-4">
+              <div className="rounded-full bg-red-100 p-3 text-red-700">
+                <AlertTriangle className="h-7 w-7" />
+              </div>
+            </div>
+
+            <h3 className="text-foreground text-xl font-semibold mb-2">
+              {formError.title}
+            </h3>
+
+            <p className="text-muted-foreground text-sm mb-6">{formError.message}</p>
+
+            <button
+              type="button"
+              onClick={() => setFormError(null)}
+              className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-[#F7EFE6] transition-colors hover:bg-primary/90"
+            >
+              Aceptar
+            </button>
           </div>
         </div>
       )}

@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent, type ReactNode } from 'react';
-import { useParams, Link } from 'react-router';
+import { useParams, Link, useLocation } from 'react-router';
 import {
   ArrowLeft,
   Plus,
@@ -12,6 +12,7 @@ import {
   X,
   Edit,
   FileText,
+  Eye,
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import type {
@@ -22,7 +23,9 @@ import type {
 } from '../utils/types';
 import { getTodayLocal, isNonNegativeNumber } from '../utils/formValidation';
 import { drawUnavetPdfHeader, getUnavetLogoBase64 } from '../utils/pdfBranding';
+import { formatDateForDisplay } from '../utils/dateFormat';
 import ThemedSelect from '../components/ThemedSelect';
+import PdfPreviewModal from '../components/PdfPreviewModal';
 
 type PatientWithPhoto = Patient & {
   photo?: string;
@@ -80,10 +83,11 @@ const MODAL_BACKDROP_CLASS =
   'modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-50';
 
 const MODAL_CARD_CLASS =
-  'bg-card border border-border rounded-2xl p-4 md:p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl';
+  'patient-form-shell bg-card border border-border rounded-2xl p-4 md:p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl';
 
 export default function PatientDetail() {
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
 
   const [patient, setPatient] = useState<PatientWithPhoto | null>(null);
   const [activeTab, setActiveTab] = useState('general');
@@ -109,6 +113,11 @@ export default function PatientDetail() {
     type: 'clinical' | 'vaccination' | 'treatment';
     item: ClinicalRecordExtended | VaccinationExtended | TreatmentServiceExtended;
   } | null>(null);
+  const [pdfPreview, setPdfPreview] = useState<{
+    url: string;
+    title: string;
+    filename: string;
+  } | null>(null);
 
   const [formData, setFormData] = useState<any>({});
 
@@ -125,6 +134,16 @@ export default function PatientDetail() {
     loadPatientData();
     loadCatalogs();
   }, [id]);
+
+  useEffect(() => {
+    const requestedTab = location.state && typeof location.state === 'object'
+      ? (location.state as { activeTab?: string }).activeTab
+      : undefined;
+
+    if (requestedTab === 'vaccination') {
+      setActiveTab('vaccination');
+    }
+  }, [location.state]);
 
   const mapCatalogNames = (items: CatalogItem[]) =>
     items.map((item) => item.nombre);
@@ -469,7 +488,11 @@ export default function PatientDetail() {
       setShowSuccessModal(true);
     } catch (error) {
       console.error('Error al agregar tratamiento o servicio:', error);
-      alert('No se pudo agregar el tratamiento o servicio. Revisa el backend o la consola.');
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo agregar el tratamiento o servicio.'
+      );
     }
   };
 
@@ -659,7 +682,7 @@ export default function PatientDetail() {
     });
   };
 
-  const downloadClinicalPdf = async (record: ClinicalRecordExtended) => {
+  const createClinicalPdf = async (record: ClinicalRecordExtended) => {
     const { doc } = await createPdfBase('Registro Clínico');
 
     let y = 96;
@@ -701,10 +724,10 @@ export default function PatientDetail() {
     doc.text(doc.splitTextToSize(record.treatment || 'N/A', 178), 16, y);
 
     addPdfFooter(doc);
-    doc.save(formatPdfName('Registro Clinico', patient?.petName));
+    return doc;
   };
 
-  const downloadSingleVaccinationPdf = async (vacc: VaccinationExtended) => {
+  const createSingleVaccinationPdf = async (vacc: VaccinationExtended) => {
     const { doc } = await createPdfBase('Vacuna');
 
     let y = 96;
@@ -737,10 +760,10 @@ export default function PatientDetail() {
     doc.text(doc.splitTextToSize(vacc.notes || 'Sin notas registradas.', 178), 16, y);
 
     addPdfFooter(doc);
-    doc.save(formatPdfName(vacc.vaccine || 'Vacuna', patient?.petName));
+    return doc;
   };
 
-  const downloadClinicalHistoryPdf = async () => {
+  const createClinicalHistoryPdf = async () => {
     const { doc, logoBase64 } = await createPdfBase('Historial Clínico Completo');
 
     let y = 96;
@@ -763,8 +786,7 @@ export default function PatientDetail() {
       doc.setFont('helvetica', 'normal');
       doc.text('No hay registros clínicos.', 16, y + 8);
       addPdfFooter(doc);
-      doc.save(formatPdfName('Historial Clinico Completo', patient?.petName));
-      return;
+      return doc;
     }
 
     clinicalRecords.forEach((record) => {
@@ -805,10 +827,10 @@ export default function PatientDetail() {
     });
 
     addPdfFooter(doc);
-    doc.save(formatPdfName('Historial Clinico Completo', patient?.petName));
+    return doc;
   };
 
-  const downloadVaccinationPdf = async () => {
+  const createVaccinationPdf = async () => {
     const { doc, logoBase64 } = await createPdfBase('Esquema de Vacunación');
 
     let y = 96;
@@ -858,10 +880,10 @@ export default function PatientDetail() {
     }
 
     addPdfFooter(doc);
-    doc.save(formatPdfName('Esquema Vacunacion', patient?.petName));
+    return doc;
   };
 
-  const downloadTreatmentPdf = async (treat: TreatmentServiceExtended) => {
+  const createTreatmentPdf = async (treat: TreatmentServiceExtended) => {
     const title =
       treat.type === 'Servicio de laboratorio'
         ? 'Servicio de Laboratorio'
@@ -935,10 +957,10 @@ export default function PatientDetail() {
     }
 
     addPdfFooter(doc);
-    doc.save(formatPdfName('Servicio', patient?.petName));
+    return doc;
   };
 
-  const downloadAllTreatmentsPdf = async () => {
+  const createAllTreatmentsPdf = async () => {
     const { doc, logoBase64 } = await createPdfBase(
       'Tratamientos y Servicios'
     );
@@ -1129,19 +1151,117 @@ export default function PatientDetail() {
       });
     }
 
-    doc.save(
+    return doc;
+  };
+
+  const openPdfPreview = (doc: jsPDF, title: string, filename: string) => {
+    if (pdfPreview?.url) URL.revokeObjectURL(pdfPreview.url);
+    setPdfPreview({
+      url: URL.createObjectURL(doc.output('blob')),
+      title,
+      filename,
+    });
+  };
+
+  const closePdfPreview = () => {
+    if (pdfPreview?.url) URL.revokeObjectURL(pdfPreview.url);
+    setPdfPreview(null);
+  };
+
+  const downloadPdfPreview = () => {
+    if (!pdfPreview) return;
+    const link = document.createElement('a');
+    link.href = pdfPreview.url;
+    link.download = pdfPreview.filename;
+    link.click();
+  };
+
+  const downloadClinicalPdf = async (record: ClinicalRecordExtended) => {
+    const doc = await createClinicalPdf(record);
+    doc.save(formatPdfName('Registro Clinico', patient?.petName));
+  };
+
+  const previewClinicalPdf = async (record: ClinicalRecordExtended) => {
+    openPdfPreview(
+      await createClinicalPdf(record),
+      'Vista previa del registro clínico',
+      formatPdfName('Registro Clinico', patient?.petName)
+    );
+  };
+
+  const downloadSingleVaccinationPdf = async (vacc: VaccinationExtended) => {
+    const doc = await createSingleVaccinationPdf(vacc);
+    doc.save(formatPdfName(vacc.vaccine || 'Vacuna', patient?.petName));
+  };
+
+  const previewSingleVaccinationPdf = async (vacc: VaccinationExtended) => {
+    openPdfPreview(
+      await createSingleVaccinationPdf(vacc),
+      'Vista previa de la vacuna',
+      formatPdfName(vacc.vaccine || 'Vacuna', patient?.petName)
+    );
+  };
+
+  const downloadClinicalHistoryPdf = async () => {
+    const doc = await createClinicalHistoryPdf();
+    doc.save(formatPdfName('Historial Clinico Completo', patient?.petName));
+  };
+
+  const previewClinicalHistoryPdf = async () => {
+    openPdfPreview(
+      await createClinicalHistoryPdf(),
+      'Vista previa del historial clínico',
+      formatPdfName('Historial Clinico Completo', patient?.petName)
+    );
+  };
+
+  const downloadVaccinationPdf = async () => {
+    const doc = await createVaccinationPdf();
+    doc.save(formatPdfName('Esquema Vacunacion', patient?.petName));
+  };
+
+  const previewVaccinationPdf = async () => {
+    openPdfPreview(
+      await createVaccinationPdf(),
+      'Vista previa del esquema de vacunación',
+      formatPdfName('Esquema Vacunacion', patient?.petName)
+    );
+  };
+
+  const downloadTreatmentPdf = async (treat: TreatmentServiceExtended) => {
+    const doc = await createTreatmentPdf(treat);
+    doc.save(formatPdfName('Servicio', patient?.petName));
+  };
+
+  const previewTreatmentPdf = async (treat: TreatmentServiceExtended) => {
+    openPdfPreview(
+      await createTreatmentPdf(treat),
+      'Vista previa del tratamiento o servicio',
+      formatPdfName('Servicio', patient?.petName)
+    );
+  };
+
+  const downloadAllTreatmentsPdf = async () => {
+    const doc = await createAllTreatmentsPdf();
+    doc.save(formatPdfName('Tratamientos y Servicios', patient?.petName));
+  };
+
+  const previewAllTreatmentsPdf = async () => {
+    openPdfPreview(
+      await createAllTreatmentsPdf(),
+      'Vista previa de tratamientos y servicios',
       formatPdfName('Tratamientos y Servicios', patient?.petName)
     );
   };
 
   if (!patient) {
     return (
-      <div className="p-4 md:p-8">
+      <div className="w-full p-[0.825rem] md:p-[1.375rem]">
         <Link
           to="/patients"
-          className="inline-flex items-center gap-2 text-base font-bold text-primary hover:text-foreground mb-6 transition-colors"
+          className="mb-6 inline-flex items-center gap-2.5 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-lg font-bold text-primary shadow-sm transition-colors hover:bg-primary hover:text-[#F7EFE6]"
         >
-          <ArrowLeft className="w-5 h-5" strokeWidth={2.5} />
+          <ArrowLeft className="h-6 w-6" strokeWidth={2.5} />
           Volver a pacientes
         </Link>
 
@@ -1151,12 +1271,12 @@ export default function PatientDetail() {
   }
 
   return (
-    <div className="p-4 md:p-8">
+    <div className="w-full p-[0.825rem] md:p-[1.375rem]">
       <Link
         to="/patients"
-        className="inline-flex items-center gap-2 text-base font-bold text-primary hover:text-foreground mb-6 transition-colors"
+        className="mb-6 inline-flex items-center gap-2.5 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-lg font-bold text-primary shadow-sm transition-colors hover:bg-primary hover:text-[#F7EFE6]"
       >
-        <ArrowLeft className="w-5 h-5" strokeWidth={2.5} />
+        <ArrowLeft className="h-6 w-6" strokeWidth={2.5} />
         Volver a pacientes
       </Link>
 
@@ -1271,13 +1391,22 @@ export default function PatientDetail() {
                 buttonText="Nuevo registro"
                 onAdd={openNewClinicalModal}
                 extraButton={
-                  <button
-                    onClick={downloadClinicalHistoryPdf}
-                    className="flex items-center gap-2 px-4 py-2 bg-muted hover:bg-border text-foreground rounded-lg transition-colors"
-                  >
-                    <Download className="w-4 h-4" />
-                    Descargar historial completo
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => void previewClinicalHistoryPdf()}
+                      className="flex items-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg transition-colors"
+                    >
+                      <Eye className="w-4 h-4" />
+                      Vista previa
+                    </button>
+                    <button
+                      onClick={() => void downloadClinicalHistoryPdf()}
+                      className="flex items-center gap-2 px-4 py-2 bg-muted hover:bg-border text-foreground rounded-lg transition-colors"
+                    >
+                      <Download className="w-4 h-4" />
+                      Descargar historial
+                    </button>
+                  </div>
                 }
               />
 
@@ -1291,7 +1420,7 @@ export default function PatientDetail() {
                       <div>
                         <div className="flex flex-wrap items-center gap-2 mb-1">
                           <p className="text-primary font-medium">
-                            {record.date}
+                            {formatDateForDisplay(record.date)}
                           </p>
 
                           {record.sourceType === 'appointment' && (
@@ -1348,6 +1477,14 @@ export default function PatientDetail() {
                         </button>
 
                         <button
+                          onClick={() => void previewClinicalPdf(record)}
+                          className="flex items-center justify-center gap-2 px-3 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-sm transition-colors"
+                        >
+                          <Eye className="w-4 h-4" />
+                          Vista previa
+                        </button>
+
+                        <button
                           onClick={() => downloadClinicalPdf(record)}
                           className="flex items-center justify-center gap-2 px-3 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg text-sm transition-colors"
                         >
@@ -1360,7 +1497,7 @@ export default function PatientDetail() {
                             openDeleteModal(
                               record.id,
                               'clinical',
-                              `registro clínico del ${record.date}`
+                              `registro clínico del ${formatDateForDisplay(record.date)}`
                             )
                           }
                           className="flex items-center justify-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive transition-colors hover:bg-destructive/20"
@@ -1419,13 +1556,22 @@ export default function PatientDetail() {
                   setShowModal('vaccination');
                 }}
                 extraButton={
-                  <button
-                    onClick={downloadVaccinationPdf}
-                    className="flex items-center gap-2 px-4 py-2 bg-muted hover:bg-border text-foreground rounded-lg transition-colors"
-                  >
-                    <Download className="w-4 h-4" />
-                    Descargar esquema
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => void previewVaccinationPdf()}
+                      className="flex items-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg transition-colors"
+                    >
+                      <Eye className="w-4 h-4" />
+                      Vista previa
+                    </button>
+                    <button
+                      onClick={() => void downloadVaccinationPdf()}
+                      className="flex items-center gap-2 px-4 py-2 bg-muted hover:bg-border text-foreground rounded-lg transition-colors"
+                    >
+                      <Download className="w-4 h-4" />
+                      Descargar esquema
+                    </button>
+                  </div>
                 }
               />
 
@@ -1439,7 +1585,7 @@ export default function PatientDetail() {
                       <div>
                         <p className="text-foreground font-medium">{vacc.vaccine}</p>
                         <p className="text-muted-foreground text-sm">
-                          Aplicada: {vacc.applicationDate}
+                          Aplicada: {formatDateForDisplay(vacc.applicationDate)}
                         </p>
                         <p className="text-muted-foreground text-sm">
                           Dosis: {vacc.appliedDoses} / {vacc.totalDoses}
@@ -1473,6 +1619,14 @@ export default function PatientDetail() {
                         >
                           <FileText className="w-4 h-4" />
                           Ver
+                        </button>
+
+                        <button
+                          onClick={() => void previewSingleVaccinationPdf(vacc)}
+                          className="flex items-center gap-2 rounded-lg bg-primary/10 px-3 py-2 text-sm text-primary transition-colors hover:bg-primary/20"
+                        >
+                          <Eye className="w-4 h-4" />
+                          Vista previa
                         </button>
 
                         <button
@@ -1518,14 +1672,24 @@ export default function PatientDetail() {
                   setShowModal('treatment');
                 }}
                 extraButton={
-                  <button
-                    type="button"
-                    onClick={() => void downloadAllTreatmentsPdf()}
-                    className="flex items-center justify-center gap-2 rounded-lg bg-muted px-4 py-2 text-foreground transition-colors hover:bg-border"
-                  >
-                    <Download className="w-4 h-4" />
-                    Descargar todos en PDF
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void previewAllTreatmentsPdf()}
+                      className="flex items-center justify-center gap-2 rounded-lg bg-primary/10 px-4 py-2 text-primary transition-colors hover:bg-primary/20"
+                    >
+                      <Eye className="w-4 h-4" />
+                      Vista previa
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void downloadAllTreatmentsPdf()}
+                      className="flex items-center justify-center gap-2 rounded-lg bg-muted px-4 py-2 text-foreground transition-colors hover:bg-border"
+                    >
+                      <Download className="w-4 h-4" />
+                      Descargar todos en PDF
+                    </button>
+                  </div>
                 }
               />
 
@@ -1566,6 +1730,14 @@ export default function PatientDetail() {
                         >
                           <FileText className="w-4 h-4" />
                           Ver
+                        </button>
+
+                        <button
+                          onClick={() => void previewTreatmentPdf(treat)}
+                          className="flex items-center gap-2 px-3 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-sm transition-colors"
+                        >
+                          <Eye className="w-4 h-4" />
+                          Vista previa
                         </button>
 
                         <button
@@ -1632,13 +1804,13 @@ export default function PatientDetail() {
               <button
                 type="button"
                 onClick={closeFormModal}
-                className="p-2 bg-muted hover:bg-border text-foreground rounded-lg transition-colors"
+                className="patient-form-close rounded-lg border p-2 transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleClinicalSubmit} className="space-y-4">
+            <form onSubmit={handleClinicalSubmit} className="patient-form space-y-4">
               {editingClinicalRecord?.sourceType === 'appointment' && (
                 <div className="rounded-xl border border-accent/30 bg-accent/10 p-3 text-sm text-foreground">
                   Este registro fue creado automáticamente desde una cita.
@@ -1692,7 +1864,7 @@ export default function PatientDetail() {
                 />
               </div>
 
-              <div className="mt-6 p-4 bg-muted rounded-lg border border-border">
+              <div className="patient-form-section mt-6 rounded-xl border p-4">
                 <h3 className="text-foreground font-bold text-base mb-4">Examen físico</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                   <SelectField
@@ -1803,7 +1975,7 @@ export default function PatientDetail() {
               Registrar vacuna
             </h2>
 
-            <form onSubmit={handleVaccinationSubmit} className="space-y-4">
+            <form onSubmit={handleVaccinationSubmit} className="patient-form space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <SelectField
                   label="Vacuna"
@@ -1917,7 +2089,7 @@ export default function PatientDetail() {
               Nuevo tratamiento o servicio
             </h2>
 
-            <form onSubmit={handleTreatmentSubmit} className="space-y-4">
+            <form onSubmit={handleTreatmentSubmit} className="patient-form space-y-4">
               <SelectField
                 label="Tipo"
                 value={formData.type || ''}
@@ -2042,7 +2214,7 @@ export default function PatientDetail() {
               )}
 
               {formData.type && (
-                <div className="bg-muted border border-border rounded-xl p-4">
+                <div className="patient-form-section rounded-xl border p-4">
                   <label className="block text-foreground mb-3 text-sm font-medium">
                     Fotografía adjunta, opcional
                   </label>
@@ -2067,7 +2239,7 @@ export default function PatientDetail() {
                       </p>
 
                       <div className="flex flex-col sm:flex-row gap-2">
-                        <label className="flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg cursor-pointer transition-colors text-sm">
+                        <label className="patient-form-primary flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm transition-colors">
                           <Camera className="w-4 h-4" />
                           Tomar foto
 
@@ -2082,7 +2254,7 @@ export default function PatientDetail() {
                           />
                         </label>
 
-                        <label className="flex items-center justify-center gap-2 px-4 py-2 bg-muted hover:bg-border text-foreground rounded-lg cursor-pointer transition-colors text-sm">
+                        <label className="patient-form-secondary flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm transition-colors">
                           <Upload className="w-4 h-4" />
                           Subir imagen
 
@@ -2174,7 +2346,7 @@ export default function PatientDetail() {
             {viewTarget.type === 'clinical' && (
               <div className="space-y-3 text-sm">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <InfoItem label="Fecha" value={(viewTarget.item as ClinicalRecordExtended).date} />
+                  <InfoItem label="Fecha" value={formatDateForDisplay((viewTarget.item as ClinicalRecordExtended).date)} />
                   <InfoItem label="Tipo de consulta" value={(viewTarget.item as ClinicalRecordExtended).consultationType} />
                   <InfoItem label="Veterinario" value={(viewTarget.item as ClinicalRecordExtended).veterinarian} />
                   <InfoItem label="Registrado por" value={(viewTarget.item as ClinicalRecordExtended).createdByName || 'Sistema'} />
@@ -2193,7 +2365,7 @@ export default function PatientDetail() {
               <div className="space-y-3 text-sm">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <InfoItem label="Vacuna" value={(viewTarget.item as VaccinationExtended).vaccine} />
-                  <InfoItem label="Fecha de aplicación" value={(viewTarget.item as VaccinationExtended).applicationDate} />
+                  <InfoItem label="Fecha de aplicación" value={formatDateForDisplay((viewTarget.item as VaccinationExtended).applicationDate)} />
                   <InfoItem label="Veterinario" value={(viewTarget.item as VaccinationExtended).veterinarian} />
                   <InfoItem label="Registrado por" value={(viewTarget.item as VaccinationExtended).createdByName || 'Sistema'} />
                   <InfoItem label="Estado" value={(viewTarget.item as VaccinationExtended).status} />
@@ -2214,7 +2386,7 @@ export default function PatientDetail() {
                   <InfoItem label="Estado" value={(viewTarget.item as TreatmentServiceExtended).status} />
                   <InfoItem label="Veterinario" value={(viewTarget.item as TreatmentServiceExtended).veterinarian} />
                   <InfoItem label="Registrado por" value={(viewTarget.item as TreatmentServiceExtended).createdByName || 'Sistema'} />
-                  <InfoItem label="Fecha" value={(viewTarget.item as TreatmentServiceExtended).requestDate} />
+                  <InfoItem label="Fecha" value={formatDateForDisplay((viewTarget.item as TreatmentServiceExtended).requestDate)} />
                 </div>
                 <InfoItem label="Diagnóstico o motivo" value={(viewTarget.item as TreatmentServiceExtended).diagnosisOrReason} />
                 <InfoItem label="Observaciones" value={(viewTarget.item as TreatmentServiceExtended).observations} />
@@ -2242,6 +2414,16 @@ export default function PatientDetail() {
             </div>
           </div>
         </div>
+      )}
+
+      {pdfPreview && (
+        <PdfPreviewModal
+          url={pdfPreview.url}
+          title={pdfPreview.title}
+          description="Revise el documento en cualquier dispositivo antes de descargarlo. Si el visor integrado no está disponible, ábralo con el visor de PDF del dispositivo."
+          onClose={closePdfPreview}
+          onDownload={downloadPdfPreview}
+        />
       )}
 
       {showDeleteModal && deleteTarget && (
@@ -2371,7 +2553,7 @@ function SectionHeader({
 
         <button
           onClick={onAdd}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors"
+          className="flex items-center justify-center gap-2 px-4 py-2 text-lg bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors"
         >
           <Plus className="w-4 h-4" />
           {buttonText}
@@ -2507,7 +2689,7 @@ function FormActions({
     <div className="flex flex-col sm:flex-row sm:justify-start gap-4 pt-4">
       <button
         type="submit"
-        className="w-full sm:w-auto px-4 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors"
+        className="patient-form-primary w-full rounded-lg px-5 py-2.5 transition-colors sm:w-auto"
       >
         {submitText}
       </button>
@@ -2515,7 +2697,7 @@ function FormActions({
       <button
         type="button"
         onClick={onCancel}
-        className="w-full sm:w-auto px-4 py-2 bg-muted hover:bg-border text-foreground rounded-lg transition-colors"
+        className="patient-form-secondary w-full rounded-lg px-5 py-2.5 transition-colors sm:w-auto"
       >
         Cancelar
       </button>
