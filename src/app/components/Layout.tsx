@@ -22,7 +22,7 @@ export default function Layout() {
 
   return (
     <div
-      className="relative min-h-screen overflow-x-hidden"
+      className="relative min-h-screen min-h-dvh overflow-x-hidden"
       style={{
         background: 'var(--app-background)',
       }}
@@ -44,13 +44,13 @@ export default function Layout() {
       />
 
       <div
-        className={`min-h-screen min-w-0 flex flex-col transition-[padding] duration-200 ${
+        className={`min-h-screen min-h-dvh min-w-0 flex flex-col transition-[padding] duration-200 ${
           isSidebarCollapsed ? 'lg:pl-[4.25rem]' : 'lg:pl-[13.6rem]'
         }`}
       >
         <Header onMenuClick={() => setIsSidebarOpen(true)} />
 
-        <main className="flex-1 min-w-0 w-full overflow-x-hidden">
+        <main className="app-main flex-1 min-w-0 w-full overflow-x-hidden">
           <Outlet />
         </main>
       </div>

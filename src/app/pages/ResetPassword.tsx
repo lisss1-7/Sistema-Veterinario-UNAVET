@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { Check, Eye, EyeOff, Lock } from 'lucide-react';
 import unavetLogo from '../assets/unavet-logo.png';
+import { API_URL } from '../config/api';
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
@@ -35,7 +36,7 @@ export default function ResetPassword() {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch('/api/auth/reset-password', {
+      const response = await fetch(`${API_URL}/auth/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, password, confirmPassword }),
@@ -59,7 +60,7 @@ export default function ResetPassword() {
   };
 
   return (
-    <div className="relative min-h-screen bg-secondary flex items-center justify-center p-4 overflow-hidden">
+    <div className="relative min-h-screen min-h-dvh bg-secondary flex items-center justify-center overflow-x-hidden px-4 py-8">
       <div className="relative z-10 w-full max-w-md bg-card/95 backdrop-blur-sm rounded-2xl shadow-2xl p-6 md:p-8 border border-border">
         <div className="flex justify-center mb-5">
           <img

@@ -26,6 +26,8 @@ import { drawUnavetPdfHeader, getUnavetLogoBase64 } from '../utils/pdfBranding';
 import { formatDateForDisplay } from '../utils/dateFormat';
 import ThemedSelect from '../components/ThemedSelect';
 import PdfPreviewModal from '../components/PdfPreviewModal';
+import { useModulePermissions } from '../hooks/useModulePermissions';
+import { API_URL } from '../config/api';
 
 type PatientWithPhoto = Patient & {
   photo?: string;
@@ -58,8 +60,6 @@ type DeleteTarget = {
   title: string;
 };
 
-const API_URL = '/api';
-
 const getAuthHeaders = () => {
   const token = localStorage.getItem('unavet_token');
 
@@ -86,6 +86,7 @@ const MODAL_CARD_CLASS =
   'patient-form-shell bg-card border border-border rounded-2xl p-4 md:p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl';
 
 export default function PatientDetail() {
+  const { permissions } = useModulePermissions('patients');
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
 
@@ -290,9 +291,11 @@ export default function PatientDetail() {
       setPatient(null);
     }
 
-    await loadClinicalRecords();
-    await loadVaccinations();
-    await loadTreatments();
+    await Promise.all([
+      loadClinicalRecords(),
+      loadVaccinations(),
+      loadTreatments(),
+    ]);
   };
 
   const openNewClinicalModal = () => {
@@ -700,7 +703,9 @@ export default function PatientDetail() {
     y += 7;
     doc.text(`Tipo de consulta: ${record.consultationType}`, 16, y);
     y += 7;
-    doc.text(`Médico veterinario: ${record.veterinarian}`, 16, y);
+    doc.text(`Atendido por: ${record.veterinarian || 'N/A'}`, 16, y);
+    y += 7;
+    doc.text(`Registro creado por: ${record.createdByName || 'No disponible'}`, 16, y);
     y += 12;
 
     doc.setFont('helvetica', 'bold');
@@ -742,7 +747,9 @@ export default function PatientDetail() {
     doc.setFontSize(10);
     doc.text(`Fecha de aplicación: ${vacc.applicationDate || 'N/A'}`, 16, y);
     y += 8;
-    doc.text(`Veterinario: ${vacc.veterinarian || 'N/A'}`, 16, y);
+    doc.text(`Aplicada por: ${vacc.veterinarian || 'N/A'}`, 16, y);
+    y += 8;
+    doc.text(`Registro creado por: ${vacc.createdByName || 'No disponible'}`, 16, y);
     y += 8;
     doc.text(`Estado: ${vacc.status || 'N/A'}`, 16, y);
     y += 8;
@@ -1390,6 +1397,7 @@ export default function PatientDetail() {
                 title="Historial clínico"
                 buttonText="Nuevo registro"
                 onAdd={openNewClinicalModal}
+                canAdd={permissions.canCreate}
                 extraButton={
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -1448,11 +1456,12 @@ export default function PatientDetail() {
 
                         <p className="text-muted-foreground text-sm">
                           {record.veterinarian
-                            ? `Dr. ${record.veterinarian}`
-                            : 'Médico pendiente de asignar'}
+                            ? `Atendido por: Dr. ${record.veterinarian}`
+                            : 'Atención pendiente de asignar'}
                         </p>
                         <p className="text-muted-foreground text-xs mt-1">
-                          Registrado por: {record.createdByName || 'Sistema'}
+                          Registro creado por:{' '}
+                          {record.createdByName || 'No disponible'}
                         </p>
                       </div>
 
@@ -1465,7 +1474,7 @@ export default function PatientDetail() {
                           Ver
                         </button>
 
-                        <button
+                        {permissions.canEdit && <button
                           onClick={() => openEditClinicalModal(record)}
                           className="flex items-center justify-center gap-2 px-3 py-2 bg-muted hover:bg-border text-foreground rounded-lg text-sm transition-colors"
                         >
@@ -1474,7 +1483,7 @@ export default function PatientDetail() {
                           record.clinicalStatus !== 'Completado'
                             ? 'Completar consulta'
                             : 'Editar'}
-                        </button>
+                        </button>}
 
                         <button
                           onClick={() => void previewClinicalPdf(record)}
@@ -1492,7 +1501,7 @@ export default function PatientDetail() {
                           PDF
                         </button>
 
-                        <button
+                        {permissions.canDelete && <button
                           onClick={() =>
                             openDeleteModal(
                               record.id,
@@ -1504,7 +1513,7 @@ export default function PatientDetail() {
                         >
                           <Trash2 className="w-4 h-4" />
                           Eliminar
-                        </button>
+                        </button>}
                       </div>
                     </div>
 
@@ -1515,7 +1524,7 @@ export default function PatientDetail() {
                     <RecordLine label="Tratamiento" value={record.treatment} />
 
                     {(record.examSkin || record.examEyes || record.examRespiratory || record.examEars || record.examNervous || record.examGenitourinary || record.examNodules || record.examPressure) && (
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 p-3 bg-white rounded-lg border border-border text-xs">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 p-3 bg-card rounded-lg border border-border text-xs">
                         {record.examSkin && <div><span className="text-muted-foreground">Piel/Mucosas:</span> {record.examSkin}</div>}
                         {record.examEyes && <div><span className="text-muted-foreground">Ojos:</span> {record.examEyes}</div>}
                         {record.examRespiratory && <div><span className="text-muted-foreground">Respiratorio:</span> {record.examRespiratory}</div>}
@@ -1545,6 +1554,7 @@ export default function PatientDetail() {
               <SectionHeader
                 title="Vacunación"
                 buttonText="Registrar vacuna"
+                canAdd={permissions.canCreate}
                 onAdd={() => {
                   setFormData({
                     applicationDate: getTodayLocal(),
@@ -1594,7 +1604,13 @@ export default function PatientDetail() {
                           Próxima dosis: {vacc.nextDose}
                         </p>
                         <p className="text-muted-foreground text-sm">
-                          Dr. {vacc.veterinarian}
+                          {vacc.veterinarian
+                            ? `Aplicada por: Dr. ${vacc.veterinarian}`
+                            : 'Aplicador no disponible'}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Registro creado por:{' '}
+                          {vacc.createdByName || 'No disponible'}
                         </p>
                       </div>
 
@@ -1637,7 +1653,7 @@ export default function PatientDetail() {
                           PDF
                         </button>
 
-                        <button
+                        {permissions.canDelete && <button
                           onClick={() =>
                             openDeleteModal(
                               vacc.id,
@@ -1649,7 +1665,7 @@ export default function PatientDetail() {
                         >
                           <Trash2 className="w-4 h-4" />
                           Eliminar
-                        </button>
+                        </button>}
                       </div>
                     </div>
                   </div>
@@ -1667,6 +1683,7 @@ export default function PatientDetail() {
               <SectionHeader
                 title="Tratamientos y servicios"
                 buttonText="Nuevo registro"
+                canAdd={permissions.canCreate}
                 onAdd={() => {
                   setFormData({});
                   setShowModal('treatment');
@@ -1748,7 +1765,7 @@ export default function PatientDetail() {
                           PDF
                         </button>
 
-                        <button
+                        {permissions.canDelete && <button
                           onClick={() =>
                             openDeleteModal(
                               treat.id,
@@ -1760,7 +1777,7 @@ export default function PatientDetail() {
                         >
                           <Trash2 className="w-4 h-4" />
                           Eliminar
-                        </button>
+                        </button>}
                       </div>
                     </div>
 
@@ -2348,8 +2365,8 @@ export default function PatientDetail() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <InfoItem label="Fecha" value={formatDateForDisplay((viewTarget.item as ClinicalRecordExtended).date)} />
                   <InfoItem label="Tipo de consulta" value={(viewTarget.item as ClinicalRecordExtended).consultationType} />
-                  <InfoItem label="Veterinario" value={(viewTarget.item as ClinicalRecordExtended).veterinarian} />
-                  <InfoItem label="Registrado por" value={(viewTarget.item as ClinicalRecordExtended).createdByName || 'Sistema'} />
+                  <InfoItem label="Atendido por" value={(viewTarget.item as ClinicalRecordExtended).veterinarian || 'Pendiente de asignar'} />
+                  <InfoItem label="Registro creado por" value={(viewTarget.item as ClinicalRecordExtended).createdByName || 'No disponible'} />
                   <InfoItem label="Estado" value={(viewTarget.item as ClinicalRecordExtended).clinicalStatus} />
                 </div>
                 <InfoItem label="Motivo" value={(viewTarget.item as ClinicalRecordExtended).reason} />
@@ -2366,8 +2383,8 @@ export default function PatientDetail() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <InfoItem label="Vacuna" value={(viewTarget.item as VaccinationExtended).vaccine} />
                   <InfoItem label="Fecha de aplicación" value={formatDateForDisplay((viewTarget.item as VaccinationExtended).applicationDate)} />
-                  <InfoItem label="Veterinario" value={(viewTarget.item as VaccinationExtended).veterinarian} />
-                  <InfoItem label="Registrado por" value={(viewTarget.item as VaccinationExtended).createdByName || 'Sistema'} />
+                  <InfoItem label="Aplicada por" value={(viewTarget.item as VaccinationExtended).veterinarian || 'No disponible'} />
+                  <InfoItem label="Registro creado por" value={(viewTarget.item as VaccinationExtended).createdByName || 'No disponible'} />
                   <InfoItem label="Estado" value={(viewTarget.item as VaccinationExtended).status} />
                   <InfoItem label="Dosis aplicada" value={`${(viewTarget.item as VaccinationExtended).appliedDoses ?? 0} / ${(viewTarget.item as VaccinationExtended).totalDoses ?? 0}`} />
                   <InfoItem label="Próxima dosis" value={(viewTarget.item as VaccinationExtended).nextDose} />
@@ -2538,11 +2555,13 @@ function SectionHeader({
   buttonText,
   onAdd,
   extraButton,
+  canAdd = true,
 }: {
   title: string;
   buttonText: string;
   onAdd: () => void;
   extraButton?: ReactNode;
+  canAdd?: boolean;
 }) {
   return (
     <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
@@ -2551,13 +2570,13 @@ function SectionHeader({
       <div className="flex flex-col sm:flex-row gap-2">
         {extraButton}
 
-        <button
+        {canAdd && <button
           onClick={onAdd}
           className="flex items-center justify-center gap-2 px-4 py-2 text-lg bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors"
         >
           <Plus className="w-4 h-4" />
           {buttonText}
-        </button>
+        </button>}
       </div>
     </div>
   );

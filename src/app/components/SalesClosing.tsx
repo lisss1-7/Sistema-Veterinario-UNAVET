@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { InventoryProduct } from '../utils/types';
 import ThemedSelect from './ThemedSelect';
+import { API_URL } from '../config/api';
 
 type SaleItem = {
   type: 'Producto' | 'Servicio';
@@ -48,8 +49,6 @@ type Notice = {
   message: string;
   type: 'warning' | 'error';
 };
-
-const API_URL = '/api';
 
 type ServiceOption = {
   id: string;
@@ -655,7 +654,7 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
 
                 <div className="space-y-2 mt-4">
                   {items.map((item, index) => (
-                    <div key={`${item.description}-${index}`} className="flex items-center justify-between gap-3 bg-white/50 rounded-lg px-3 py-2 text-sm">
+                    <div key={`${item.description}-${index}`} className="flex items-center justify-between gap-3 bg-card/60 rounded-lg px-3 py-2 text-sm">
                       <span className="text-foreground">
                         {item.quantity} × {item.description} — {money(item.quantity * item.unitPrice)}
                       </span>

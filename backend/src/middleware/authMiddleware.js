@@ -35,6 +35,7 @@ const verificarToken = async (req, res, next) => {
       INNER JOIN estados_usuario eu
         ON eu.estado_usuario_id = u.estado_usuario_id
       WHERE u.usuario_id = ?
+        AND u.eliminado_en IS NULL
       LIMIT 1
       `,
       [decoded.id]

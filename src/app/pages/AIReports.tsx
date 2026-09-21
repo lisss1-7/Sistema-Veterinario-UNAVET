@@ -13,6 +13,8 @@ import {
 import { jsPDF } from 'jspdf';
 import { drawUnavetPdfHeader, getUnavetLogoBase64 } from '../utils/pdfBranding';
 import PdfPreviewModal from '../components/PdfPreviewModal';
+import { useModulePermissions } from '../hooks/useModulePermissions';
+import { API_URL } from '../config/api';
 
 type ChatRole = 'user' | 'assistant';
 
@@ -72,8 +74,6 @@ class ReportRequestError extends Error {
     this.name = 'ReportRequestError';
   }
 }
-
-const API_URL = '/api';
 
 const REPORT_ENDPOINTS = {
   patients: 'pacientes',
@@ -151,6 +151,7 @@ const REPORT_CHART_COLORS = [
 ];
 
 export default function AIReports() {
+  const { permissions } = useModulePermissions('aiReports');
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome',
@@ -615,7 +616,7 @@ export default function AIReports() {
               <button
                 key={prompt}
                 onClick={() => handleSendMessage(prompt)}
-                disabled={isGenerating}
+                disabled={!permissions.canCreate || isGenerating}
                 className="whitespace-nowrap px-3 py-2 bg-secondary hover:bg-border text-foreground rounded-full text-[11px] sm:text-xs transition-colors disabled:opacity-50"
               >
                 {prompt}
@@ -731,18 +732,19 @@ export default function AIReports() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') {
+                if (e.key === 'Enter' && permissions.canCreate) {
                   handleSendMessage();
                 }
               }}
               placeholder="Ejemplo: muestra las citas por estado..."
               maxLength={500}
+              disabled={!permissions.canCreate || isGenerating}
               className="flex-1 px-4 py-3 bg-secondary border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-foreground text-sm"
             />
 
             <button
               onClick={() => handleSendMessage()}
-              disabled={!input.trim() || isGenerating}
+              disabled={!permissions.canCreate || !input.trim() || isGenerating}
               className="w-full sm:w-auto px-4 py-3 bg-primary hover:bg-primary text-[#F7EFE6] rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
             >
               <Send className="w-5 h-5" />

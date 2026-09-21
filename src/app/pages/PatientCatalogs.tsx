@@ -24,6 +24,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import ThemedSelect from '../components/ThemedSelect';
+import { API_URL } from '../config/api';
 
 type CatalogDefinition = {
   key: string;
@@ -117,7 +118,6 @@ type PendingConfirmation =
       record: CatalogRow;
     };
 
-const API_URL = '/api';
 const CATALOG_API_URL = `${API_URL}/catalogos/proceso-pacientes`;
 
 const CATALOG_GROUPS: readonly CatalogGroup[] = [

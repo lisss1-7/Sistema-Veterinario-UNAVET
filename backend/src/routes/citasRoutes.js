@@ -9,14 +9,15 @@ const {
 } = require('../controllers/citasController');
 
 const { verificarToken } = require('../middleware/authMiddleware');
+const { verificarPermiso } = require('../middleware/permissionMiddleware');
 
 const router = express.Router();
 
-router.get('/', verificarToken, listarCitas);
-router.get('/:id', verificarToken, obtenerCitaPorId);
-router.post('/', verificarToken, crearCita);
-router.put('/:id', verificarToken, actualizarCita);
-router.patch('/:id/estado', verificarToken, cambiarEstadoCita);
-router.delete('/:id', verificarToken, eliminarCita);
+router.get('/', verificarToken, verificarPermiso('appointments', 'ver'), listarCitas);
+router.get('/:id', verificarToken, verificarPermiso('appointments', 'ver'), obtenerCitaPorId);
+router.post('/', verificarToken, verificarPermiso('appointments', 'crear'), crearCita);
+router.put('/:id', verificarToken, verificarPermiso('appointments', 'editar'), actualizarCita);
+router.patch('/:id/estado', verificarToken, verificarPermiso('appointments', 'editar'), cambiarEstadoCita);
+router.delete('/:id', verificarToken, verificarPermiso('appointments', 'eliminar'), eliminarCita);
 
 module.exports = router;

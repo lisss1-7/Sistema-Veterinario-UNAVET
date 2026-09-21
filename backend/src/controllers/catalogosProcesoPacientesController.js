@@ -669,7 +669,10 @@ const eliminarCatalogo = async (req, res) => {
     }
     if (req.params.catalogo === 'roles') {
       const [users] = await db.query(
-        'SELECT usuario_id FROM usuarios WHERE rol_id = ? LIMIT 1',
+        `SELECT usuario_id
+         FROM usuarios
+         WHERE rol_id = ? AND eliminado_en IS NULL
+         LIMIT 1`,
         [id]
       );
       if (users.length > 0) {

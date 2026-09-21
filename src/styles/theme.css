@@ -50,6 +50,8 @@
   --warning-foreground: #ffffff;
   --info: #6b5b4d;
   --info-foreground: #ffffff;
+  --primary-emphasis: #8b6f47;
+  --destructive-solid: #5b4031;
 }
 
 .dark {
@@ -63,7 +65,7 @@
   --card-foreground: #f7efe6;
   --popover: #46372e;
   --popover-foreground: #f7efe6;
-  --primary: #8b6f47;
+  --primary: #80643f;
   --primary-foreground: #ffffff;
   --secondary: #554337;
   --secondary-foreground: #f7efe6;
@@ -71,12 +73,12 @@
   --muted-foreground: #d7c7ba;
   --accent: #d4a574;
   --accent-foreground: #211710;
-  --destructive: #d4a574;
+  --destructive: #f0a69a;
   --destructive-foreground: #ffffff;
-  --border: #705b4d;
-  --input: #705b4d;
-  --input-background: #44362e;
-  --switch-background: #8b6f47;
+  --border: #9f816b;
+  --input: #9f816b;
+  --input-background: #493a31;
+  --switch-background: #80643f;
   --ring: #d4a574;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
@@ -93,12 +95,14 @@
   --sidebar-accent-foreground: #f7efe6;
   --sidebar-border: rgba(255, 255, 255, 0.1);
   --sidebar-ring: #d4a574;
-  --success: #d4a574;
+  --success: #afd39f;
   --success-foreground: #211710;
-  --warning: #c9965a;
+  --warning: #f1c66f;
   --warning-foreground: #211710;
-  --info: #d7c7ba;
+  --info: #a9c7e8;
   --info-foreground: #211710;
+  --primary-emphasis: #e2b47d;
+  --destructive-solid: #75443a;
 }
 
 @theme inline {
@@ -290,6 +294,28 @@
   select,
   textarea {
     min-width: 0;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--muted-foreground);
+    opacity: 1;
+  }
+
+  .dark input:-webkit-autofill,
+  .dark input:-webkit-autofill:hover,
+  .dark input:-webkit-autofill:focus,
+  .dark textarea:-webkit-autofill,
+  .dark select:-webkit-autofill {
+    -webkit-text-fill-color: var(--foreground);
+    caret-color: var(--foreground);
+    box-shadow: 0 0 0 1000px var(--input-background) inset;
+    transition: background-color 9999s ease-out 0s;
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--primary-emphasis) 45%, transparent);
+    color: var(--foreground);
   }
 
   h1 {
@@ -522,12 +548,83 @@
   .dark .patient-form-shell .patient-form .themed-select-trigger[data-state='open'] {
     background-color: #513b2e !important;
   }
+
+  .dark .patient-form-primary {
+    color: #211710 !important;
+  }
 }
 
 /* Adaptadores para utilidades de estado que conservan colores fijos. */
 @layer utilities {
+  /* En fondos oscuros, el café de los botones no tiene contraste suficiente
+     como color de texto, borde o foco. Se conserva para fondos sólidos y se
+     usa un tono claro para los elementos de primer plano. */
+  .dark .text-primary,
+  .dark .text-primary\/80,
+  .dark .hover\:text-primary:hover,
+  .dark .group:hover .group-hover\:text-primary {
+    color: var(--primary-emphasis) !important;
+  }
+
+  .dark .border-primary {
+    border-color: var(--primary-emphasis) !important;
+  }
+
+  .dark .border-primary\/15,
+  .dark .border-primary\/20,
+  .dark .border-primary\/25,
+  .dark .border-primary\/30,
+  .dark .border-primary\/35 {
+    border-color: color-mix(in srgb, var(--primary-emphasis) 42%, transparent) !important;
+  }
+
+  .dark .hover\:border-primary\/40:hover,
+  .dark .hover\:border-primary\/50:hover {
+    border-color: color-mix(in srgb, var(--primary-emphasis) 58%, transparent) !important;
+  }
+
+  .dark .bg-primary\/5 {
+    background-color: color-mix(in srgb, var(--primary-emphasis) 7%, transparent) !important;
+  }
+
+  .dark .bg-primary\/10,
+  .dark .hover\:bg-primary\/10:hover {
+    background-color: color-mix(in srgb, var(--primary-emphasis) 14%, transparent) !important;
+  }
+
+  .dark .bg-primary\/15 {
+    background-color: color-mix(in srgb, var(--primary-emphasis) 19%, transparent) !important;
+  }
+
+  .dark .hover\:bg-primary\/20:hover {
+    background-color: color-mix(in srgb, var(--primary-emphasis) 24%, transparent) !important;
+  }
+
+  .dark .focus\:ring-primary:focus,
+  .dark .focus-visible\:ring-primary:focus-visible,
+  .dark .focus-within\:ring-primary:focus-within {
+    --tw-ring-color: var(--ring) !important;
+  }
+
+  .dark .focus\:ring-primary\/20:focus {
+    --tw-ring-color: color-mix(in srgb, var(--ring) 35%, transparent) !important;
+  }
+
+  .dark .bg-destructive {
+    background-color: var(--destructive-solid) !important;
+  }
+
+  .dark .hover\:bg-destructive:hover,
+  .dark .hover\:bg-destructive\/90:hover {
+    background-color: color-mix(in srgb, var(--destructive-solid) 86%, white) !important;
+  }
+
   .dark .bg-white {
     background-color: var(--card);
+  }
+
+  .dark .bg-white\/50 {
+    background-color: color-mix(in srgb, var(--card) 72%, transparent);
   }
 
   .dark .bg-gray-100 {
@@ -535,8 +632,14 @@
   }
 
   .dark .text-gray-700,
-  .dark .text-gray-800 {
+  .dark .text-gray-800,
+  .dark .text-gray-900 {
     color: #d7c9bd;
+  }
+
+  .dark .border-gray-300,
+  .dark .border-gray-400 {
+    border-color: var(--border);
   }
 
   .dark .bg-red-100,
@@ -594,9 +697,8 @@
   }
 }
 
-/* Compatibilidad visual para pantallas antiguas: todos los estados permanecen
-   dentro de la paleta café/beige, incluso si el componente usa una utilidad
-   semántica histórica como red, green o blue. */
+/* Compatibilidad visual para pantallas antiguas que todavía usan utilidades
+   semánticas históricas como red, green o blue. */
 @layer utilities {
   .bg-red-50,
   .bg-red-100,

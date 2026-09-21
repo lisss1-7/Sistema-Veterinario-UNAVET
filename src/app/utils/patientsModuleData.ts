@@ -1,3 +1,5 @@
+import { API_URL } from '../config/api';
+
 export type PatientsModuleData = {
   patients: any[];
   species: any[];
@@ -5,7 +7,6 @@ export type PatientsModuleData = {
   reproductiveStatuses: any[];
 };
 
-const API_URL = '/api';
 let patientsRequest: Promise<any[]> | null = null;
 let patientCatalogsRequest: Promise<
   Pick<PatientsModuleData, 'species' | 'sexes' | 'reproductiveStatuses'>

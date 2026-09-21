@@ -25,6 +25,8 @@ import {
   sanitizePhone,
 } from '../utils/formValidation';
 import { formatDateForDisplay } from '../utils/dateFormat';
+import { useModulePermissions } from '../hooks/useModulePermissions';
+import { API_URL } from '../config/api';
 
 type AppointmentFormData = Partial<Appointment> & {
   animalSize?: string;
@@ -38,8 +40,6 @@ type DeleteTarget = {
   date: string;
   time: string;
 };
-
-const API_URL = '/api';
 
 const getAuthHeaders = () => {
   const token = localStorage.getItem('unavet_token');
@@ -88,6 +88,7 @@ const getAppointmentColor = (status?: string) => {
 
 export default function Appointments() {
   const location = useLocation();
+  const { permissions } = useModulePermissions('appointments');
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -247,6 +248,17 @@ export default function Appointments() {
     month: 'long',
     year: 'numeric',
   });
+  const monthAppointments = filteredAppointments
+    .filter((appointment) => {
+      const appointmentDate = new Date(`${appointment.date}T00:00:00`);
+      return (
+        appointmentDate.getFullYear() === calendarMonth.getFullYear() &&
+        appointmentDate.getMonth() === calendarMonth.getMonth()
+      );
+    })
+    .sort((first, second) =>
+      `${first.date} ${first.time}`.localeCompare(`${second.date} ${second.time}`)
+    );
 
   useEffect(() => {
     if (!filterDate) return;
@@ -504,13 +516,13 @@ export default function Appointments() {
           </h1>
         </div>
 
-        <button
+        {permissions.canCreate && <button
           onClick={() => openModal()}
           className="flex items-center justify-center gap-2 px-4 py-2.5 text-lg bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors"
         >
           <Plus className="w-4 h-4" />
           Nueva cita
-        </button>
+        </button>}
       </div>
       <div className="mb-4 rounded-2xl border border-border/60 bg-gradient-to-br from-card to-muted/20 p-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)] md:p-4">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -605,7 +617,48 @@ export default function Appointments() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="space-y-3 p-3 lg:hidden">
+          {monthAppointments.map((appointment) => (
+            <button
+              key={appointment.id}
+              type="button"
+              onClick={() => setSelectedAppointment(appointment)}
+              className="w-full rounded-2xl border border-border bg-card p-4 text-left shadow-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-primary">
+                    {formatDateForDisplay(appointment.date)} · {appointment.time.slice(0, 5)}
+                  </p>
+                  <h3 className="mt-1 truncate text-base font-bold text-foreground">
+                    {appointment.petName}
+                  </h3>
+                  <p className="truncate text-sm text-muted-foreground">
+                    Tutor: {appointment.tutorName}
+                  </p>
+                </div>
+                <span
+                  className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${getAppointmentColor(
+                    appointment.status
+                  )}`}
+                >
+                  {appointment.status}
+                </span>
+              </div>
+              <p className="mt-3 line-clamp-2 text-sm text-foreground">
+                {appointment.reason || 'Sin motivo especificado'}
+              </p>
+            </button>
+          ))}
+
+          {monthAppointments.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+              No hay citas en este mes con los filtros seleccionados.
+            </div>
+          )}
+        </div>
+
+        <div className="hidden overflow-x-auto lg:block">
           <div className="min-w-[840px]">
             <div className="grid grid-cols-7 bg-primary text-[#F7EFE6]">
               {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((day) => (
@@ -621,7 +674,7 @@ export default function Appointments() {
                 const dayAppointments = appointmentsByDate[dateKey] || [];
                 const isCurrentMonth = day.getMonth() === calendarMonth.getMonth();
                 const isToday = dateKey === getTodayLocal();
-                const canCreate = dateKey >= getTodayLocal();
+                const canCreate = permissions.canCreate && dateKey >= getTodayLocal();
 
                 return (
                   <div
@@ -737,12 +790,23 @@ export default function Appointments() {
               </p>
             </div>
 
+            <div className="mb-4 rounded-xl border border-primary/15 bg-primary/5 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Cita agendada por
+              </p>
+              <p className="mt-1 font-semibold text-foreground">
+                {selectedAppointment.createdByName ||
+                  'No disponible para este registro anterior'}
+              </p>
+            </div>
+
             <div className="mb-5">
               <label className="block text-foreground text-sm font-bold mb-2">
                 Estado de la cita
               </label>
               <ThemedSelect
                 value={selectedAppointment.status}
+                disabled={!permissions.canEdit}
                 onChange={(event) =>
                   void changeStatus(selectedAppointment.id, event.target.value)
                 }
@@ -759,7 +823,7 @@ export default function Appointments() {
             </div>
 
             <div className="flex gap-3">
-              <button
+              {permissions.canEdit && <button
                 type="button"
                 onClick={() => {
                   const appointment = selectedAppointment;
@@ -772,8 +836,8 @@ export default function Appointments() {
                   <Edit className="w-4 h-4" />
                   Editar
                 </span>
-              </button>
-              <button
+              </button>}
+              {permissions.canDelete && <button
                 type="button"
                 onClick={() => {
                   const appointment = selectedAppointment;
@@ -786,7 +850,7 @@ export default function Appointments() {
                   <Trash2 className="w-4 h-4" />
                   Eliminar
                 </span>
-              </button>
+              </button>}
             </div>
           </div>
         </div>

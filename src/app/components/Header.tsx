@@ -17,6 +17,7 @@ import { useNavigate } from 'react-router';
 import { useState, useEffect, useRef } from 'react';
 import { ThemeToggle } from './ThemeToggle';
 import { formatDateForDisplay } from '../utils/dateFormat';
+import { API_URL } from '../config/api';
 
 type NotificationType = 'stock' | 'appointment' | 'grooming';
 
@@ -31,8 +32,6 @@ type NotificationItem = {
 const STORAGE_KEYS = {
   DISMISSED_NOTIFICATIONS: 'unavet_dismissed_notifications',
 };
-
-const API_URL = '/api';
 
 const getAuthHeaders = () => {
   const token =
@@ -291,7 +290,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   };
 
   const getNotificationStyle = (_type: NotificationType) =>
-    'border-white/10 bg-white/5';
+    'border-border bg-muted/55';
 
   const handleLogout = () => {
     logout();
@@ -300,7 +299,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
   return (
     <div
-      className="relative z-50 isolate flex items-center justify-between gap-1.5 border-b border-white/10 px-2 py-3 min-[380px]:gap-2 min-[380px]:px-3 sm:px-4 md:gap-3 md:px-8 md:py-4"
+      className="app-header relative z-50 isolate flex items-center justify-between gap-1.5 border-b border-white/10 px-2 py-3 min-[380px]:gap-2 min-[380px]:px-3 sm:px-4 md:gap-3 md:px-8 md:py-4"
       style={{
         background: 'var(--sidebar)',
       }}
@@ -430,16 +429,16 @@ export function Header({ onMenuClick }: HeaderProps) {
           </button>
 
           {showNotifications && (
-            <div className="fixed left-3 right-3 top-16 z-[100] rounded-xl border border-[#dbc8b2] bg-[#fffaf5] p-3 text-[#4a3525] shadow-xl sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-96 sm:p-4">
+            <div className="fixed left-3 right-3 top-16 z-[100] rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-xl sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-96 sm:p-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 gap-2">
-                <h3 className="font-semibold text-[#4a3525]">
+                <h3 className="font-semibold text-popover-foreground">
                   Notificaciones
                 </h3>
 
                 <div className="flex items-center gap-2">
                   <button
                     onClick={restoreNotifications}
-                    className="flex items-center gap-1 rounded-lg border border-[#d8b17e] bg-[#f5e3c9] px-2.5 py-1.5 text-xs font-medium text-[#825326] transition-colors hover:bg-[#ecd3ae]"
+                    className="flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
                     title="Restaurar notificaciones ocultas"
                   >
                     <RotateCcw className="w-3 h-3" strokeWidth={2.5} />
@@ -449,7 +448,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                   {notificationCount > 0 && (
                     <button
                       onClick={clearAllNotifications}
-                      className="rounded-md bg-[#ead9c7] px-2 py-1 text-xs text-[#6f4d32] transition-colors hover:bg-[#dfc5aa]"
+                      className="rounded-md bg-muted px-2 py-1 text-xs text-foreground transition-colors hover:bg-border"
                     >
                       Limpiar
                     </button>
@@ -472,16 +471,16 @@ export function Header({ onMenuClick }: HeaderProps) {
                         </div>
 
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-[#4a3525]">
+                          <p className="text-sm font-medium text-popover-foreground">
                             {notification.title}
                           </p>
 
-                          <p className="text-sm text-[#604b38]">
+                          <p className="text-sm text-muted-foreground">
                             {notification.message}
                           </p>
 
                           {notification.timeLabel && (
-                            <p className="mt-1 text-sm font-medium text-[#825326]">
+                            <p className="mt-1 text-sm font-medium text-primary">
                               {notification.timeLabel}
                             </p>
                           )}
@@ -489,7 +488,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
                         <button
                           onClick={() => dismissNotification(notification.id)}
-                          className="rounded-lg p-1.5 text-[#70543c] transition-colors hover:bg-[#ead9c7] hover:text-[#4a3525]"
+                          className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                         >
                           <X className="w-4 h-4" strokeWidth={2.5} />
                         </button>
@@ -497,7 +496,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                     </div>
                   ))
                 ) : (
-                  <p className="py-4 text-center text-sm text-[#604b38]">
+                  <p className="py-4 text-center text-sm text-muted-foreground">
                     No hay notificaciones nuevas
                   </p>
                 )}

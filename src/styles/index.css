@@ -6,4 +6,69 @@
   background-color: rgb(45 33 24 / 68%) !important;
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.app-header {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+  padding-right: max(0.5rem, env(safe-area-inset-right));
+  padding-left: max(0.5rem, env(safe-area-inset-left));
+}
+
+.app-sidebar {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.app-main {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+button,
+a,
+input,
+select,
+textarea,
+.themed-select-trigger {
+  touch-action: manipulation;
+}
+
+@media (max-width: 1023px) {
+  body {
+    background-attachment: scroll;
+  }
+}
+
+@media (max-width: 639px) {
+  input,
+  select,
+  textarea,
+  .themed-select-trigger {
+    font-size: 16px !important;
+  }
+
+  .modal-backdrop {
+    align-items: flex-start !important;
+    overflow-y: auto;
+    padding-top: max(0.5rem, env(safe-area-inset-top)) !important;
+    padding-right: max(0.5rem, env(safe-area-inset-right)) !important;
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom)) !important;
+    padding-left: max(0.5rem, env(safe-area-inset-left)) !important;
+  }
+
+  .modal-backdrop > :not(.pdf-preview-dialog) {
+    max-height: calc(
+      100dvh - max(0.5rem, env(safe-area-inset-top)) -
+        max(0.5rem, env(safe-area-inset-bottom))
+    ) !important;
+    overflow-y: auto;
+  }
+
+  .modal-backdrop > .pdf-preview-dialog {
+    height: calc(
+      100dvh - max(0.5rem, env(safe-area-inset-top)) -
+        max(0.5rem, env(safe-area-inset-bottom))
+    );
+  }
 }

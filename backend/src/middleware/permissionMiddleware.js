@@ -11,7 +11,7 @@ const verificarPermiso = (moduleCode, action = 'ver') => {
   const actionColumn = ACTION_COLUMNS[action];
   if (!actionColumn) throw new Error(`Acción de permiso no válida: ${action}`);
 
-  return async (req, res, next) => {
+  const permissionMiddleware = async (req, res, next) => {
     try {
       const [rows] = await pool.query(
         `
@@ -22,6 +22,7 @@ const verificarPermiso = (moduleCode, action = 'ver') => {
         INNER JOIN rol_permisos rp ON rp.rol_id = u.rol_id
         INNER JOIN modulos_sistema m ON m.modulo_id = rp.modulo_id
         WHERE u.usuario_id = ?
+          AND u.eliminado_en IS NULL
           AND eu.permite_acceso = 1
           AND m.codigo = ?
           AND m.activo = 1
@@ -43,6 +44,9 @@ const verificarPermiso = (moduleCode, action = 'ver') => {
       });
     }
   };
+
+  permissionMiddleware.permission = Object.freeze({ moduleCode, action });
+  return permissionMiddleware;
 };
 
 module.exports = { verificarPermiso };

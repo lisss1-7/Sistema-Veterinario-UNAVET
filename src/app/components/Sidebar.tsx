@@ -25,6 +25,7 @@ import {
   type SystemModule,
 } from '../config/deliveryScope';
 import { preloadPatientsModule } from '../utils/patientsModuleData';
+import { API_URL } from '../config/api';
 
 type SidebarProps = {
   isOpen?: boolean;
@@ -80,8 +81,8 @@ export function Sidebar({
 
   useEffect(() => {
     void Promise.all([
-      loadModuleCollection('/api/catalogos/mis-modulos'),
-      loadModuleCollection('/api/catalogos/modulos-sistema'),
+      loadModuleCollection(`${API_URL}/catalogos/mis-modulos`),
+      loadModuleCollection(`${API_URL}/catalogos/modulos-sistema`),
     ])
       .then(([permitted, configured]) => {
         setPermittedModules(permitted);
@@ -129,7 +130,7 @@ export function Sidebar({
 
   return (
     <aside
-      className={`fixed left-0 top-0 z-[60] flex h-dvh max-w-[82vw] flex-col overflow-hidden transition-[width,transform] duration-200 lg:z-40 lg:translate-x-0 w-[15.3rem] ${isCollapsed ? 'lg:w-[4.25rem]' : 'lg:w-[13.6rem]'
+      className={`app-sidebar fixed left-0 top-0 z-[60] flex h-screen h-dvh max-w-[82vw] flex-col overflow-hidden transition-[width,transform] duration-200 lg:z-40 lg:translate-x-0 w-[15.3rem] ${isCollapsed ? 'lg:w-[4.25rem]' : 'lg:w-[13.6rem]'
         } ${isOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full'
         }`}
       style={{ background: 'var(--sidebar)' }}

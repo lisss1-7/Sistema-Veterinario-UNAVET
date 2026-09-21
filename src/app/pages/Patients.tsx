@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import type { Patient } from '../utils/types';
 import ThemedSelect from '../components/ThemedSelect';
+import { useModulePermissions } from '../hooks/useModulePermissions';
 import {
   isValidName,
   isValidPetName,
@@ -34,8 +35,7 @@ import {
   getPatientCatalogs,
   getPatientsList,
 } from '../utils/patientsModuleData';
-
-const API_URL = '/api';
+import { API_URL } from '../config/api';
 
 const getAuthHeaders = () => {
   const token = localStorage.getItem('unavet_token');
@@ -71,6 +71,7 @@ const PAGE_SIZE_OPTIONS = [8, 12, 24];
 
 export default function Patients({ mode = 'list' }: PatientsProps) {
   const navigate = useNavigate();
+  const { permissions } = useModulePermissions('patients');
   const isRegistrationPage = mode === 'register';
   const [patients, setPatients] = useState<PatientFormData[]>([]);
   const [isLoadingPatients, setIsLoadingPatients] = useState(true);
@@ -882,7 +883,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
             {isRegistrationPage ? 'Registrar paciente' : 'Pacientes'}
           </h1>
         </div>
-        {!isRegistrationPage && (
+        {!isRegistrationPage && permissions.canCreate && (
           <button
             type="button"
             onClick={() => openModal()}
@@ -1092,7 +1093,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                     Ver
                   </Link>
 
-                  <button
+                  {permissions.canEdit && <button
                     type="button"
                     onClick={() => openModal(patient)}
                     aria-label={`Editar a ${patient.petName || 'este paciente'}`}
@@ -1100,9 +1101,9 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                   >
                     <Edit className="h-4 w-4 shrink-0" />
                     Editar
-                  </button>
+                  </button>}
 
-                  <button
+                  {permissions.canDelete && <button
                     type="button"
                     onClick={() => requestDelete(patient)}
                     aria-label={`Eliminar a ${patient.petName || 'este paciente'}`}
@@ -1110,7 +1111,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                   >
                     <Trash2 className="h-4 w-4 shrink-0" />
                     Eliminar
-                  </button>
+                  </button>}
                 </div>
               </div>
             </div>
@@ -1689,9 +1690,9 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                           id="tutor-email-help"
                           role="tooltip"
                           aria-live="polite"
-                          className="absolute left-4 top-full z-50 mt-2 flex max-w-[calc(100%-2rem)] items-center gap-2 rounded border border-gray-400 bg-white px-2 py-2 text-xs text-gray-900 shadow-md pointer-events-none"
+                          className="absolute left-4 top-full z-50 mt-2 flex max-w-[calc(100%-2rem)] items-center gap-2 rounded border border-border bg-popover px-2 py-2 text-xs text-popover-foreground shadow-md pointer-events-none"
                         >
-                          <span aria-hidden="true" className="absolute -top-1 left-4 h-2 w-2 rotate-45 border-l border-t border-gray-400 bg-white" />
+                          <span aria-hidden="true" className="absolute -top-1 left-4 h-2 w-2 rotate-45 border-l border-t border-border bg-popover" />
                           <span aria-hidden="true" className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-orange-600 text-sm font-bold text-white">!</span>
                           <span>Usa el formato nombre@dominio.com.</span>
                         </div>

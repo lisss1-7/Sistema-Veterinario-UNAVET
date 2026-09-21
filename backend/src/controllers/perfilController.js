@@ -52,6 +52,7 @@ const obtenerPerfil = async (req, res) => {
       INNER JOIN estados_usuario estado
         ON estado.estado_usuario_id = u.estado_usuario_id
       WHERE u.usuario_id = ?
+        AND u.eliminado_en IS NULL
       LIMIT 1
       `,
       [req.user.id]
@@ -100,7 +101,7 @@ const actualizarPerfil = async (req, res) => {
         primer_apellido = ?,
         segundo_apellido = ?,
         telefono = ?
-      WHERE usuario_id = ?
+      WHERE usuario_id = ? AND eliminado_en IS NULL
       `,
       [
         firstName,
@@ -147,6 +148,7 @@ const actualizarPerfil = async (req, res) => {
       INNER JOIN estados_usuario estado
         ON estado.estado_usuario_id = u.estado_usuario_id
       WHERE u.usuario_id = ?
+        AND u.eliminado_en IS NULL
       LIMIT 1
       `,
       [req.user.id]
@@ -195,6 +197,7 @@ const cambiarPassword = async (req, res) => {
       SELECT usuario_id, password_hash
       FROM usuarios
       WHERE usuario_id = ?
+        AND eliminado_en IS NULL
       LIMIT 1
       `,
       [req.user.id]
@@ -223,7 +226,7 @@ const cambiarPassword = async (req, res) => {
       `
       UPDATE usuarios
       SET password_hash = ?
-      WHERE usuario_id = ?
+      WHERE usuario_id = ? AND eliminado_en IS NULL
       `,
       [nuevoHash, req.user.id]
     );

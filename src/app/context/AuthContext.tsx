@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import type { UserRole } from '../config/roles';
+import { API_URL } from '../config/api';
 
 export type { UserRole };
 
@@ -18,16 +19,19 @@ export interface User {
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<LoginResult>;
   updateUser: (updates: Partial<User>) => void;
   logout: () => void;
   isAuthenticated: boolean;
   isSessionReady: boolean;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+interface LoginResult {
+  success: boolean;
+  message?: string;
+}
 
-const API_URL = '/api';
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const clearStoredSession = () => {
   localStorage.removeItem('unavet_user');
@@ -132,7 +136,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (
+    email: string,
+    password: string
+  ): Promise<LoginResult> => {
     try {
       const response = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
@@ -149,7 +156,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!response.ok) {
         console.error('Error de login:', data.message);
-        return false;
+        return {
+          success: false,
+          message: data.message || 'Correo o contraseña incorrectos.',
+        };
       }
 
       setUser(data.user);
@@ -159,10 +169,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem('token');
       setIsSessionReady(true);
 
-      return true;
+      return { success: true };
     } catch (error) {
       console.error('Error al conectar con el backend:', error);
-      return false;
+      return {
+        success: false,
+        message: 'No fue posible conectar con el servidor.',
+      };
     }
   };
 

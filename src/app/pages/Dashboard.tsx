@@ -20,8 +20,7 @@ import {
   isModuleContentEnabled,
   type SystemModule,
 } from '../config/deliveryScope';
-
-const API_URL = '/api';
+import { API_URL } from '../config/api';
 
 const getAuthHeaders = () => {
   const token =
@@ -45,10 +44,10 @@ const moduleIconByCode: Record<string, LucideIcon> = {
 };
 
 const quickAccessStyles = [
-  'border-[#806548] bg-[#806548] text-[#fffaf3] hover:border-[#6f553a] hover:bg-[#6f553a]',
-  'border-[#d19a5b] bg-[#d19a5b] text-[#fffaf3] hover:border-[#bd8548] hover:bg-[#bd8548]',
-  'border-[#b97858] bg-[#b97858] text-[#fffaf3] hover:border-[#a86548] hover:bg-[#a86548]',
-  'border-[#c4a27a] bg-[#c4a27a] text-[#33251a] hover:border-[#b38e65] hover:bg-[#b38e65]',
+  'border-[#806548] bg-[#806548] text-[#fffaf3] hover:border-[#6f553a] hover:bg-[#6f553a] dark:border-[#957657] dark:bg-[#60462f] dark:hover:bg-[#6f553a]',
+  'border-[#d19a5b] bg-[#d19a5b] text-[#33251a] hover:border-[#bd8548] hover:bg-[#bd8548] dark:border-[#a97643] dark:bg-[#704b2b] dark:text-[#fffaf3] dark:hover:bg-[#805934]',
+  'border-[#b97858] bg-[#b97858] text-[#33251a] hover:border-[#a86548] hover:bg-[#a86548] dark:border-[#a66d55] dark:bg-[#6f4133] dark:text-[#fffaf3] dark:hover:bg-[#7e4c3c]',
+  'border-[#c4a27a] bg-[#c4a27a] text-[#33251a] hover:border-[#b38e65] hover:bg-[#b38e65] dark:border-[#9d8062] dark:bg-[#654d38] dark:text-[#fffaf3] dark:hover:bg-[#755b43]',
 ];
 
 type DashboardCache = {
@@ -241,7 +240,7 @@ function FullDashboard() {
             Array.from({ length: 4 }).map((_, index) => (
               <div
                 key={`quick-access-skeleton-${index}`}
-                className="h-[68px] animate-pulse rounded-lg bg-[#dfcdb9]"
+                className="h-[68px] animate-pulse rounded-lg bg-[#dfcdb9] dark:bg-[#56453d]"
               />
             ))}
           {quickAccessModules.map((module, index) => {

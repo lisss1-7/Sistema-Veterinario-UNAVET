@@ -37,6 +37,7 @@ const login = async (req, res) => {
       INNER JOIN estados_usuario eu
         ON eu.estado_usuario_id = u.estado_usuario_id
       WHERE u.correo = ?
+        AND u.eliminado_en IS NULL
       LIMIT 1
       `,
       [correo]
@@ -52,7 +53,7 @@ const login = async (req, res) => {
 
     if (!user.permite_acceso) {
       return res.status(403).json({
-        message: 'El usuario está inactivo',
+        message: 'El usuario está dado de baja.',
       });
     }
 

@@ -42,6 +42,7 @@ const requestPasswordReset = async (req, res) => {
        INNER JOIN estados_usuario eu
          ON eu.estado_usuario_id = u.estado_usuario_id
        WHERE LOWER(u.correo) = ?
+         AND u.eliminado_en IS NULL
        LIMIT 1`,
       [correo]
     );
@@ -121,6 +122,7 @@ const resetPassword = async (req, res) => {
        INNER JOIN estados_usuario eu
          ON eu.estado_usuario_id = u.estado_usuario_id
        WHERE u.usuario_id = ?
+         AND u.eliminado_en IS NULL
        LIMIT 1`,
       [payload.sub]
     );
@@ -135,7 +137,9 @@ const resetPassword = async (req, res) => {
 
     const passwordHash = await bcrypt.hash(password, 12);
     await pool.query(
-      'UPDATE usuarios SET password_hash = ? WHERE usuario_id = ?',
+      `UPDATE usuarios
+       SET password_hash = ?
+       WHERE usuario_id = ? AND eliminado_en IS NULL`,
       [passwordHash, users[0].usuario_id]
     );
 

@@ -80,6 +80,7 @@ const listarUsuarios = async (req, res) => {
       INNER JOIN roles r ON u.rol_id = r.rol_id
       INNER JOIN estados_usuario estado
         ON estado.estado_usuario_id = u.estado_usuario_id
+      WHERE u.eliminado_en IS NULL
       ORDER BY u.usuario_id ASC
       `
     );
@@ -119,6 +120,7 @@ const obtenerUsuarioPorId = async (req, res) => {
       INNER JOIN estados_usuario estado
         ON estado.estado_usuario_id = u.estado_usuario_id
       WHERE u.usuario_id = ?
+        AND u.eliminado_en IS NULL
       LIMIT 1
       `,
       [id]
@@ -283,7 +285,10 @@ const actualizarUsuario = async (req, res) => {
     await connection.beginTransaction();
 
     const [existing] = await connection.query(
-      'SELECT usuario_id FROM usuarios WHERE usuario_id = ? LIMIT 1',
+      `SELECT usuario_id
+       FROM usuarios
+       WHERE usuario_id = ? AND eliminado_en IS NULL
+       LIMIT 1`,
       [id]
     );
 
@@ -348,7 +353,7 @@ const actualizarUsuario = async (req, res) => {
           telefono = ?,
           password_hash = ?,
           estado_usuario_id = ?
-        WHERE usuario_id = ?
+        WHERE usuario_id = ? AND eliminado_en IS NULL
         `,
         [
           rolId,
@@ -376,7 +381,7 @@ const actualizarUsuario = async (req, res) => {
           correo = ?,
           telefono = ?,
           estado_usuario_id = ?
-        WHERE usuario_id = ?
+        WHERE usuario_id = ? AND eliminado_en IS NULL
         `,
         [
           rolId,
@@ -421,6 +426,7 @@ const actualizarUsuario = async (req, res) => {
       INNER JOIN estados_usuario estado
         ON estado.estado_usuario_id = u.estado_usuario_id
       WHERE u.usuario_id = ?
+        AND u.eliminado_en IS NULL
       LIMIT 1
       `,
       [id]
@@ -469,7 +475,9 @@ const cambiarEstadoUsuario = async (req, res) => {
     }
 
     const [result] = await pool.query(
-      'UPDATE usuarios SET estado_usuario_id = ? WHERE usuario_id = ?',
+      `UPDATE usuarios
+       SET estado_usuario_id = ?
+       WHERE usuario_id = ? AND eliminado_en IS NULL`,
       [validStatuses[0].estado_usuario_id, id]
     );
 
@@ -490,34 +498,63 @@ const cambiarEstadoUsuario = async (req, res) => {
 };
 
 const eliminarUsuario = async (req, res) => {
+  const { id } = req.params;
+
+  if (String(req.user?.id) === String(id)) {
+    return res.status(400).json({
+      message: 'No puedes eliminar tu propio usuario mientras estás en sesión',
+    });
+  }
+
+  const connection = await pool.getConnection();
+
   try {
-    const { id } = req.params;
+    await connection.beginTransaction();
 
-    if (String(req.user?.id) === String(id)) {
-      return res.status(400).json({
-        message: 'No puedes eliminar tu propio usuario mientras estás en sesión',
-      });
-    }
+    const [inactiveStatuses] = await connection.query(
+      `SELECT estado_usuario_id
+       FROM estados_usuario
+       WHERE activo = 1 AND permite_acceso = 0
+       ORDER BY estado_usuario_id
+       LIMIT 1`
+    );
 
-    const [result] = await pool.query(
-      'DELETE FROM usuarios WHERE usuario_id = ?',
-      [id]
+    const [result] = await connection.query(
+      `UPDATE usuarios
+       SET
+         eliminado_en = NOW(),
+         estado_usuario_id = COALESCE(?, estado_usuario_id)
+       WHERE usuario_id = ? AND eliminado_en IS NULL`,
+      [inactiveStatuses[0]?.estado_usuario_id || null, id]
     );
 
     if (result.affectedRows === 0) {
+      await connection.rollback();
+
       return res.status(404).json({
         message: 'Usuario no encontrado',
       });
     }
 
+    await connection.query(
+      'UPDATE veterinarios SET activo = 0 WHERE usuario_id = ?',
+      [id]
+    );
+
+    await connection.commit();
+
     res.json({
       message: 'Usuario eliminado correctamente',
     });
   } catch (error) {
+    await connection.rollback();
+
     res.status(500).json({
       message: 'Error al eliminar usuario',
       error: error.message,
     });
+  } finally {
+    connection.release();
   }
 };
 

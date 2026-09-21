@@ -28,6 +28,7 @@ import type { SystemUser } from '../utils/types';
 import ThemedSelect from '../components/ThemedSelect';
 import PdfPreviewModal from '../components/PdfPreviewModal';
 import { useAuth } from '../context/AuthContext';
+import { useModulePermissions } from '../hooks/useModulePermissions';
 import { formatDateForDisplay } from '../utils/dateFormat';
 import {
   drawUnavetPdfHeader,
@@ -40,6 +41,7 @@ import {
   sanitizeName,
   sanitizePhone,
 } from '../utils/formValidation';
+import { API_URL } from '../config/api';
 
 type UserFormData = {
   id?: string;
@@ -95,8 +97,6 @@ const userIsActive = (user: SystemUser, enabledStatus: string) => {
   );
 };
 
-const API_URL = '/api';
-
 const getAuthHeaders = () => {
   const token =
     localStorage.getItem('unavet_token') ||
@@ -110,6 +110,7 @@ const getAuthHeaders = () => {
 
 export default function Users() {
   const { user: authenticatedUser, updateUser } = useAuth();
+  const { permissions } = useModulePermissions('users');
   const [users, setUsers] = useState<SystemUser[]>([]);
   const [canAccess, setCanAccess] = useState<boolean | null>(null);
   const [roleOptions, setRoleOptions] = useState<string[]>([]);
@@ -910,7 +911,7 @@ export default function Users() {
             </h1>
           </div>
 
-          <button
+          {permissions.canCreate && <button
             type="button"
             onClick={() => openModal()}
             disabled={loadingRoles || roleOptions.length === 0}
@@ -918,7 +919,7 @@ export default function Users() {
           >
             <Plus className="w-4 h-4" />
             {loadingRoles ? 'Cargando roles...' : 'Nuevo usuario'}
-          </button>
+          </button>}
         </div>
 
         <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-2 xl:flex xl:flex-wrap">
@@ -1255,7 +1256,7 @@ export default function Users() {
                 <p className="text-sm text-muted-foreground break-all">{userItem.email}</p>
               </div>
 
-              <button
+              {permissions.canEdit && <button
                 type="button"
                 onClick={() => toggleStatus(userItem.id)}
                 disabled={String(userItem.id) === String(authenticatedUser?.id)}
@@ -1267,7 +1268,7 @@ export default function Users() {
                 }`}
               >
                 {userItem.status}
-              </button>
+              </button>}
             </div>
 
             <div className="grid grid-cols-2 gap-3 text-sm">
@@ -1292,7 +1293,7 @@ export default function Users() {
                 Ver
               </button>
 
-              <button
+              {permissions.canEdit && <button
                 type="button"
                 onClick={() => openModal(userItem)}
                 disabled={String(userItem.id) === String(authenticatedUser?.id)}
@@ -1300,9 +1301,9 @@ export default function Users() {
                 className="min-w-0 rounded-xl bg-secondary px-3 py-2 text-sm text-primary transition-colors hover:bg-border disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Editar
-              </button>
+              </button>}
 
-              <button
+              {permissions.canDelete && <button
                 type="button"
                 onClick={() => openDeleteModal(userItem)}
                 disabled={String(userItem.id) === String(authenticatedUser?.id)}
@@ -1310,7 +1311,7 @@ export default function Users() {
                 className="min-w-0 rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Eliminar
-              </button>
+              </button>}
             </div>
           </article>
         ))}
@@ -1362,7 +1363,7 @@ export default function Users() {
                   </td>
 
                   <td className="px-6 py-4">
-                    <button
+                    {permissions.canEdit && <button
                       type="button"
                       onClick={() => toggleStatus(userItem.id)}
                       disabled={String(userItem.id) === String(authenticatedUser?.id)}
@@ -1374,7 +1375,7 @@ export default function Users() {
                       }`}
                     >
                       {userItem.status}
-                    </button>
+                    </button>}
                   </td>
 
                   <td className="px-6 py-4 text-foreground">
@@ -1393,7 +1394,7 @@ export default function Users() {
                         <Eye className="w-4 h-4" />
                       </button>
 
-                      <button
+                      {permissions.canEdit && <button
                         type="button"
                         onClick={() => openModal(userItem)}
                         disabled={String(userItem.id) === String(authenticatedUser?.id)}
@@ -1401,9 +1402,9 @@ export default function Users() {
                         className="p-2 bg-secondary hover:bg-border text-primary rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Edit className="w-4 h-4" />
-                      </button>
+                      </button>}
 
-                      <button
+                      {permissions.canDelete && <button
                         type="button"
                         onClick={() =>
                           openDeleteModal(userItem)
@@ -1413,7 +1414,7 @@ export default function Users() {
                         className="rounded-lg bg-destructive/10 p-2 text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Trash2 className="w-4 h-4" />
-                      </button>
+                      </button>}
                     </div>
                   </td>
                 </tr>

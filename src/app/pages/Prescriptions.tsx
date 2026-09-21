@@ -20,8 +20,8 @@ import SearchablePatientSelect from '../components/SearchablePatientSelect';
 import ThemedSelect from '../components/ThemedSelect';
 import { drawUnavetPdfHeader, getUnavetLogoBase64 } from '../utils/pdfBranding';
 import PdfPreviewModal from '../components/PdfPreviewModal';
-
-const API_URL = '/api';
+import { useModulePermissions } from '../hooks/useModulePermissions';
+import { API_URL } from '../config/api';
 
 type CatalogItem = {
   id?: number;
@@ -45,6 +45,7 @@ const getAuthHeaders = () => {
 
 export default function Prescriptions() {
   const [searchParams] = useSearchParams();
+  const { permissions } = useModulePermissions('prescriptions');
   const openedPatientFromUrl = useRef('');
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -139,7 +140,7 @@ export default function Prescriptions() {
 
   const loadInventory = async () => {
     try {
-      const response = await fetch(`${API_URL}/inventario`, {
+      const response = await fetch(`${API_URL}/recetas/inventario-disponible`, {
         method: 'GET',
         headers: getAuthHeaders(),
       });
@@ -819,14 +820,14 @@ export default function Prescriptions() {
           Recetas Médicas
         </h1>
 
-        <button
+        {permissions.canCreate && <button
           onClick={openCreateModal}
           disabled={loadingCatalogs}
           className="flex items-center gap-2 px-4 py-2 text-lg bg-primary hover:bg-primary disabled:opacity-60 disabled:cursor-not-allowed text-[#F7EFE6] rounded-lg transition-colors"
         >
           <Plus className="w-4 h-4" />
           Nueva receta
-        </button>
+        </button>}
       </div>
 
       <div className="bg-card rounded-lg p-6 shadow-lg mb-6">
@@ -875,7 +876,7 @@ export default function Prescriptions() {
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-2">
-                  <button
+                  {permissions.canEdit && <button
                     type="button"
                     onClick={() => openEditModal(prescription)}
                     disabled={prescription.status === 'Anulada'}
@@ -883,7 +884,7 @@ export default function Prescriptions() {
                   >
                     <Edit className="w-4 h-4" />
                     Editar
-                  </button>
+                  </button>}
 
                   <button
                     onClick={() => previewPDF(prescription)}

@@ -17,7 +17,7 @@ export default function PdfPreviewModal({
 }: PdfPreviewModalProps) {
   return (
     <div className="modal-backdrop fixed inset-0 z-[70] flex items-center justify-center p-0 sm:p-4">
-      <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-card shadow-2xl sm:h-[92dvh] sm:max-w-5xl sm:rounded-2xl sm:border sm:border-border">
+      <div className="pdf-preview-dialog flex h-[100dvh] w-full flex-col overflow-hidden bg-card shadow-2xl sm:h-[92dvh] sm:max-w-5xl sm:rounded-2xl sm:border sm:border-border">
         <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-4">
           <div className="min-w-0">
             <h3 className="flex items-center gap-2 text-base font-medium text-foreground sm:text-lg">

@@ -25,6 +25,7 @@ const syncVeterinarianForUser = async (
     FROM usuarios usuario
     INNER JOIN roles rol ON rol.rol_id = usuario.rol_id
     WHERE usuario.usuario_id = ?
+      AND usuario.eliminado_en IS NULL
     LIMIT 1
     `,
     [userId]

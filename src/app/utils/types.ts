@@ -104,6 +104,8 @@ export interface Appointment {
   reason: string;
   veterinarian: string;
   status: 'Pendiente' | 'Confirmada' | 'Completada' | 'Cancelada';
+  createdBy?: string;
+  createdByName?: string;
 }
 
 export interface GroomingAppointment {

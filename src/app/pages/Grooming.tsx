@@ -24,6 +24,7 @@ import type { GroomingAppointment } from '../utils/types';
 import SearchablePatientSelect from '../components/SearchablePatientSelect';
 import ThemedSelect from '../components/ThemedSelect';
 import InformationCard from '../components/InformationCard';
+import { useModulePermissions } from '../hooks/useModulePermissions';
 import { formatDateForDisplay } from '../utils/dateFormat';
 import {
   getTodayLocal,
@@ -35,6 +36,7 @@ import {
   sanitizeName,
   sanitizePhone,
 } from '../utils/formValidation';
+import { API_URL } from '../config/api';
 
 type GroomingFormData = Partial<GroomingAppointment> & {
   patientId?: string;
@@ -49,8 +51,6 @@ type DeleteTarget = {
 };
 
 type InfoModalType = 'transportLimit' | 'timeConflict' | null;
-
-const API_URL = '/api';
 
 const getAuthHeaders = () => {
   const token = localStorage.getItem('unavet_token');
@@ -90,12 +90,15 @@ const getCalendarDays = (month: Date) => {
 
 export default function Grooming() {
   const location = useLocation();
+  const { permissions } = useModulePermissions('grooming');
   const [grooming, setGrooming] = useState<GroomingAppointment[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterDate, setFilterDate] = useState('');
-  const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
+  const [viewMode, setViewMode] = useState<'calendar' | 'list'>(() =>
+    window.matchMedia('(max-width: 1023px)').matches ? 'list' : 'calendar'
+  );
   const [calendarMonth, setCalendarMonth] = useState(
     () => new Date(new Date().getFullYear(), new Date().getMonth(), 1)
   );
@@ -699,13 +702,13 @@ export default function Grooming() {
           </h1>
         </div>
 
-        <button
+        {permissions.canCreate && <button
           onClick={() => openModal()}
           className="flex items-center justify-center gap-2 px-[0.825rem] py-[0.55rem] text-[0.9625rem] bg-gradient-to-br from-primary to-primary hover:from-[#7a5f3c] hover:to-primary text-[#F7EFE6] rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105"
         >
           <Plus className="w-4 h-4 drop-shadow-sm" strokeWidth={2.5} />
           Nueva cita de grooming
-        </button>
+        </button>}
         <div className="sm:ml-auto">
           <div className="flex gap-1 rounded-xl border border-border bg-card p-1" aria-label="Vista de grooming">
             <button type="button" aria-pressed={viewMode === 'calendar'} onClick={() => setViewMode('calendar')}
@@ -861,7 +864,7 @@ export default function Grooming() {
                     <div key={dateKey} className={`flex h-[8.8rem] flex-col border-b border-r border-border p-2 ${isCurrentMonth ? 'bg-card' : 'bg-muted/40'} ${isToday || filterDate === dateKey ? 'ring-2 ring-inset ring-primary/50' : ''}`}>
                       <div className="mb-1 flex shrink-0 items-center justify-between">
                         <span className={`flex h-7 w-7 items-center justify-center rounded-lg text-[0.9625rem] font-bold ${isToday ? 'bg-primary text-primary-foreground' : isCurrentMonth ? 'text-foreground' : 'text-muted-foreground'}`}>{day.getDate()}</span>
-                        {dateKey >= getTodayLocal() && <button type="button" aria-label={`Agendar grooming el ${formatDateForDisplay(dateKey)}`} title="Nuevo grooming en este día" onClick={() => openModal(undefined, dateKey)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary"><Plus className="h-4 w-4" /></button>}
+                        {permissions.canCreate && dateKey >= getTodayLocal() && <button type="button" aria-label={`Agendar grooming el ${formatDateForDisplay(dateKey)}`} title="Nuevo grooming en este día" onClick={() => openModal(undefined, dateKey)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary"><Plus className="h-4 w-4" /></button>}
                       </div>
                       <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto">
                         {items.map((item) => (
@@ -928,6 +931,7 @@ export default function Grooming() {
             <div className="mt-4">
               <ThemedSelect
                 value={groom.status}
+                disabled={!permissions.canEdit}
                 onChange={(e) => changeStatus(groom.id, e.target.value)}
                 className={`w-full px-3 py-2 rounded-xl text-sm border border-transparent ${getStatusClass(
                   groom.status
@@ -951,23 +955,23 @@ export default function Grooming() {
                 Ver
               </button>
 
-              <button
+              {permissions.canEdit && <button
                 type="button"
                 onClick={() => openModal(groom)}
                 className="flex-1 px-4 py-2 bg-secondary hover:bg-border text-primary rounded-xl transition-colors"
                 title="Editar"
               >
                 Editar
-              </button>
+              </button>}
 
-              <button
+              {permissions.canDelete && <button
                 type="button"
                 onClick={() => openDeleteModal(groom)}
                 className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-600 rounded-xl transition-colors"
                 title="Eliminar"
               >
                 Eliminar
-              </button>
+              </button>}
             </div>
           </article>
         ))}
@@ -1042,6 +1046,7 @@ export default function Grooming() {
                   <td className="px-6 py-4">
                     <ThemedSelect
                       value={groom.status}
+                      disabled={!permissions.canEdit}
                       onChange={(e) => changeStatus(groom.id, e.target.value)}
                       className={`px-3 py-1 rounded-full text-sm ${getStatusClass(
                         groom.status
@@ -1067,23 +1072,23 @@ export default function Grooming() {
                         <Eye className="w-4 h-4" />
                       </button>
 
-                      <button
+                      {permissions.canEdit && <button
                         type="button"
                         onClick={() => openModal(groom)}
                         className="p-2 bg-secondary hover:bg-border text-primary rounded-lg transition-colors"
                         title="Editar"
                       >
                         <Edit className="w-4 h-4" />
-                      </button>
+                      </button>}
 
-                      <button
+                      {permissions.canDelete && <button
                         type="button"
                         onClick={() => openDeleteModal(groom)}
                         className="p-2 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg transition-colors"
                         title="Eliminar"
                       >
                         <Trash2 className="w-4 h-4" />
-                      </button>
+                      </button>}
                     </div>
                   </td>
                 </tr>
@@ -1211,6 +1216,7 @@ export default function Grooming() {
               </label>
               <ThemedSelect
                 value={selectedGrooming.status}
+                disabled={!permissions.canEdit}
                 onChange={(event) =>
                   void changeStatus(selectedGrooming.id, event.target.value)
                 }
@@ -1227,7 +1233,7 @@ export default function Grooming() {
             </div>
 
             <div className="flex gap-3">
-              <button
+              {permissions.canEdit && <button
                 type="button"
                 onClick={() => {
                   const groomingItem = selectedGrooming;
@@ -1240,8 +1246,8 @@ export default function Grooming() {
                   <Edit className="w-4 h-4" />
                   Editar
                 </span>
-              </button>
-              <button
+              </button>}
+              {permissions.canDelete && <button
                 type="button"
                 onClick={() => {
                   const groomingItem = selectedGrooming;
@@ -1254,7 +1260,7 @@ export default function Grooming() {
                   <Trash2 className="w-4 h-4" />
                   Eliminar
                 </span>
-              </button>
+              </button>}
             </div>
           </div>
         </div>

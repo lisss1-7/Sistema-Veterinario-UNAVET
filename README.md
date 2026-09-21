@@ -216,6 +216,24 @@ El frontend normalmente se abre en:
 http://localhost:5173
 ```
 
+### Probar desde otro dispositivo o desde Ports de Visual Studio Code
+
+El frontend escucha en todas las interfaces de red y envía las peticiones
+`/api` al backend mediante el proxy de Vite. Por eso solo se debe compartir o
+reenviar el puerto que Vite muestre (`5173`, o el siguiente disponible si ese
+puerto ya está ocupado).
+
+- En **Ports**, abre la URL HTTPS del puerto del frontend desde el teléfono.
+- En la misma red local, abre la URL `Network` que muestra Vite, por ejemplo
+  `http://192.168.1.20:5173`.
+- El backend puede permanecer en el puerto `3001`; el navegador del teléfono no
+  intenta conectarse a su propio `localhost`.
+
+Los dominios de Codespaces y Dev Tunnels usados por Ports ya están permitidos
+en la configuración de desarrollo. Si el sistema usa recuperación por correo en
+una prueba remota, configura `FRONTEND_URL` con la URL HTTPS del puerto del
+frontend para que el enlace del mensaje abra el dispositivo correcto.
+
 ## Reportes IA (nube sin descargar nada)
 
 El módulo de reportes IA funciona con datos reales de la base de datos y ahora permite proveedores en la nube sin instalar modelos locales.
@@ -293,6 +311,7 @@ Para aplicar la migración idempotente:
 cd backend
 npm run migrate:normalize
 npm run migrate:person-names
+npm run migrate:user-soft-delete
 ```
 
 Antes de modificar la estructura se genera automáticamente un respaldo JSON en
@@ -386,23 +405,18 @@ Permite que el usuario logueado visualice y edite su información personal y cam
 
 ## Consideraciones para la nube
 
-Actualmente el frontend usa rutas locales hacia el backend:
+El frontend usa `/api` por defecto. Esto funciona en desarrollo, en **Ports** y
+en un despliegue donde frontend y backend compartan dominio mediante un proxy
+inverso. No se necesita cambiar el código para esos casos.
 
-```ts
-const API_URL = 'http://localhost:3001/api';
-```
-
-Antes de subir el sistema a la nube, se recomienda cambiar esto por una variable de entorno:
-
-```ts
-const API_URL = import.meta.env.VITE_API_URL;
-```
-
-Y crear un archivo `.env` para el frontend:
+Si el frontend y el backend se publican en dominios diferentes, se puede definir
+la variable de entorno ya soportada por la aplicación:
 
 ```env
 VITE_API_URL=https://tu-backend-en-la-nube.com/api
 ```
+
+Si `VITE_API_URL` se deja vacía, la aplicación conserva automáticamente `/api`.
 
 También se debe configurar una base de datos MySQL en la nube y actualizar el `.env` del backend con los datos reales del servidor.
 

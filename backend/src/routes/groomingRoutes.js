@@ -8,14 +8,15 @@ const {
   eliminarGrooming,
 } = require('../controllers/groomingController');
 const { verificarToken } = require('../middleware/authMiddleware');
+const { verificarPermiso } = require('../middleware/permissionMiddleware');
 
 const router = express.Router();
 
-router.get('/', verificarToken, listarGrooming);
-router.get('/:id', verificarToken, obtenerGroomingPorId);
-router.post('/', verificarToken, crearGrooming);
-router.put('/:id', verificarToken, actualizarGrooming);
-router.patch('/:id/estado', verificarToken, cambiarEstadoGrooming);
-router.delete('/:id', verificarToken, eliminarGrooming);
+router.get('/', verificarToken, verificarPermiso('grooming', 'ver'), listarGrooming);
+router.get('/:id', verificarToken, verificarPermiso('grooming', 'ver'), obtenerGroomingPorId);
+router.post('/', verificarToken, verificarPermiso('grooming', 'crear'), crearGrooming);
+router.put('/:id', verificarToken, verificarPermiso('grooming', 'editar'), actualizarGrooming);
+router.patch('/:id/estado', verificarToken, verificarPermiso('grooming', 'editar'), cambiarEstadoGrooming);
+router.delete('/:id', verificarToken, verificarPermiso('grooming', 'eliminar'), eliminarGrooming);
 
 module.exports = router;

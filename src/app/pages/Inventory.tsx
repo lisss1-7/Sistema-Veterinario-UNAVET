@@ -18,7 +18,9 @@ import {
 
 import type { InventoryProduct } from '../utils/types';
 import ThemedSelect from '../components/ThemedSelect';
+import { useModulePermissions } from '../hooks/useModulePermissions';
 import InformationCard from '../components/InformationCard';
+import { API_URL } from '../config/api';
 
 type DeleteTarget = {
   id: string;
@@ -36,8 +38,6 @@ type CatalogItem = {
   activo?: number;
 };
 
-const API_URL = '/api';
-
 const getAuthHeaders = () => {
   const token =
     localStorage.getItem('unavet_token') ||
@@ -50,6 +50,7 @@ const getAuthHeaders = () => {
 };
 
 export default function Inventory() {
+  const { permissions } = useModulePermissions('inventory');
   const [inventory, setInventory] = useState<InventoryProduct[]>([]);
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -423,7 +424,7 @@ export default function Inventory() {
           </h1>
         </div>
 
-        <button
+        {permissions.canCreate && <button
           type="button"
           onClick={() => openModal()}
           disabled={loadingCatalogs}
@@ -434,7 +435,7 @@ export default function Inventory() {
           {loadingCatalogs
             ? 'Cargando catálogos...'
             : 'Nuevo producto'}
-        </button>
+        </button>}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -573,16 +574,16 @@ export default function Inventory() {
               </div>
 
               <div className="mt-4 flex items-center gap-2 flex-wrap">
-                <button
+                {permissions.canEdit && <button
                   type="button"
                   onClick={() => adjustStock(product.id, 1)}
                   className="px-3 py-2 bg-green-100 hover:bg-green-200 text-green-800 rounded-xl text-sm"
                   title="Entrada +1"
                 >
                   +1
-                </button>
+                </button>}
 
-                <button
+                {permissions.canEdit && <button
                   type="button"
                   onClick={() => adjustStock(product.id, -1)}
                   disabled={currentStock <= 0}
@@ -590,25 +591,25 @@ export default function Inventory() {
                   title="Salida -1"
                 >
                   -1
-                </button>
+                </button>}
 
-                <button
+                {permissions.canEdit && <button
                   type="button"
                   onClick={() => openModal(product)}
                   className="flex-1 px-4 py-2 bg-secondary hover:bg-border text-primary rounded-xl transition-colors"
                   title="Editar"
                 >
                   Editar
-                </button>
+                </button>}
 
-                <button
+                {permissions.canDelete && <button
                   type="button"
                   onClick={() => openDeleteModal(product)}
                   className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-600 rounded-xl transition-colors"
                   title="Eliminar"
                 >
                   Eliminar
-                </button>
+                </button>}
               </div>
             </article>
           );
@@ -742,7 +743,7 @@ export default function Inventory() {
 
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <button
+                        {permissions.canEdit && <button
                           type="button"
                           onClick={() =>
                             adjustStock(product.id, 1)
@@ -751,9 +752,9 @@ export default function Inventory() {
                           title="Entrada +1"
                         >
                           +
-                        </button>
+                        </button>}
 
-                        <button
+                        {permissions.canEdit && <button
                           type="button"
                           onClick={() =>
                             adjustStock(product.id, -1)
@@ -763,18 +764,18 @@ export default function Inventory() {
                           title="Salida -1"
                         >
                           -
-                        </button>
+                        </button>}
 
-                        <button
+                        {permissions.canEdit && <button
                           type="button"
                           onClick={() => openModal(product)}
                           className="p-2 bg-secondary hover:bg-border text-primary rounded-lg transition-colors"
                           title="Editar"
                         >
                           <Edit className="w-4 h-4" />
-                        </button>
+                        </button>}
 
-                        <button
+                        {permissions.canDelete && <button
                           type="button"
                           onClick={() =>
                             openDeleteModal(product)
@@ -783,7 +784,7 @@ export default function Inventory() {
                           title="Eliminar"
                         >
                           <Trash2 className="w-4 h-4" />
-                        </button>
+                        </button>}
                       </div>
                     </td>
                   </tr>

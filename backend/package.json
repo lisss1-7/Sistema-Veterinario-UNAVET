@@ -20,10 +20,13 @@
     "migrate:manual-pet-age": "node src/scripts/restoreManualPetAge.js",
     "migrate:person-names": "node src/scripts/normalizePersonNames.js",
     "migrate:remove-profile-module": "node src/scripts/removeProfileModule.js",
+    "migrate:user-soft-delete": "node src/scripts/addUserSoftDelete.js",
     "verify:normalization": "node src/scripts/verifyNormalization.js",
     "verify:email": "node src/scripts/verifyEmail.js",
     "test:email": "node src/scripts/sendTestEmail.js",
     "test:person-names": "node src/scripts/smokePersonNames.js",
+    "test:users": "node --test tests/usuariosSoftDelete.test.js",
+    "test:attribution": "node --test tests/recordAttribution.test.js",
     "test:reports": "node --test tests/aiReports.test.js"
   },
   "keywords": [],

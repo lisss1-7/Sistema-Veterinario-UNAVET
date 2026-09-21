@@ -4,6 +4,7 @@ import { Check, Eye, EyeOff, Lock, Mail, PawPrint, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import unavetClinic from '../assets/unavet-clinic-login.png';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { API_URL } from '../config/api';
 
 const loginPawprints = [
   'left-[4%] top-[8%] h-10 w-10 -rotate-12 text-[#8b6f47] opacity-20',
@@ -104,9 +105,9 @@ export default function Login() {
     event.preventDefault();
     setError('');
 
-    const success = await login(email, password);
-    if (!success) {
-      setError('Credenciales incorrectas o usuario inactivo.');
+    const result = await login(email, password);
+    if (!result.success) {
+      setError(result.message || 'Correo o contraseña incorrectos.');
       return;
     }
 
@@ -125,7 +126,7 @@ export default function Login() {
     setRecoveryError('');
     setIsRecoverySubmitting(true);
     try {
-      const response = await fetch('/api/auth/forgot-password', {
+      const response = await fetch(`${API_URL}/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ correo: recoveryEmail }),
@@ -155,7 +156,7 @@ export default function Login() {
   };
 
   return (
-    <div className="login-page relative flex min-h-screen items-center justify-center overflow-hidden p-4">
+    <div className="login-page relative flex min-h-screen min-h-dvh items-center justify-center overflow-x-hidden px-4 py-16 sm:py-4">
       <div
         className="pointer-events-none absolute inset-0 overflow-hidden"
         style={{ filter: 'brightness(0.78)' }}

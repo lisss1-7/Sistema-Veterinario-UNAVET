@@ -669,6 +669,7 @@ exports.obtenerMisModulos = async (req, res) => {
       INNER JOIN rol_permisos rp ON rp.rol_id = u.rol_id
       INNER JOIN modulos_sistema m ON m.modulo_id = rp.modulo_id
       WHERE u.usuario_id = ?
+        AND u.eliminado_en IS NULL
         AND eu.permite_acceso = 1
         AND m.activo = 1
         AND rp.puede_ver = 1
