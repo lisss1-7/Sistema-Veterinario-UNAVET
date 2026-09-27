@@ -16,6 +16,10 @@ import {
   Calendar,
   X,
   ChevronDown,
+  Mail,
+  MapPin,
+  PawPrint,
+  UsersRound,
 } from 'lucide-react';
 import type { Patient } from '../utils/types';
 import ThemedSelect from '../components/ThemedSelect';
@@ -36,15 +40,8 @@ import {
   getPatientsList,
 } from '../utils/patientsModuleData';
 import { API_URL } from '../config/api';
-
-const getAuthHeaders = () => {
-  const token = localStorage.getItem('unavet_token');
-
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
-  };
-};
+import { getAuthHeaders, requestJson } from '../utils/apiClient';
+import { resolveMediaUrl } from '../utils/media';
 
 type CatalogItem = {
   nombre: string;
@@ -53,6 +50,22 @@ type CatalogItem = {
 
 type PatientFormData = Partial<Patient> & {
   photo?: string;
+};
+
+type TutorPetSummary = {
+  id: string;
+  nombre: string;
+  especie: string;
+  raza: string;
+};
+
+type TutorSummary = {
+  id: string;
+  nombre_completo: string;
+  telefono: string;
+  correo: string;
+  direccion: string;
+  mascotas: TutorPetSummary[];
 };
 
 type PatientsProps = {
@@ -69,12 +82,21 @@ type PatientSortOrder =
 
 const PAGE_SIZE_OPTIONS = [8, 12, 24];
 
+const normalizePhone = (value?: string) =>
+  String(value || '').replace(/\D/g, '');
+
 export default function Patients({ mode = 'list' }: PatientsProps) {
   const navigate = useNavigate();
   const { permissions } = useModulePermissions('patients');
   const isRegistrationPage = mode === 'register';
   const [patients, setPatients] = useState<PatientFormData[]>([]);
   const [isLoadingPatients, setIsLoadingPatients] = useState(true);
+  const [activeSection, setActiveSection] = useState<'patients' | 'tutors'>('patients');
+  const [tutorSummaries, setTutorSummaries] = useState<TutorSummary[]>([]);
+  const [isLoadingTutors, setIsLoadingTutors] = useState(false);
+  const [tutorSearchTerm, setTutorSearchTerm] = useState('');
+  const [tutorToDelete, setTutorToDelete] = useState<TutorSummary | null>(null);
+  const [isDeletingTutor, setIsDeletingTutor] = useState(false);
 
   const [speciesOptions, setSpeciesOptions] = useState<CatalogItem[]>([]);
   const [breedOptions, setBreedOptions] = useState<CatalogItem[]>([]);
@@ -148,24 +170,32 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
 
   const loadExistingTutors = async () => {
     try {
-      const response = await fetch(`${API_URL}/tutores`, {
-        method: 'GET',
-        headers: getAuthHeaders(),
+      const data = await requestJson<unknown>('tutores', {
+        defaultError: 'Error al cargar tutores',
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Error al cargar tutores');
-      }
-
-      const tutors = data || [];
+      const tutors = Array.isArray(data) ? data : [];
       setExistingTutors(tutors);
       return tutors;
     } catch (error) {
       console.error('Error al cargar tutores:', error);
       setExistingTutors([]);
       return [];
+    }
+  };
+
+  const loadTutorSummaries = async () => {
+    setIsLoadingTutors(true);
+    try {
+      const data = await requestJson<unknown>('tutores/resumen', {
+        defaultError: 'Error al cargar tutores',
+      });
+
+      setTutorSummaries(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error al cargar tutores con sus mascotas:', error);
+      setTutorSummaries([]);
+    } finally {
+      setIsLoadingTutors(false);
     }
   };
 
@@ -180,19 +210,10 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
     }
 
     try {
-      const response = await fetch(
-        `${API_URL}/catalogos/razas/${selectedSpecies.especie_id}`,
-        {
-          method: 'GET',
-          headers: getAuthHeaders(),
-        }
+      const data = await requestJson<CatalogItem[]>(
+        `catalogos/razas/${selectedSpecies.especie_id}`,
+        { defaultError: 'Error al cargar razas' }
       );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Error al cargar razas');
-      }
 
       setBreedOptions(data);
     } catch (error) {
@@ -215,6 +236,17 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
 
     return matchesSearch && matchesSpecies;
   });
+
+  const normalizedTutorSearch = tutorSearchTerm.trim().toLowerCase();
+  const filteredTutorSummaries = tutorSummaries.filter((tutor) =>
+    !normalizedTutorSearch ||
+    tutor.nombre_completo.toLowerCase().includes(normalizedTutorSearch) ||
+    tutor.telefono.toLowerCase().includes(normalizedTutorSearch) ||
+    tutor.correo.toLowerCase().includes(normalizedTutorSearch) ||
+    tutor.mascotas.some((pet) =>
+      pet.nombre.toLowerCase().includes(normalizedTutorSearch)
+    )
+  );
 
   const compareText = (left?: string, right?: string) =>
     (left || '').localeCompare(right || '', 'es', { sensitivity: 'base' });
@@ -557,6 +589,23 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
         });
         return;
       }
+
+      if (!editingPatient) {
+        const tutorWithSamePhone = existingTutors.find(
+          (tutor) =>
+            normalizePhone(tutor.telefono) === normalizePhone(formData.tutorPhone)
+        );
+
+        if (tutorWithSamePhone) {
+          setFormError({
+            title: 'Teléfono ya registrado',
+            message: `El número ${formData.tutorPhone} ya pertenece a ${
+              tutorWithSamePhone.nombre_completo || 'un tutor registrado'
+            }. Seleccione “Tutor existente” para asignarlo al paciente.`,
+          });
+          return;
+        }
+      }
     } else if (!selectedExistingTutorId) {
       setFormError({
         title: 'Falta el tutor',
@@ -651,6 +700,9 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
       setShowSuccessModal(true);
       // Carga en segundo plano para no bloquear la respuesta en móvil (antes había await que duplicaba el tiempo)
       void loadPatients().catch(() => {});
+      if (tutorSummaries.length > 0) {
+        void loadTutorSummaries();
+      }
     } catch (error) {
       console.error('Error al guardar paciente:', error);
       const message =
@@ -794,19 +846,13 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
     if (!patientToDelete?.id) return;
 
     try {
-      const response = await fetch(`${API_URL}/pacientes/${patientToDelete.id}`, {
+      await requestJson<unknown>(`pacientes/${patientToDelete.id}`, {
         method: 'DELETE',
-        headers: getAuthHeaders(),
+        defaultError: 'Error al eliminar paciente',
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || data.message || 'Error al eliminar paciente');
-      }
-
       setPatientToDelete(null);
-      await loadPatients();
+      await Promise.all([loadPatients(), loadTutorSummaries()]);
     } catch (error) {
       console.error('Error al eliminar paciente:', error);
       const message =
@@ -815,6 +861,32 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
           : 'Revisa la consola o el backend.';
 
       alert(`No se pudo eliminar el paciente. ${message}`);
+    }
+  };
+
+  const confirmDeleteTutor = async () => {
+    if (!tutorToDelete || tutorToDelete.mascotas.length > 0 || isDeletingTutor) {
+      return;
+    }
+
+    setIsDeletingTutor(true);
+    try {
+      await requestJson<unknown>(`tutores/${tutorToDelete.id}`, {
+        method: 'DELETE',
+        defaultError: 'Error al eliminar tutor',
+      });
+
+      setTutorToDelete(null);
+      await Promise.all([loadTutorSummaries(), loadExistingTutors()]);
+    } catch (error) {
+      console.error('Error al eliminar tutor:', error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo eliminar el tutor.'
+      );
+    } finally {
+      setIsDeletingTutor(false);
     }
   };
 
@@ -830,15 +902,10 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
       setCustomBreed('');
 
       const matchingTutor = tutors.find((tutor) => {
-        const tutorName = `${tutor.primer_nombre || ''} ${tutor.primer_apellido || ''}`.trim();
-        const patientName = `${patient.tutorFirstName || ''} ${patient.tutorFirstSurname || ''}`.trim();
-        const tutorPhone = (tutor.telefono || '').replace(/\D/g, '');
-        const patientPhone = (patient.tutorPhone || '').replace(/\D/g, '');
+        const tutorPhone = normalizePhone(tutor.telefono);
+        const patientPhone = normalizePhone(patient.tutorPhone);
 
-        return (
-          (tutorPhone && patientPhone && tutorPhone === patientPhone) ||
-          (tutorName && patientName && tutorName.toLowerCase() === patientName.toLowerCase())
-        );
+        return tutorPhone && patientPhone && tutorPhone === patientPhone;
       });
 
       if (matchingTutor) {
@@ -880,10 +947,14 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
       <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
         <div>
           <h1 className="text-foreground text-xl md:text-2xl font-bold mb-2">
-            {isRegistrationPage ? 'Registrar paciente' : 'Pacientes'}
+            {isRegistrationPage
+              ? 'Registrar paciente'
+              : activeSection === 'patients'
+                ? 'Pacientes'
+                : 'Tutores'}
           </h1>
         </div>
-        {!isRegistrationPage && permissions.canCreate && (
+        {!isRegistrationPage && activeSection === 'patients' && permissions.canCreate && (
           <button
             type="button"
             onClick={() => openModal()}
@@ -895,7 +966,39 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
         )}
       </div>
 
-      {!isRegistrationPage && <>
+      {!isRegistrationPage && (
+        <div className="mb-6 flex w-full max-w-md rounded-xl border border-border bg-card p-1 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setActiveSection('patients')}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
+              activeSection === 'patients'
+                ? 'bg-primary text-[#F7EFE6]'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+            }`}
+          >
+            <PawPrint className="h-4 w-4" />
+            Pacientes
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveSection('tutors');
+              void loadTutorSummaries();
+            }}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
+              activeSection === 'tutors'
+                ? 'bg-primary text-[#F7EFE6]'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+            }`}
+          >
+            <UsersRound className="h-4 w-4" />
+            Tutores
+          </button>
+        </div>
+      )}
+
+      {!isRegistrationPage && activeSection === 'patients' && <>
       <div className="bg-card rounded-xl p-4 md:p-6 shadow-lg mb-6 border border-border">
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           <div className="md:col-span-2">
@@ -1035,7 +1138,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
               <div className="relative h-56 bg-secondary overflow-hidden">
                 {patient.photo ? (
                   <img
-                    src={patient.photo}
+                    src={resolveMediaUrl(patient.photo)}
                     alt={`Foto de ${patient.petName}`}
                     className="w-full h-full object-cover"
                   />
@@ -1181,6 +1284,138 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
       )}
       </>}
 
+      {!isRegistrationPage && activeSection === 'tutors' && (
+        <section className="space-y-6">
+          <div className="rounded-xl border border-border bg-card p-4 shadow-lg md:p-6">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+              <div>
+                <label className="mb-2 block text-sm text-foreground">
+                  Buscar tutor
+                </label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="text"
+                    value={tutorSearchTerm}
+                    onChange={(event) => setTutorSearchTerm(event.target.value)}
+                    placeholder="Buscar por nombre, teléfono, correo o mascota"
+                    className="w-full rounded-lg border border-border bg-secondary py-2 pl-10 pr-4 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+              </div>
+              <div className="rounded-lg border border-primary/20 bg-primary/10 px-4 py-2.5 text-sm text-primary">
+                {filteredTutorSummaries.length} tutor{filteredTutorSummaries.length === 1 ? '' : 'es'}
+              </div>
+            </div>
+          </div>
+
+          {isLoadingTutors ? (
+            <div className="overflow-hidden rounded-xl border border-border bg-card shadow-lg">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div
+                  key={`tutor-skeleton-${index}`}
+                  className="h-24 animate-pulse border-b border-border bg-muted/50 last:border-b-0"
+                />
+              ))}
+            </div>
+          ) : filteredTutorSummaries.length > 0 ? (
+            <div className="overflow-hidden rounded-xl border border-border bg-card shadow-lg">
+              {filteredTutorSummaries.map((tutor) => (
+                <article
+                  key={tutor.id}
+                  className="border-b border-border p-3 last:border-b-0 md:px-4 md:py-3.5"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <User className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h2 className="break-words text-base font-semibold text-foreground">
+                              {tutor.nombre_completo}
+                            </h2>
+                            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                              {tutor.mascotas.length} mascota{tutor.mascotas.length === 1 ? '' : 's'}
+                            </span>
+                          </div>
+                          <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1.5">
+                              <Phone className="h-3.5 w-3.5 shrink-0 text-primary" />
+                              {tutor.telefono}
+                            </span>
+                            <span className="flex min-w-0 items-center gap-1.5">
+                              <Mail className="h-3.5 w-3.5 shrink-0 text-primary" />
+                              <span className="break-all">{tutor.correo || 'Sin correo'}</span>
+                            </span>
+                            <span className="flex min-w-0 items-center gap-1.5">
+                              <MapPin className="h-3.5 w-3.5 shrink-0 text-primary" />
+                              <span>{tutor.direccion || 'Sin dirección'}</span>
+                            </span>
+                          </div>
+                        </div>
+
+                        {permissions.canDelete && (
+                        <button
+                          type="button"
+                          onClick={() => setTutorToDelete(tutor)}
+                          disabled={tutor.mascotas.length > 0}
+                          title={
+                            tutor.mascotas.length > 0
+                              ? 'Primero debe eliminar o reasignar las mascotas activas del tutor'
+                              : 'Eliminar tutor'
+                          }
+                          aria-label={`Eliminar tutor ${tutor.nombre_completo}`}
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-destructive/20 bg-destructive/10 text-destructive transition-colors hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                        )}
+                      </div>
+
+                      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                        <span className="mr-0.5 text-xs font-medium text-muted-foreground">Mascotas:</span>
+                        {tutor.mascotas.length > 0 ? (
+                          tutor.mascotas.map((pet) => (
+                            <Link
+                              key={pet.id}
+                              to={`/patients/${pet.id}`}
+                              title={[pet.especie, pet.raza].filter(Boolean).join(' · ') || 'Sin clasificación'}
+                              className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium text-foreground transition-colors hover:border-primary/30 hover:bg-primary/5"
+                            >
+                              <PawPrint className="h-3.5 w-3.5 shrink-0 text-primary" />
+                              <span className="truncate">{pet.nombre}</span>
+                              {(pet.especie || pet.raza) && (
+                                <span className="hidden text-muted-foreground sm:inline">
+                                  · {[pet.especie, pet.raza].filter(Boolean).join(' · ')}
+                                </span>
+                              )}
+                            </Link>
+                          ))
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Sin mascotas activas</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-border bg-card p-10 text-center shadow-lg">
+              <UsersRound className="mx-auto mb-3 h-12 w-12 text-primary" strokeWidth={1.7} />
+              <h3 className="text-lg font-medium text-foreground">
+                No se encontraron tutores
+              </h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Ajusta la búsqueda o registra un paciente con un tutor nuevo.
+              </p>
+            </div>
+          )}
+        </section>
+      )}
+
       {(showModal || isRegistrationPage) && (
         <div className={isRegistrationPage ? '' : 'modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-50'}>
           <div className={`patient-form-shell bg-card border border-border rounded-2xl p-4 md:p-6 w-full shadow-2xl ${isRegistrationPage ? 'max-w-4xl mx-auto' : 'max-w-3xl max-h-[90vh] overflow-y-auto'}`}>
@@ -1215,7 +1450,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                   >
                     {formData.photo ? (
                       <img
-                        src={formData.photo}
+                        src={resolveMediaUrl(formData.photo)}
                         alt="Foto del paciente"
                         className="w-full h-full object-cover"
                       />
@@ -1891,6 +2126,47 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                 className="flex-1 rounded-lg bg-destructive px-4 py-2 text-destructive-foreground transition-colors hover:bg-destructive/90"
               >
                 Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tutorToDelete && (
+        <div className="modal-backdrop fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 text-center shadow-2xl">
+            <div className="mb-4 flex justify-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
+                <AlertTriangle className="h-10 w-10 text-destructive" />
+              </div>
+            </div>
+
+            <h3 className="mb-2 text-xl text-foreground">
+              Eliminar tutor
+            </h3>
+
+            <p className="mb-6 text-sm text-muted-foreground">
+              ¿Deseas eliminar a {tutorToDelete.nombre_completo}? El registro
+              se dará de baja y dejará de aparecer entre los tutores disponibles.
+            </p>
+
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => setTutorToDelete(null)}
+                disabled={isDeletingTutor}
+                className="flex-1 rounded-lg bg-muted px-4 py-2 text-foreground transition-colors hover:bg-border disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void confirmDeleteTutor()}
+                disabled={isDeletingTutor}
+                className="flex-1 rounded-lg bg-destructive px-4 py-2 text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isDeletingTutor ? 'Eliminando...' : 'Eliminar'}
               </button>
             </div>
           </div>

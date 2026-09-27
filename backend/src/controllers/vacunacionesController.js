@@ -54,33 +54,33 @@ const VACUNACION_SELECT = `
     esquema.dosis_totales,
     esquema.intervalo,
     unidad.nombre AS unidad_intervalo
-  FROM esquemas_vacunacion_paciente esquema
-  INNER JOIN pacientes paciente
+  FROM esquema_vacunacion_paciente esquema
+  INNER JOIN paciente paciente
     ON paciente.paciente_id = esquema.paciente_id
-  INNER JOIN vacunas_catalogo vacuna
+  INNER JOIN vacuna_catalogo vacuna
     ON vacuna.vacuna_id = esquema.vacuna_id
-  LEFT JOIN usuarios creador
+  LEFT JOIN usuario creador
     ON creador.usuario_id = esquema.creado_por
-  LEFT JOIN unidades_intervalo unidad
+  LEFT JOIN unidad_intervalo unidad
     ON unidad.unidad_intervalo_id = esquema.unidad_intervalo_id
   LEFT JOIN (
     SELECT esquema_id, COUNT(*) AS dosis_aplicadas
-    FROM aplicaciones_vacuna
+    FROM aplicacion_vacuna
     GROUP BY esquema_id
   ) aplicaciones
     ON aplicaciones.esquema_id = esquema.esquema_id
-  LEFT JOIN aplicaciones_vacuna ultima
+  LEFT JOIN aplicacion_vacuna ultima
     ON ultima.aplicacion_id = (
       SELECT aplicacion.aplicacion_id
-      FROM aplicaciones_vacuna aplicacion
+      FROM aplicacion_vacuna aplicacion
       WHERE aplicacion.esquema_id = esquema.esquema_id
         AND aplicacion.fecha_aplicacion IS NOT NULL
       ORDER BY aplicacion.numero_dosis DESC, aplicacion.aplicacion_id DESC
       LIMIT 1
     )
-  LEFT JOIN veterinarios veterinario
+  LEFT JOIN veterinario veterinario
     ON veterinario.veterinario_id = ultima.veterinario_id
-  INNER JOIN estados_vacunacion estado
+  INNER JOIN estado_vacunacion estado
     ON estado.nombre = (
       CASE
         WHEN aplicaciones.dosis_aplicadas >= esquema.dosis_totales
@@ -216,28 +216,28 @@ const crearVacunacion = async (req, res) => {
       await Promise.all([
         connection.query(
           `SELECT vacuna_id
-           FROM vacunas_catalogo
+           FROM vacuna_catalogo
            WHERE nombre = ?
            LIMIT 1`,
           [vaccine]
         ),
         connection.query(
           `SELECT unidad_intervalo_id
-           FROM unidades_intervalo
+           FROM unidad_intervalo
            WHERE nombre = ?
            LIMIT 1`,
           [req.body.intervalUnit]
         ),
         connection.query(
           `SELECT veterinario_id
-           FROM veterinarios
+           FROM veterinario
            WHERE veterinario_id = ? AND activo = 1
            LIMIT 1`,
           [veterinarianId]
         ),
         connection.query(
           `SELECT paciente_id
-           FROM pacientes
+           FROM paciente
            WHERE paciente_id = ? AND activo = 1
            LIMIT 1`,
           [patientId]
@@ -258,7 +258,7 @@ const crearVacunacion = async (req, res) => {
 
     await connection.beginTransaction();
     const [schemeResult] = await connection.query(
-      `INSERT INTO esquemas_vacunacion_paciente (
+      `INSERT INTO esquema_vacunacion_paciente (
          paciente_id,
          vacuna_id,
          dosis_totales,
@@ -282,7 +282,7 @@ const crearVacunacion = async (req, res) => {
     for (let dose = 1; dose <= appliedDoses; dose += 1) {
       const isCurrentDose = dose === appliedDoses;
       await connection.query(
-        `INSERT INTO aplicaciones_vacuna (
+        `INSERT INTO aplicacion_vacuna (
            esquema_id,
            numero_dosis,
            fecha_aplicacion,
@@ -326,7 +326,7 @@ const eliminarVacunacion = async (req, res) => {
   try {
     const { id } = req.params;
     const [result] = await pool.query(
-      `DELETE FROM esquemas_vacunacion_paciente
+      `DELETE FROM esquema_vacunacion_paciente
        WHERE esquema_id = ?`,
       [id]
     );

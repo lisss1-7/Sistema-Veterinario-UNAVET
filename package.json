@@ -3,18 +3,18 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
- 
   "scripts": {
-  "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
-  "dev:first-delivery": "concurrently \"vite --mode first-delivery\" \"npm run dev:backend\"",
-  "dev:full": "concurrently \"vite --mode full\" \"npm run dev:backend\"",
-  "dev:frontend": "vite",
-  "dev:backend": "npm run dev --prefix backend",
-  "build": "vite build",
-  "build:first-delivery": "vite build --mode first-delivery",
-  "build:full": "vite build --mode full",
-  "preview": "vite preview"
-
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:first-delivery": "concurrently \"vite --mode first-delivery\" \"npm run dev:backend\"",
+    "dev:full": "concurrently \"vite --mode full\" \"npm run dev:backend\"",
+    "dev:frontend": "vite",
+    "dev:backend": "npm run dev --prefix backend",
+    "build": "vite build",
+    "build:first-delivery": "vite build --mode first-delivery",
+    "build:full": "vite build --mode full",
+    "preview": "vite preview",
+    "test": "node --test src/app/utils/*.test.js && npm test --prefix backend",
+    "audit:security": "npm audit && npm audit --prefix backend"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -66,7 +66,7 @@
     "react-popper": "2.3.0",
     "react-resizable-panels": "2.1.7",
     "react-responsive-masonry": "2.7.1",
-    "react-router": "7.13.0",
+    "react-router": "^7.18.4",
     "react-slick": "0.31.0",
     "recharts": "2.15.2",
     "sonner": "2.0.3",
@@ -79,7 +79,7 @@
     "@vitejs/plugin-react": "4.7.0",
     "concurrently": "^10.0.3",
     "tailwindcss": "4.1.12",
-    "vite": "6.3.5"
+    "vite": "^6.4.3"
   },
   "peerDependencies": {
     "react": "18.3.1",
@@ -95,7 +95,7 @@
   },
   "pnpm": {
     "overrides": {
-      "vite": "6.3.5"
+      "vite": "6.4.3"
     }
   }
 }

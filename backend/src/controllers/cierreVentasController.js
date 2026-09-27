@@ -26,8 +26,8 @@ const listarVentas = async (req, res) => {
          venta.*,
          DATE_FORMAT(venta.fecha, '%Y-%m-%d') AS fecha,
          COALESCE(SUM(detalle.subtotal), 0) AS total
-       FROM cierres_ventas venta
-       LEFT JOIN cierre_ventas_detalle detalle
+       FROM cierre_venta venta
+       LEFT JOIN cierre_venta_detalle detalle
          ON detalle.venta_id = venta.venta_id
        WHERE venta.fecha = ?
        GROUP BY venta.venta_id
@@ -48,7 +48,7 @@ const listarVentas = async (req, res) => {
          cantidad,
          precio_unitario,
          subtotal
-       FROM cierre_ventas_detalle
+       FROM cierre_venta_detalle
        WHERE venta_id IN (?)
        ORDER BY detalle_id`,
       [ids]
@@ -60,8 +60,8 @@ const listarVentas = async (req, res) => {
          forma.codigo,
          forma.nombre,
          pago.monto
-       FROM venta_pagos pago
-       INNER JOIN formas_pago forma
+       FROM venta_pago pago
+       INNER JOIN forma_pago forma
          ON forma.forma_pago_id = pago.forma_pago_id
        WHERE pago.venta_id IN (?)
        ORDER BY forma.orden, forma.nombre`,
@@ -144,7 +144,7 @@ const crearVenta = async (req, res) => {
     await connection.beginTransaction();
     const [paymentRows] = await connection.query(
       `SELECT forma_pago_id
-       FROM formas_pago
+       FROM forma_pago
        WHERE codigo = ? AND activo = 1
        LIMIT 1`,
       [paymentMethod]
@@ -219,7 +219,7 @@ const crearVenta = async (req, res) => {
         }
         const [services] = await connection.query(
           `SELECT servicio_id, nombre
-           FROM servicios
+           FROM servicio
            WHERE servicio_id = ? AND activo = 1
            LIMIT 1`,
           [item.serviceId]
@@ -250,7 +250,7 @@ const crearVenta = async (req, res) => {
     }
 
     const [saleResult] = await connection.query(
-      `INSERT INTO cierres_ventas (
+      `INSERT INTO cierre_venta (
          fecha,
          cliente,
          factura_nit,
@@ -267,7 +267,7 @@ const crearVenta = async (req, res) => {
       ]
     );
     await connection.query(
-      `INSERT INTO venta_pagos (
+      `INSERT INTO venta_pago (
          venta_id,
          forma_pago_id,
          monto
@@ -282,7 +282,7 @@ const crearVenta = async (req, res) => {
 
     for (const item of normalizedItems) {
       const [detailResult] = await connection.query(
-        `INSERT INTO cierre_ventas_detalle (
+        `INSERT INTO cierre_venta_detalle (
            venta_id,
            tipo,
            producto_id,
@@ -315,7 +315,7 @@ const crearVenta = async (req, res) => {
         });
         for (const allocation of consumption.allocations) {
           await connection.query(
-            `INSERT INTO venta_detalle_lotes (
+            `INSERT INTO venta_detalle_lote (
                detalle_id,
                producto_lote_id,
                cantidad
@@ -354,7 +354,7 @@ const eliminarVenta = async (req, res) => {
     await connection.beginTransaction();
     const [sales] = await connection.query(
       `SELECT venta_id
-       FROM cierres_ventas
+       FROM cierre_venta
        WHERE venta_id = ?
        LIMIT 1
        FOR UPDATE`,
@@ -372,8 +372,8 @@ const eliminarVenta = async (req, res) => {
          detalle.producto_id,
          asignacion.producto_lote_id,
          asignacion.cantidad
-       FROM cierre_ventas_detalle detalle
-       INNER JOIN venta_detalle_lotes asignacion
+       FROM cierre_venta_detalle detalle
+       INNER JOIN venta_detalle_lote asignacion
          ON asignacion.detalle_id = detalle.detalle_id
        WHERE detalle.venta_id = ?
        ORDER BY detalle.producto_id, asignacion.producto_lote_id`,
@@ -389,7 +389,7 @@ const eliminarVenta = async (req, res) => {
     });
 
     await connection.query(
-      `DELETE FROM cierres_ventas
+      `DELETE FROM cierre_venta
        WHERE venta_id = ?`,
       [req.params.id]
     );

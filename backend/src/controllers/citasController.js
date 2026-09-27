@@ -1,7 +1,7 @@
 const pool = require('../config/db');
 const { validarHorarioConfigurado } = require('../utils/scheduleUtils');
 const {
-  isValidName,
+  isValidPetName,
   isValidPhone,
   isTodayOrFuture,
 } = require('../utils/inputValidation');
@@ -58,9 +58,9 @@ const obtenerTutorPorPaciente = async (connection, pacienteId) => {
       CONCAT_WS(' ', t.primer_nombre, t.segundo_nombre,
         t.primer_apellido, t.segundo_apellido) AS nombre_tutor,
       t.telefono AS telefono_tutor
-    FROM pacientes p
-    INNER JOIN tutores t ON p.tutor_id = t.tutor_id
-    LEFT JOIN razas r ON p.raza_id = r.raza_id
+    FROM paciente p
+    INNER JOIN tutor t ON p.tutor_id = t.tutor_id
+    LEFT JOIN raza r ON p.raza_id = r.raza_id
     WHERE p.paciente_id = ? AND p.activo = 1
     LIMIT 1
     `,
@@ -84,7 +84,7 @@ const obtenerOCrearTutor = async (connection, data) => {
   const [rows] = await connection.query(
     `
     SELECT tutor_id
-    FROM tutores
+    FROM tutor
     WHERE telefono = ?
       AND primer_nombre = ?
       AND primer_apellido = ?
@@ -96,7 +96,7 @@ const obtenerOCrearTutor = async (connection, data) => {
   if (rows.length > 0) {
     await connection.query(
       `
-      UPDATE tutores
+      UPDATE tutor
       SET primer_nombre = ?, segundo_nombre = ?,
           primer_apellido = ?, segundo_apellido = ?, activo = 1
       WHERE tutor_id = ?
@@ -115,7 +115,7 @@ const obtenerOCrearTutor = async (connection, data) => {
 
   const [result] = await connection.query(
     `
-    INSERT INTO tutores (
+    INSERT INTO tutor (
       primer_nombre, segundo_nombre, primer_apellido, segundo_apellido,
       telefono, activo
     )
@@ -138,7 +138,7 @@ const obtenerTamanoAnimal = async (connection, name) => {
   const [rows] = await connection.query(
     `
     SELECT tamano_animal_id
-    FROM tamanos_animales
+    FROM tamano_animal
     WHERE nombre = ?
     LIMIT 1
     `,
@@ -152,7 +152,7 @@ const obtenerEstadoCita = async (connection, name) => {
   const [rows] = await connection.query(
     `
     SELECT estado_cita_id, nombre, es_cancelado
-    FROM estados_cita
+    FROM estado_cita
     WHERE nombre = ?
     LIMIT 1
     `,
@@ -166,12 +166,12 @@ const validarHorarioDisponible = async (connection, date, time, citaId = null) =
 
   let query = `
     SELECT cita_id
-    FROM citas_clinicas
+    FROM cita_clinica
     WHERE fecha = ?
       AND hora = ?
       AND estado_cita_id NOT IN (
         SELECT estado_cita_id
-        FROM estados_cita
+        FROM estado_cita
         WHERE es_cancelado = 1
       )
   `;
@@ -233,7 +233,7 @@ const sincronizarHistorialDesdeCita = async (connection, citaId, cita) => {
         observaciones = ?,
         tipo_consulta_id = (
           SELECT tipo_consulta_id
-          FROM tipos_consulta
+          FROM tipo_consulta
           WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
           LIMIT 1
         )
@@ -275,7 +275,7 @@ const sincronizarHistorialDesdeCita = async (connection, citaId, cita) => {
     VALUES (
       ?, ?, ?,
       (SELECT tipo_consulta_id
-       FROM tipos_consulta
+       FROM tipo_consulta
        WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
        LIMIT 1),
       ?, ?, ?, ?, ?, ?, ?, ?
@@ -335,12 +335,12 @@ const listarCitas = async (req, res) => {
           creador.primer_apellido,
           creador.segundo_apellido
         ) AS creado_por_nombre
-      FROM citas_clinicas c
-      INNER JOIN estados_cita estado
+      FROM cita_clinica c
+      INNER JOIN estado_cita estado
         ON estado.estado_cita_id = c.estado_cita_id
-      LEFT JOIN tamanos_animales tamano
+      LEFT JOIN tamano_animal tamano
         ON tamano.tamano_animal_id = c.tamano_animal_id
-      LEFT JOIN usuarios creador
+      LEFT JOIN usuario creador
         ON creador.usuario_id = c.creado_por
       ORDER BY c.fecha DESC, c.hora DESC, c.cita_id DESC
       `
@@ -393,12 +393,12 @@ const obtenerCitaPorId = async (req, res) => {
           creador.primer_apellido,
           creador.segundo_apellido
         ) AS creado_por_nombre
-      FROM citas_clinicas c
-      INNER JOIN estados_cita estado
+      FROM cita_clinica c
+      INNER JOIN estado_cita estado
         ON estado.estado_cita_id = c.estado_cita_id
-      LEFT JOIN tamanos_animales tamano
+      LEFT JOIN tamano_animal tamano
         ON tamano.tamano_animal_id = c.tamano_animal_id
-      LEFT JOIN usuarios creador
+      LEFT JOIN usuario creador
         ON creador.usuario_id = c.creado_por
       WHERE c.cita_id = ?
       LIMIT 1
@@ -467,9 +467,9 @@ const crearCita = async (req, res) => {
       });
     }
 
-    if (!isValidName(petName)) {
+    if (!isValidPetName(petName)) {
       return res.status(400).json({
-        message: 'Los nombres solo pueden contener letras y deben tener entre 2 y 80 caracteres',
+        message: 'El nombre de la mascota no es válido',
       });
     }
 
@@ -537,7 +537,7 @@ const crearCita = async (req, res) => {
     }
 
     const [initialStatuses] = await connection.query(
-      'SELECT estado_cita_id, nombre FROM estados_cita WHERE es_inicial = 1 LIMIT 1'
+      'SELECT estado_cita_id, nombre FROM estado_cita WHERE es_inicial = 1 LIMIT 1'
     );
     if (initialStatuses.length === 0) {
       throw new Error('No existe un estado inicial configurado para las citas');
@@ -546,7 +546,7 @@ const crearCita = async (req, res) => {
 
     const [result] = await connection.query(
       `
-      INSERT INTO citas_clinicas (
+      INSERT INTO cita_clinica (
         paciente_id,
         tutor_id,
         nombre_mascota,
@@ -651,9 +651,9 @@ const actualizarCita = async (req, res) => {
       });
     }
 
-    if (!isValidName(petName)) {
+    if (!isValidPetName(petName)) {
       return res.status(400).json({
-        message: 'Los nombres solo pueden contener letras y deben tener entre 2 y 80 caracteres',
+        message: 'El nombre de la mascota no es válido',
       });
     }
 
@@ -686,8 +686,8 @@ const actualizarCita = async (req, res) => {
     const [existing] = await connection.query(
       `
       SELECT cita.cita_id, cita.estado_cita_id, estado.nombre AS estado
-      FROM citas_clinicas cita
-      INNER JOIN estados_cita estado
+      FROM cita_clinica cita
+      INNER JOIN estado_cita estado
         ON estado.estado_cita_id = cita.estado_cita_id
       WHERE cita.cita_id = ?
       LIMIT 1
@@ -764,7 +764,7 @@ const actualizarCita = async (req, res) => {
 
     await connection.query(
       `
-      UPDATE citas_clinicas
+      UPDATE cita_clinica
       SET
         paciente_id = ?,
         tutor_id = ?,
@@ -839,7 +839,7 @@ const cambiarEstadoCita = async (req, res) => {
     const { status } = req.body;
 
     const [validStatuses] = await pool.query(
-      'SELECT estado_cita_id FROM estados_cita WHERE nombre = ? LIMIT 1',
+      'SELECT estado_cita_id FROM estado_cita WHERE nombre = ? LIMIT 1',
       [status]
     );
 
@@ -859,7 +859,7 @@ const cambiarEstadoCita = async (req, res) => {
         DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha,
         hora,
         motivo
-      FROM citas_clinicas
+      FROM cita_clinica
       WHERE cita_id = ?
       LIMIT 1
       `,
@@ -875,7 +875,7 @@ const cambiarEstadoCita = async (req, res) => {
     }
 
     await connection.query(
-      'UPDATE citas_clinicas SET estado_cita_id = ? WHERE cita_id = ?',
+      'UPDATE cita_clinica SET estado_cita_id = ? WHERE cita_id = ?',
       [validStatuses[0].estado_cita_id, id]
     );
 
@@ -919,7 +919,7 @@ const eliminarCita = async (req, res) => {
     );
 
     const [result] = await connection.query(
-      'DELETE FROM citas_clinicas WHERE cita_id = ?',
+      'DELETE FROM cita_clinica WHERE cita_id = ?',
       [id]
     );
 

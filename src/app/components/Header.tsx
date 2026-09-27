@@ -18,6 +18,7 @@ import { useState, useEffect, useRef } from 'react';
 import { ThemeToggle } from './ThemeToggle';
 import { formatDateForDisplay } from '../utils/dateFormat';
 import { API_URL } from '../config/api';
+import { getAuthHeaders } from '../utils/apiClient';
 
 type NotificationType = 'stock' | 'appointment' | 'grooming';
 
@@ -31,17 +32,6 @@ type NotificationItem = {
 
 const STORAGE_KEYS = {
   DISMISSED_NOTIFICATIONS: 'unavet_dismissed_notifications',
-};
-
-const getAuthHeaders = () => {
-  const token =
-    localStorage.getItem('unavet_token') ||
-    localStorage.getItem('token');
-
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token || ''}`,
-  };
 };
 
 type HeaderProps = {

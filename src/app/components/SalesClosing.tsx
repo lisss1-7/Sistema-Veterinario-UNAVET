@@ -13,6 +13,7 @@ import {
 import type { InventoryProduct } from '../utils/types';
 import ThemedSelect from './ThemedSelect';
 import { API_URL } from '../config/api';
+import { getAuthHeaders } from '../utils/apiClient';
 
 type SaleItem = {
   type: 'Producto' | 'Servicio';
@@ -180,15 +181,6 @@ type PaymentOption = {
   codigo: string;
   nombre: string;
 };
-
-const getAuthHeaders = () => ({
-  'Content-Type': 'application/json',
-  Authorization: `Bearer ${
-    localStorage.getItem('unavet_token') ||
-    localStorage.getItem('token') ||
-    ''
-  }`,
-});
 
 const today = () => new Date().toISOString().slice(0, 10);
 const money = (value: number) =>

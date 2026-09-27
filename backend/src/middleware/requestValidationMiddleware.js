@@ -11,19 +11,57 @@ const EMAIL_FIELDS = ['email', 'correo', 'tutorEmail'];
 const NON_NEGATIVE_FIELDS = [
   'groomingCost', 'transportCost', 'totalDoses', 'appliedDoses',
   'interval', 'quantity', 'amount', 'discount', 'unitPrice',
+  'currentStock', 'minStock', 'price', 'purchasePrice',
 ];
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const MAX_TEXT_LENGTH = 10000;
 const PHOTO_FIELDS = new Set(['photo', 'attachmentPhoto']);
-// Patient and treatment photos are sent as base64 data URLs. Keep this below
-// the 10 MB JSON body limit while allowing normal compressed images.
+// Patient and treatment photos arrive as temporary base64 data URLs and are
+// moved to file storage by the controllers.
 const MAX_PHOTO_LENGTH = 8 * 1024 * 1024;
 
 const reject = (res, message) => res.status(400).json({ message });
 
+const validateBodyShape = (value, field = 'body', depth = 0) => {
+  if (depth > 8) return `El campo ${field} excede la profundidad permitida`;
+
+  if (typeof value === 'string') {
+    if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(value)) {
+      return `El campo ${field} contiene caracteres no permitidos`;
+    }
+    const fieldName = field.split('.').at(-1)?.replace(/\[\d+\]$/, '');
+    const maxLength = PHOTO_FIELDS.has(fieldName)
+      ? MAX_PHOTO_LENGTH
+      : MAX_TEXT_LENGTH;
+    if (value.length > maxLength) {
+      return `El campo ${field} excede la longitud permitida`;
+    }
+    return null;
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length > 200) return `El campo ${field} contiene demasiados elementos`;
+    for (let index = 0; index < value.length; index += 1) {
+      const error = validateBodyShape(value[index], `${field}[${index}]`, depth + 1);
+      if (error) return error;
+    }
+    return null;
+  }
+
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value);
+    if (entries.length > 200) return `El campo ${field} contiene demasiadas propiedades`;
+    for (const [key, nestedValue] of entries) {
+      const error = validateBodyShape(nestedValue, `${field}.${key}`, depth + 1);
+      if (error) return error;
+    }
+  }
+
+  return null;
+};
+
 const validateRequest = (req, res, next) => {
   if (
-    req.path.startsWith('/api/inventario') ||
     !['POST', 'PUT', 'PATCH'].includes(req.method) ||
     !req.body ||
     typeof req.body !== 'object' ||
@@ -32,22 +70,11 @@ const validateRequest = (req, res, next) => {
     return next();
   }
 
-  for (const [field, value] of Object.entries(req.body)) {
-    if (typeof value === 'string') {
-      if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(value)) {
-        return reject(res, `El campo ${field} contiene caracteres no permitidos`);
-      }
-      const maxLength = PHOTO_FIELDS.has(field)
-        ? MAX_PHOTO_LENGTH
-        : MAX_TEXT_LENGTH;
-      if (value.length > maxLength) {
-        return reject(res, `El campo ${field} excede la longitud permitida`);
-      }
-    }
-  }
+  const bodyShapeError = validateBodyShape(req.body);
+  if (bodyShapeError) return reject(res, bodyShapeError);
 
   if (req.body.petName !== undefined && req.body.petName !== '' && !isValidPetName(req.body.petName)) {
-    return reject(res, 'El nombre de la mascota puede contener letras y números y debe tener entre 2 y 80 caracteres');
+    return reject(res, 'El nombre de la mascota puede contener letras y números, debe tener entre 2 y 80 caracteres y no se permiten caracteres especiales');
   }
 
   const nameFields = [...PERSON_NAME_FIELDS];

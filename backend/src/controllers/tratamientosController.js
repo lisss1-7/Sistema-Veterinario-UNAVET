@@ -1,4 +1,9 @@
 const pool = require('../config/db');
+const {
+  deleteMedia,
+  prepareMediaValue,
+  toClientMediaReference,
+} = require('../utils/mediaStorage');
 
 const TRATAMIENTO_SELECT = `
   SELECT
@@ -29,20 +34,20 @@ const TRATAMIENTO_SELECT = `
       creador.primer_apellido,
       creador.segundo_apellido
     ) AS creado_por_nombre
-  FROM tratamientos_servicios tratamiento
-  INNER JOIN tipos_tratamiento tipo
+  FROM tratamiento_servicio tratamiento
+  INNER JOIN tipo_tratamiento tipo
     ON tipo.tipo_tratamiento_id = tratamiento.tipo_tratamiento_id
-  INNER JOIN estados_tratamiento estado
+  INNER JOIN estado_tratamiento estado
     ON estado.estado_tratamiento_id =
       tratamiento.estado_tratamiento_id
-  LEFT JOIN veterinarios veterinario
+  LEFT JOIN veterinario veterinario
     ON veterinario.veterinario_id = tratamiento.veterinario_id
-  LEFT JOIN pruebas_laboratorio prueba
+  LEFT JOIN prueba_laboratorio prueba
     ON prueba.prueba_id = tratamiento.prueba_laboratorio_id
-  LEFT JOIN categorias_tratamiento categoria
+  LEFT JOIN categoria_tratamiento categoria
     ON categoria.categoria_tratamiento_id =
       tratamiento.categoria_tratamiento_id
-  LEFT JOIN usuarios creador
+  LEFT JOIN usuario creador
     ON creador.usuario_id = tratamiento.creado_por
 `;
 
@@ -61,7 +66,7 @@ const mapTratamientoToFrontend = (row) => ({
   veterinarian: row.veterinario || '',
   status: row.estado_catalogo,
   observations: row.observaciones || '',
-  attachmentPhoto: row.foto_adjunta || '',
+  attachmentPhoto: toClientMediaReference(row.foto_adjunta),
   createdBy: row.creado_por ? String(row.creado_por) : '',
   createdByName: row.creado_por_nombre || '',
 });
@@ -124,6 +129,7 @@ const obtenerTratamientoPorId = async (req, res) => {
 
 const crearTratamiento = async (req, res) => {
   const connection = await pool.getConnection();
+  let createdPhotoReference = null;
   try {
     const {
       patientId,
@@ -153,28 +159,28 @@ const crearTratamiento = async (req, res) => {
       await Promise.all([
         connection.query(
           `SELECT tipo_tratamiento_id
-           FROM tipos_tratamiento
+           FROM tipo_tratamiento
            WHERE nombre = ?
            LIMIT 1`,
           [type]
         ),
         connection.query(
           `SELECT estado_tratamiento_id
-           FROM estados_tratamiento
+           FROM estado_tratamiento
            WHERE nombre = ?
            LIMIT 1`,
           [status]
         ),
         connection.query(
           `SELECT veterinario_id
-           FROM veterinarios
+           FROM veterinario
            WHERE veterinario_id = ? AND activo = 1
            LIMIT 1`,
           [veterinarianId]
         ),
         connection.query(
           `SELECT paciente_id
-           FROM pacientes
+           FROM paciente
            WHERE paciente_id = ? AND activo = 1
            LIMIT 1`,
           [patientId]
@@ -198,7 +204,7 @@ const crearTratamiento = async (req, res) => {
     if (isLaboratory) {
       const [tests] = await connection.query(
         `SELECT prueba_id
-         FROM pruebas_laboratorio
+         FROM prueba_laboratorio
          WHERE nombre = ?
          LIMIT 1`,
         [name]
@@ -215,14 +221,14 @@ const crearTratamiento = async (req, res) => {
     const categoryName = String(req.body.category || '').trim();
     if (categoryName) {
       await connection.query(
-        `INSERT INTO categorias_tratamiento (nombre, activo)
+        `INSERT INTO categoria_tratamiento (nombre, activo)
          VALUES (?, 1)
          ON DUPLICATE KEY UPDATE activo = 1`,
         [categoryName]
       );
       const [categories] = await connection.query(
         `SELECT categoria_tratamiento_id
-         FROM categorias_tratamiento
+         FROM categoria_tratamiento
          WHERE nombre = ?
          LIMIT 1`,
         [categoryName]
@@ -231,8 +237,14 @@ const crearTratamiento = async (req, res) => {
         categories[0]?.categoria_tratamiento_id || null;
     }
 
+    const preparedPhoto = await prepareMediaValue(
+      req.body.attachmentPhoto,
+      'treatments'
+    );
+    createdPhotoReference = preparedPhoto.createdReference;
+
     const [resultInsert] = await connection.query(
-      `INSERT INTO tratamientos_servicios (
+      `INSERT INTO tratamiento_servicio (
          paciente_id,
          fecha,
          nombre,
@@ -255,7 +267,7 @@ const crearTratamiento = async (req, res) => {
         result || null,
         veterinarianId,
         req.body.observations || null,
-        req.body.attachmentPhoto || null,
+        preparedPhoto.value,
         laboratoryTestId,
         categoryId,
         types[0].tipo_tratamiento_id,
@@ -269,6 +281,14 @@ const crearTratamiento = async (req, res) => {
       id: String(resultInsert.insertId),
     });
   } catch (error) {
+    await deleteMedia(createdPhotoReference).catch((cleanupError) => {
+      console.error('No fue posible limpiar la fotografía no guardada:', cleanupError);
+    });
+
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
+
     res.status(500).json({
       message: 'Error al agregar tratamiento o servicio',
       error: error.message,
@@ -281,8 +301,15 @@ const crearTratamiento = async (req, res) => {
 const eliminarTratamiento = async (req, res) => {
   try {
     const { id } = req.params;
+    const [rows] = await pool.query(
+      `SELECT foto_adjunta
+       FROM tratamiento_servicio
+       WHERE tratamiento_id = ?
+       LIMIT 1`,
+      [id]
+    );
     const [result] = await pool.query(
-      `DELETE FROM tratamientos_servicios
+      `DELETE FROM tratamiento_servicio
        WHERE tratamiento_id = ?`,
       [id]
     );
@@ -291,6 +318,9 @@ const eliminarTratamiento = async (req, res) => {
         message: 'Tratamiento o servicio no encontrado',
       });
     }
+    await deleteMedia(rows[0]?.foto_adjunta).catch((cleanupError) => {
+      console.error('No fue posible eliminar la fotografía del tratamiento:', cleanupError);
+    });
     res.json({
       message: 'Tratamiento o servicio eliminado correctamente',
     });

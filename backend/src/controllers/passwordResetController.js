@@ -29,6 +29,13 @@ const requestPasswordReset = async (req, res) => {
   const cooldownKey = `${req.ip}:${correo}`;
   const lastRequest = recentRequests.get(cooldownKey) || 0;
 
+  if (recentRequests.size > 10000) {
+    const expiration = Date.now() - REQUEST_COOLDOWN_MS;
+    for (const [key, timestamp] of recentRequests) {
+      if (timestamp < expiration) recentRequests.delete(key);
+    }
+  }
+
   if (Date.now() - lastRequest < REQUEST_COOLDOWN_MS) {
     return res.json(genericResponse);
   }
@@ -38,8 +45,8 @@ const requestPasswordReset = async (req, res) => {
   try {
     const [users] = await pool.query(
       `SELECT u.usuario_id, u.correo, u.password_hash, eu.permite_acceso
-       FROM usuarios u
-       INNER JOIN estados_usuario eu
+       FROM usuario u
+       INNER JOIN estado_usuario eu
          ON eu.estado_usuario_id = u.estado_usuario_id
        WHERE LOWER(u.correo) = ?
          AND u.eliminado_en IS NULL
@@ -118,8 +125,8 @@ const resetPassword = async (req, res) => {
 
     const [users] = await pool.query(
       `SELECT u.usuario_id, u.password_hash, eu.permite_acceso
-       FROM usuarios u
-       INNER JOIN estados_usuario eu
+       FROM usuario u
+       INNER JOIN estado_usuario eu
          ON eu.estado_usuario_id = u.estado_usuario_id
        WHERE u.usuario_id = ?
          AND u.eliminado_en IS NULL
@@ -137,7 +144,7 @@ const resetPassword = async (req, res) => {
 
     const passwordHash = await bcrypt.hash(password, 12);
     await pool.query(
-      `UPDATE usuarios
+      `UPDATE usuario
        SET password_hash = ?
        WHERE usuario_id = ? AND eliminado_en IS NULL`,
       [passwordHash, users[0].usuario_id]

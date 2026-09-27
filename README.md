@@ -24,7 +24,7 @@ Pendiente para una siguiente fase:
 
 - Configuración final para despliegue en la nube
 - Ajuste de URL del backend para producción
-- Seguridad avanzada para producción
+- Configuración del volumen persistente para fotografías en producción
 
 Implementado en esta versión:
 
@@ -123,6 +123,17 @@ cd backend
 npm install
 ```
 
+### Validación técnica
+
+Desde la raíz del proyecto se pueden ejecutar todas las pruebas y la auditoría
+de dependencias de frontend y backend:
+
+```bash
+npm test
+npm run audit:security
+npm run build
+```
+
 ## Configuración de base de datos
 
 ### 1. Crear la base de datos
@@ -155,6 +166,46 @@ JWT_SECRET=cambia-este-valor-por-un-secreto-seguro
 ```
 
 Si tu usuario de MySQL tiene contraseña, colocarla en `DB_PASSWORD`.
+
+## Almacenamiento profesional de fotografías
+
+Las fotografías de pacientes y tratamientos ya no se guardan como Base64 en
+MySQL. El backend valida el contenido JPEG, PNG o WebP, lo guarda en un
+directorio de archivos y conserva en la base de datos únicamente una referencia
+corta. Las respuestas entregan enlaces temporales firmados, por lo que no se
+publica directamente el contenido clínico.
+
+Por defecto, los archivos se guardan en `backend/storage/media`. En producción
+se debe apuntar `MEDIA_STORAGE_PATH` a un volumen persistente incluido en los
+respaldos del servidor:
+
+```env
+MEDIA_STORAGE_PATH=/ruta/persistente/unavet-media
+MEDIA_MAX_BYTES=5242880
+MEDIA_URL_TTL_SECONDS=3600
+MEDIA_SIGNING_SECRET=un-secreto-independiente-largo-y-aleatorio
+```
+
+Para instalaciones con varias instancias del backend, todas deben compartir el
+mismo volumen de medios. El comando de respaldo de la base de datos también
+copia este directorio cuando existe.
+
+Para revisar si una base antigua todavía contiene imágenes Base64:
+
+```bash
+cd backend
+npm run audit:media
+```
+
+Antes de migrar se recomienda generar un respaldo y luego ejecutar:
+
+```bash
+npm run backup:database
+npm run migrate:media-files
+```
+
+La migración es idempotente: solo procesa filas que todavía contienen un data
+URL y puede ejecutarse nuevamente sin duplicar las imágenes ya migradas.
 
 ### Recuperación de contraseña por correo
 
@@ -305,26 +356,44 @@ grooming, vacunas, tratamientos, modos de entrega y los demás catálogos. Los
 arreglos que permanecen en React corresponden únicamente a presentación, como
 iconos, pestañas y colores.
 
-Para aplicar la migración idempotente:
+Las migraciones históricas de normalización trabajan sobre el esquema antiguo
+con nombres plurales. Solo se ejecutan cuando se parte de ese esquema:
 
 ```bash
 cd backend
 npm run migrate:normalize
 npm run migrate:person-names
-npm run migrate:user-soft-delete
 ```
 
-Antes de modificar la estructura se genera automáticamente un respaldo JSON en
-`backend/backups`. Para comprobar que no quedaron registros operativos sin sus
-llaves de catálogo:
+Las 57 tablas del esquema actual usan nombres singulares (`paciente`, `tutor`,
+`usuario`, etc.). Para convertir una base ya normalizada que todavía use nombres
+plurales, detenga el backend, audite el esquema, respalde la base y las fotos, y
+después ejecute la migración:
+
+```bash
+cd backend
+npm run audit:singular-tables
+npm run backup:database
+npm run migrate:singular-tables
+npm run verify:normalization
+```
+
+La renombrada conserva las filas, las columnas, los identificadores y las
+relaciones. Se ejecuta en una sola sentencia `RENAME TABLE` sobre tablas InnoDB;
+si el esquema no coincide con el esperado, el comando se detiene sin modificarlo.
+No ejecute nuevamente las migraciones históricas de normalización sobre un
+esquema que ya tiene nombres singulares. El comando de borrado lógico de
+usuarios se ejecuta, si hace falta, después de renombrar las tablas.
+
+Para comprobar que no quedaron registros operativos sin sus llaves de catálogo:
 
 ```bash
 npm run verify:normalization
 ```
 
-La migración deja 48 tablas con relaciones funcionales; el objetivo de las
-tablas nuevas es eliminar datos operativos quemados y dependencias de texto, no
-inflar artificialmente el modelo.
+La base actual contiene 57 tablas con relaciones funcionales; el objetivo de
+las tablas nuevas es eliminar datos operativos quemados y dependencias de texto,
+no inflar artificialmente el modelo.
 
 Los nombres de las entidades que representan personas (`tutores` y `usuarios`)
 se almacenan en `primer_nombre`, `segundo_nombre`, `primer_apellido` y
@@ -437,8 +506,12 @@ Estas carpetas se pueden regenerar con los comandos correspondientes.
 Antes de usar el sistema en producción se recomienda:
 
 - Usar un `JWT_SECRET` fuerte y privado.
+- Definir secretos diferentes de al menos 32 caracteres para `JWT_SECRET`,
+  `PASSWORD_RESET_SECRET` y `MEDIA_SIGNING_SECRET`.
+- Configurar `NODE_ENV=production` para activar CORS restringido y ocultar errores internos.
+- Definir `FRONTEND_URL` y, si hay más de un origen autorizado, `CORS_ORIGINS` separado por comas.
+- Usar un `MEDIA_SIGNING_SECRET` distinto de `JWT_SECRET`.
 - No subir archivos `.env` a repositorios públicos.
-- Configurar CORS solo para el dominio oficial del frontend.
 - Usar HTTPS.
 - Usar una base de datos en la nube con contraseña segura.
 - Crear respaldos automáticos de la base de datos.

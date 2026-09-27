@@ -15,6 +15,7 @@ import { drawUnavetPdfHeader, getUnavetLogoBase64 } from '../utils/pdfBranding';
 import PdfPreviewModal from '../components/PdfPreviewModal';
 import { useModulePermissions } from '../hooks/useModulePermissions';
 import { API_URL } from '../config/api';
+import { getAuthHeaders } from '../utils/apiClient';
 
 type ChatRole = 'user' | 'assistant';
 
@@ -93,17 +94,6 @@ const REPORT_MODULE_LABELS: Record<DataModule, string> = {
   prescriptions: 'recetas médicas',
   vaccinations: 'vacunación',
   treatments: 'tratamientos y servicios',
-};
-
-const getAuthHeaders = () => {
-  const token =
-    localStorage.getItem('unavet_token') ||
-    localStorage.getItem('token');
-
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token || ''}`,
-  };
 };
 
 const QUICK_PROMPTS = [

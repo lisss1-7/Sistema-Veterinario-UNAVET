@@ -16,11 +16,11 @@ const verificarPermiso = (moduleCode, action = 'ver') => {
       const [rows] = await pool.query(
         `
         SELECT rp.${actionColumn} AS permitido
-        FROM usuarios u
-        INNER JOIN estados_usuario eu
+        FROM usuario u
+        INNER JOIN estado_usuario eu
           ON eu.estado_usuario_id = u.estado_usuario_id
-        INNER JOIN rol_permisos rp ON rp.rol_id = u.rol_id
-        INNER JOIN modulos_sistema m ON m.modulo_id = rp.modulo_id
+        INNER JOIN rol_permiso rp ON rp.rol_id = u.rol_id
+        INNER JOIN modulo_sistema m ON m.modulo_id = rp.modulo_id
         WHERE u.usuario_id = ?
           AND u.eliminado_en IS NULL
           AND eu.permite_acceso = 1

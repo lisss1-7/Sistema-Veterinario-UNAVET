@@ -62,20 +62,20 @@ const obtenerResumenDashboard = async (req, res) => {
       lowStock,
       prescriptions,
     ] = await Promise.all([
-      getCount('SELECT COUNT(*) AS total FROM pacientes WHERE activo = 1'),
-      getCount('SELECT COUNT(*) AS total FROM citas_clinicas WHERE fecha = CURDATE()'),
-      getCount('SELECT COUNT(*) AS total FROM citas_grooming WHERE fecha = CURDATE()'),
+      getCount('SELECT COUNT(*) AS total FROM paciente WHERE activo = 1'),
+      getCount('SELECT COUNT(*) AS total FROM cita_clinica WHERE fecha = CURDATE()'),
+      getCount('SELECT COUNT(*) AS total FROM cita_grooming WHERE fecha = CURDATE()'),
       getCount(`
         SELECT COUNT(*) AS total
-        FROM esquemas_vacunacion_paciente esquema
-        LEFT JOIN unidades_intervalo unidad
+        FROM esquema_vacunacion_paciente esquema
+        LEFT JOIN unidad_intervalo unidad
           ON unidad.unidad_intervalo_id = esquema.unidad_intervalo_id
         LEFT JOIN (
           SELECT
             esquema_id,
             COUNT(*) AS dosis_aplicadas,
             MAX(fecha_aplicacion) AS ultima_aplicacion
-          FROM aplicaciones_vacuna
+          FROM aplicacion_vacuna
           GROUP BY esquema_id
         ) aplicaciones
           ON aplicaciones.esquema_id = esquema.esquema_id
@@ -98,14 +98,14 @@ const obtenerResumenDashboard = async (req, res) => {
           ) BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)
       `),
       getCount(
-        'SELECT COUNT(*) AS total FROM productos_inventario WHERE activo = 1'
+        'SELECT COUNT(*) AS total FROM producto_inventario WHERE activo = 1'
       ),
       getCount(`
         SELECT COUNT(*) AS total
-        FROM productos_inventario producto
+        FROM producto_inventario producto
         LEFT JOIN (
           SELECT producto_id, SUM(stock) AS stock_actual
-          FROM lotes_producto
+          FROM lote_producto
           GROUP BY producto_id
         ) lotes ON lotes.producto_id = producto.producto_id
         WHERE producto.activo = 1
@@ -113,8 +113,8 @@ const obtenerResumenDashboard = async (req, res) => {
       `),
       getCount(`
         SELECT COUNT(*) AS total
-        FROM recetas receta
-        INNER JOIN estados_receta estado
+        FROM receta receta
+        INNER JOIN estado_receta estado
           ON estado.estado_receta_id = receta.estado_receta_id
         WHERE estado.es_anulado = 0
       `),
@@ -135,8 +135,8 @@ const obtenerResumenDashboard = async (req, res) => {
         motivo,
         hora,
         estado_catalogo.nombre AS estado
-      FROM citas_clinicas cita
-      INNER JOIN estados_cita estado_catalogo
+      FROM cita_clinica cita
+      INNER JOIN estado_cita estado_catalogo
         ON estado_catalogo.estado_cita_id = cita.estado_cita_id
       WHERE fecha = CURDATE()
       ORDER BY hora ASC
@@ -159,10 +159,10 @@ const obtenerResumenDashboard = async (req, res) => {
         tg.nombre AS tipo_grooming,
         hora,
         estado_catalogo.nombre AS estado
-      FROM citas_grooming cg
-      INNER JOIN tipos_grooming tg
+      FROM cita_grooming cg
+      INNER JOIN tipo_grooming tg
         ON tg.tipo_grooming_id = cg.tipo_grooming_id
-      INNER JOIN estados_grooming estado_catalogo
+      INNER JOIN estado_grooming estado_catalogo
         ON estado_catalogo.estado_grooming_id = cg.estado_grooming_id
       WHERE fecha = CURDATE()
       ORDER BY hora ASC
@@ -228,21 +228,21 @@ const obtenerResumenDashboard = async (req, res) => {
             END,
             CURDATE()
           ) AS dias_restantes
-        FROM esquemas_vacunacion_paciente esquema
-        INNER JOIN pacientes p
+        FROM esquema_vacunacion_paciente esquema
+        INNER JOIN paciente p
           ON p.paciente_id = esquema.paciente_id
-        INNER JOIN tutores t
+        INNER JOIN tutor t
           ON t.tutor_id = p.tutor_id
-        INNER JOIN vacunas_catalogo vc
+        INNER JOIN vacuna_catalogo vc
           ON vc.vacuna_id = esquema.vacuna_id
-        LEFT JOIN unidades_intervalo unidad
+        LEFT JOIN unidad_intervalo unidad
           ON unidad.unidad_intervalo_id = esquema.unidad_intervalo_id
         LEFT JOIN (
           SELECT
             esquema_id,
             COUNT(*) AS dosis_aplicadas,
             MAX(fecha_aplicacion) AS ultima_fecha
-          FROM aplicaciones_vacuna
+          FROM aplicacion_vacuna
           GROUP BY esquema_id
         ) aplicaciones
           ON aplicaciones.esquema_id = esquema.esquema_id

@@ -37,6 +37,7 @@ import {
   sanitizePhone,
 } from '../utils/formValidation';
 import { API_URL } from '../config/api';
+import { getAuthHeaders } from '../utils/apiClient';
 
 type GroomingFormData = Partial<GroomingAppointment> & {
   patientId?: string;
@@ -51,15 +52,6 @@ type DeleteTarget = {
 };
 
 type InfoModalType = 'transportLimit' | 'timeConflict' | null;
-
-const getAuthHeaders = () => {
-  const token = localStorage.getItem('unavet_token');
-
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
-  };
-};
 
 type CatalogItem = {
   nombre: string;

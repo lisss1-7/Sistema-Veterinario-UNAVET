@@ -21,7 +21,7 @@ const obtenerTipoGrooming = async (connection, name) => {
   const [rows] = await connection.query(
     `
     SELECT tipo_grooming_id, nombre, requiere_transporte
-    FROM tipos_grooming
+    FROM tipo_grooming
     WHERE nombre = ?
     LIMIT 1
     `,
@@ -35,7 +35,7 @@ const obtenerTamanoAnimal = async (connection, name) => {
   const [rows] = await connection.query(
     `
     SELECT tamano_animal_id
-    FROM tamanos_animales
+    FROM tamano_animal
     WHERE nombre = ?
     LIMIT 1
     `,
@@ -49,7 +49,7 @@ const obtenerEspeciePorNombre = async (connection, name) => {
 
   const [rows] = await connection.query(
     `SELECT especie_id
-     FROM especies
+     FROM especie
      WHERE LOWER(TRIM(nombre)) = LOWER(?) AND activo = 1
      LIMIT 1`,
     [String(name).trim()]
@@ -64,7 +64,7 @@ const registrarRazaEnCatalogo = async (connection, especieId, name) => {
 
   const [rows] = await connection.query(
     `SELECT raza_id, activo
-     FROM razas
+     FROM raza
      WHERE especie_id = ? AND LOWER(TRIM(nombre)) = LOWER(?)
      LIMIT 1`,
     [especieId, breedName]
@@ -73,7 +73,7 @@ const registrarRazaEnCatalogo = async (connection, especieId, name) => {
   if (rows.length > 0) {
     if (!rows[0].activo) {
       await connection.query(
-        'UPDATE razas SET nombre = ?, activo = 1 WHERE raza_id = ?',
+        'UPDATE raza SET nombre = ?, activo = 1 WHERE raza_id = ?',
         [breedName, rows[0].raza_id]
       );
     }
@@ -81,7 +81,7 @@ const registrarRazaEnCatalogo = async (connection, especieId, name) => {
   }
 
   const [result] = await connection.query(
-    'INSERT INTO razas (especie_id, nombre, activo) VALUES (?, ?, 1)',
+    'INSERT INTO raza (especie_id, nombre, activo) VALUES (?, ?, 1)',
     [especieId, breedName]
   );
 
@@ -131,9 +131,9 @@ const obtenerTutorPorPaciente = async (connection, pacienteId) => {
       CONCAT_WS(' ', t.primer_nombre, t.segundo_nombre,
         t.primer_apellido, t.segundo_apellido) AS nombre_tutor,
       t.telefono AS telefono_tutor
-    FROM pacientes p
-    INNER JOIN tutores t ON p.tutor_id = t.tutor_id
-    LEFT JOIN razas r ON p.raza_id = r.raza_id
+    FROM paciente p
+    INNER JOIN tutor t ON p.tutor_id = t.tutor_id
+    LEFT JOIN raza r ON p.raza_id = r.raza_id
     WHERE p.paciente_id = ? AND p.activo = 1
     LIMIT 1
     `,
@@ -157,7 +157,7 @@ const obtenerOCrearTutor = async (connection, data) => {
   const [rows] = await connection.query(
     `
     SELECT tutor_id
-    FROM tutores
+    FROM tutor
     WHERE telefono = ?
       AND primer_nombre = ?
       AND primer_apellido = ?
@@ -169,7 +169,7 @@ const obtenerOCrearTutor = async (connection, data) => {
   if (rows.length > 0) {
     await connection.query(
       `
-      UPDATE tutores
+      UPDATE tutor
       SET primer_nombre = ?, segundo_nombre = ?,
           primer_apellido = ?, segundo_apellido = ?, activo = 1
       WHERE tutor_id = ?
@@ -188,7 +188,7 @@ const obtenerOCrearTutor = async (connection, data) => {
 
   const [result] = await connection.query(
     `
-    INSERT INTO tutores (
+    INSERT INTO tutor (
       primer_nombre, segundo_nombre, primer_apellido, segundo_apellido,
       telefono, activo
     )
@@ -211,12 +211,12 @@ const validarHorarioDisponible = async (connection, date, time, groomingId = nul
 
   let query = `
     SELECT grooming_id
-    FROM citas_grooming
+    FROM cita_grooming
     WHERE fecha = ?
       AND hora = ?
       AND estado_grooming_id NOT IN (
         SELECT estado_grooming_id
-        FROM estados_grooming
+        FROM estado_grooming
         WHERE es_cancelado = 1
       )
   `;
@@ -243,12 +243,12 @@ const validarLimiteTransporte = async (
 
   let query = `
     SELECT COUNT(*) AS total
-    FROM citas_grooming
+    FROM cita_grooming
     WHERE fecha = ?
       AND tipo_grooming_id = ?
       AND estado_grooming_id NOT IN (
         SELECT estado_grooming_id
-        FROM estados_grooming
+        FROM estado_grooming
         WHERE es_cancelado = 1
       )
   `;
@@ -262,8 +262,8 @@ const validarLimiteTransporte = async (
   const [capacityRows] = await connection.query(
     `
     SELECT h.capacidad_diaria
-    FROM horarios_atencion h
-    INNER JOIN modulos_sistema m ON m.modulo_id = h.modulo_id
+    FROM horario_atencion h
+    INNER JOIN modulo_sistema m ON m.modulo_id = h.modulo_id
     WHERE m.codigo = 'grooming'
       AND h.dia_semana = DAYOFWEEK(?) - 1
       AND h.activo = 1
@@ -283,7 +283,7 @@ const listarGrooming = async (req, res) => {
       SELECT
         grooming_id,
         paciente_id,
-        citas_grooming.tutor_id,
+        cita_grooming.tutor_id,
         nombre_mascota,
         CONCAT_WS(
           ' ',
@@ -309,14 +309,14 @@ const listarGrooming = async (req, res) => {
         codigo_acceso,
         costo_grooming,
         costo_transporte
-      FROM citas_grooming
-      INNER JOIN tipos_grooming tg
-        ON tg.tipo_grooming_id = citas_grooming.tipo_grooming_id
-      INNER JOIN estados_grooming estado_catalogo
+      FROM cita_grooming
+      INNER JOIN tipo_grooming tg
+        ON tg.tipo_grooming_id = cita_grooming.tipo_grooming_id
+      INNER JOIN estado_grooming estado_catalogo
         ON estado_catalogo.estado_grooming_id =
-          citas_grooming.estado_grooming_id
-      LEFT JOIN tamanos_animales tamano
-        ON tamano.tamano_animal_id = citas_grooming.tamano_animal_id
+          cita_grooming.estado_grooming_id
+      LEFT JOIN tamano_animal tamano
+        ON tamano.tamano_animal_id = cita_grooming.tamano_animal_id
       ORDER BY fecha DESC, hora DESC, grooming_id DESC
       `
     );
@@ -339,7 +339,7 @@ const obtenerGroomingPorId = async (req, res) => {
       SELECT
         grooming_id,
         paciente_id,
-        citas_grooming.tutor_id,
+        cita_grooming.tutor_id,
         nombre_mascota,
         CONCAT_WS(
           ' ',
@@ -365,14 +365,14 @@ const obtenerGroomingPorId = async (req, res) => {
         codigo_acceso,
         costo_grooming,
         costo_transporte
-      FROM citas_grooming
-      INNER JOIN tipos_grooming tg
-        ON tg.tipo_grooming_id = citas_grooming.tipo_grooming_id
-      INNER JOIN estados_grooming estado_catalogo
+      FROM cita_grooming
+      INNER JOIN tipo_grooming tg
+        ON tg.tipo_grooming_id = cita_grooming.tipo_grooming_id
+      INNER JOIN estado_grooming estado_catalogo
         ON estado_catalogo.estado_grooming_id =
-          citas_grooming.estado_grooming_id
-      LEFT JOIN tamanos_animales tamano
-        ON tamano.tamano_animal_id = citas_grooming.tamano_animal_id
+          cita_grooming.estado_grooming_id
+      LEFT JOIN tamano_animal tamano
+        ON tamano.tamano_animal_id = cita_grooming.tamano_animal_id
       WHERE grooming_id = ?
       LIMIT 1
       `,
@@ -564,7 +564,7 @@ const crearGrooming = async (req, res) => {
 
     const [initialStatuses] = await connection.query(
       `SELECT estado_grooming_id, nombre
-       FROM estados_grooming
+       FROM estado_grooming
        WHERE es_inicial = 1
        LIMIT 1`
     );
@@ -573,7 +573,7 @@ const crearGrooming = async (req, res) => {
     }
     const [result] = await connection.query(
       `
-      INSERT INTO citas_grooming (
+      INSERT INTO cita_grooming (
         paciente_id,
         tutor_id,
         nombre_mascota,
@@ -738,8 +738,8 @@ const actualizarGrooming = async (req, res) => {
          grooming.grooming_id,
          grooming.estado_grooming_id,
          estado.nombre AS estado
-       FROM citas_grooming grooming
-       INNER JOIN estados_grooming estado
+       FROM cita_grooming grooming
+       INNER JOIN estado_grooming estado
          ON estado.estado_grooming_id = grooming.estado_grooming_id
        WHERE grooming.grooming_id = ?
        LIMIT 1`,
@@ -830,7 +830,7 @@ const actualizarGrooming = async (req, res) => {
     if (status) {
       const [statusRows] = await connection.query(
         `SELECT estado_grooming_id, nombre
-         FROM estados_grooming
+         FROM estado_grooming
          WHERE nombre = ?
          LIMIT 1`,
         [status]
@@ -857,7 +857,7 @@ const actualizarGrooming = async (req, res) => {
 
     await connection.query(
       `
-      UPDATE citas_grooming
+      UPDATE cita_grooming
       SET
         paciente_id = ?,
         tutor_id = ?,
@@ -930,7 +930,7 @@ const cambiarEstadoGrooming = async (req, res) => {
 
     const [validStatuses] = await pool.query(
       `SELECT estado_grooming_id, nombre
-       FROM estados_grooming
+       FROM estado_grooming
        WHERE nombre = ?
        LIMIT 1`,
       [status]
@@ -943,7 +943,7 @@ const cambiarEstadoGrooming = async (req, res) => {
     }
 
     const [result] = await pool.query(
-      `UPDATE citas_grooming
+      `UPDATE cita_grooming
        SET estado_grooming_id = ?
        WHERE grooming_id = ?`,
       [validStatuses[0].estado_grooming_id, id]
@@ -970,7 +970,7 @@ const eliminarGrooming = async (req, res) => {
     const { id } = req.params;
 
     const [result] = await pool.query(
-      'DELETE FROM citas_grooming WHERE grooming_id = ?',
+      'DELETE FROM cita_grooming WHERE grooming_id = ?',
       [id]
     );
 

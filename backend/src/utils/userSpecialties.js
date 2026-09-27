@@ -5,8 +5,8 @@ const specialtiesSelect = (userAlias = 'u') => `
       ORDER BY relacion.es_principal DESC, especialidad.nombre
       SEPARATOR ', '
     )
-    FROM usuario_especialidades relacion
-    INNER JOIN especialidades especialidad
+    FROM usuario_especialidad relacion
+    INNER JOIN especialidad especialidad
       ON especialidad.especialidad_id = relacion.especialidad_id
     WHERE relacion.usuario_id = ${userAlias}.usuario_id
       AND especialidad.activo = 1
@@ -29,7 +29,7 @@ const syncUserSpecialties = async (
 ) => {
   const normalized = normalizeSpecialties(specialties);
   await connection.query(
-    `DELETE FROM usuario_especialidades
+    `DELETE FROM usuario_especialidad
      WHERE usuario_id = ?`,
     [userId]
   );
@@ -37,19 +37,19 @@ const syncUserSpecialties = async (
   for (let index = 0; index < normalized.length; index += 1) {
     const name = normalized[index];
     await connection.query(
-      `INSERT INTO especialidades (nombre, activo)
+      `INSERT INTO especialidad (nombre, activo)
        VALUES (?, 1)
        ON DUPLICATE KEY UPDATE activo = 1`,
       [name]
     );
     await connection.query(
-      `INSERT INTO usuario_especialidades (
+      `INSERT INTO usuario_especialidad (
          usuario_id,
          especialidad_id,
          es_principal
        )
        SELECT ?, especialidad_id, ?
-       FROM especialidades
+       FROM especialidad
        WHERE nombre = ?`,
       [userId, index === 0 ? 1 : 0, name]
     );

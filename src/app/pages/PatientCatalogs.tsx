@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import ThemedSelect from '../components/ThemedSelect';
 import { API_URL } from '../config/api';
+import { getAuthHeaders } from '../utils/apiClient';
 
 type CatalogDefinition = {
   key: string;
@@ -189,16 +190,6 @@ const EMPTY_FORM: FormState = {
   precio_base: '',
   controla_inventario: false,
   permisos: [],
-};
-
-const getAuthHeaders = () => {
-  const token =
-    localStorage.getItem('unavet_token') || localStorage.getItem('token');
-
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token || ''}`,
-  };
 };
 
 const parseResponse = async (response: Response) => {

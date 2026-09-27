@@ -7,26 +7,26 @@ const scalar = async (sql, params = []) => {
 
 const run = async () => {
   const legacyColumns = [
-    ['pacientes', 'fecha_nacimiento'],
-    ['pacientes', 'fecha_nacimiento_aproximada'],
-    ['pacientes', 'edad_estimada_meses'],
-    ['pacientes', 'fecha_estimacion_edad'],
-    ['pacientes', 'ultima_visita'],
-    ['pacientes', 'sexo'],
-    ['pacientes', 'estado_reproductivo'],
-    ['citas_grooming', 'edad_mascota'],
-    ['citas_grooming', 'fecha_nacimiento'],
-    ['citas_grooming', 'fecha_nacimiento_aproximada'],
-    ['citas_grooming', 'edad_estimada_meses'],
-    ['citas_grooming', 'fecha_estimacion_edad'],
-    ['citas_grooming', 'precio'],
-    ['productos_inventario', 'unidad_medida'],
-    ['productos_inventario', 'stock_actual'],
-    ['productos_inventario', 'precio_compra'],
-    ['productos_inventario', 'fecha_vencimiento'],
-    ['productos_inventario', 'proveedor_id'],
-    ['productos_inventario', 'estado_producto_id'],
-    ['usuarios', 'especialidad'],
+    ['paciente', 'fecha_nacimiento'],
+    ['paciente', 'fecha_nacimiento_aproximada'],
+    ['paciente', 'edad_estimada_meses'],
+    ['paciente', 'fecha_estimacion_edad'],
+    ['paciente', 'ultima_visita'],
+    ['paciente', 'sexo'],
+    ['paciente', 'estado_reproductivo'],
+    ['cita_grooming', 'edad_mascota'],
+    ['cita_grooming', 'fecha_nacimiento'],
+    ['cita_grooming', 'fecha_nacimiento_aproximada'],
+    ['cita_grooming', 'edad_estimada_meses'],
+    ['cita_grooming', 'fecha_estimacion_edad'],
+    ['cita_grooming', 'precio'],
+    ['producto_inventario', 'unidad_medida'],
+    ['producto_inventario', 'stock_actual'],
+    ['producto_inventario', 'precio_compra'],
+    ['producto_inventario', 'fecha_vencimiento'],
+    ['producto_inventario', 'proveedor_id'],
+    ['producto_inventario', 'estado_producto_id'],
+    ['usuario', 'especialidad'],
     ['historial_clinico', 'palpitaciones'],
     ['historial_clinico', 'ojos'],
     ['historial_clinico', 'respiratorio'],
@@ -35,10 +35,10 @@ const run = async () => {
     ['historial_clinico', 'conjuntiva'],
     ['historial_clinico', 'motilidad'],
     ['historial_clinico', 'prurito'],
-    ['tratamientos_servicios', 'categoria'],
-    ['recetas', 'estado'],
-    ['receta_medicamentos', 'modo_entrega'],
-    ['receta_medicamentos', 'descuenta_inventario'],
+    ['tratamiento_servicio', 'categoria'],
+    ['receta', 'estado'],
+    ['receta_medicamento', 'modo_entrega'],
+    ['receta_medicamento', 'descuenta_inventario'],
   ];
   const legacyWhere = legacyColumns
     .map(() => '(TABLE_NAME = ? AND COLUMN_NAME = ?)')
@@ -61,11 +61,11 @@ const run = async () => {
     `),
     nombresObligatoriosFaltantes: await scalar(`
       SELECT
-        (SELECT COUNT(*) FROM tutores
+        (SELECT COUNT(*) FROM tutor
          WHERE primer_nombre IS NULL OR TRIM(primer_nombre) = ''
             OR primer_apellido IS NULL OR TRIM(primer_apellido) = '')
         +
-        (SELECT COUNT(*) FROM usuarios
+        (SELECT COUNT(*) FROM usuario
          WHERE primer_nombre IS NULL OR TRIM(primer_nombre) = ''
             OR primer_apellido IS NULL OR TRIM(primer_apellido) = '')
     `),
@@ -73,40 +73,40 @@ const run = async () => {
       SELECT COUNT(*)
       FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME IN ('tutores', 'usuarios')
+        AND TABLE_NAME IN ('tutor', 'usuario')
         AND COLUMN_NAME = 'nombre'
     `),
     pacientesSinCatalogo: await scalar(`
       SELECT COUNT(*)
-      FROM pacientes
+      FROM paciente
       WHERE sexo_id IS NULL
         OR especie_id IS NULL
         OR estado_reproductivo_id IS NULL
     `),
     pacientesSinEdad: await scalar(`
       SELECT COUNT(*)
-      FROM pacientes
+      FROM paciente
       WHERE edad IS NULL OR TRIM(edad) = ''
     `),
     groomingSinEdad: await scalar(`
       SELECT COUNT(*)
-      FROM citas_grooming
+      FROM cita_grooming
       WHERE edad IS NULL OR TRIM(edad) = ''
     `),
     razasDeOtraEspecie: await scalar(`
       SELECT COUNT(*)
-      FROM pacientes paciente
-      INNER JOIN razas raza ON raza.raza_id = paciente.raza_id
+      FROM paciente paciente
+      INNER JOIN raza raza ON raza.raza_id = paciente.raza_id
       WHERE paciente.especie_id <> raza.especie_id
     `),
     citasSinCatalogo: await scalar(`
       SELECT COUNT(*)
-      FROM citas_clinicas
-      WHERE estado_cita_id IS NULL OR tamano_animal_id IS NULL
+      FROM cita_clinica
+      WHERE estado_cita_id IS NULL
     `),
     groomingSinCatalogo: await scalar(`
       SELECT COUNT(*)
-      FROM citas_grooming
+      FROM cita_grooming
       WHERE tipo_grooming_id IS NULL
         OR estado_grooming_id IS NULL
         OR tamano_animal_id IS NULL
@@ -130,19 +130,19 @@ const run = async () => {
     examenesSinCatalogo: await scalar(`
       SELECT COUNT(*)
       FROM historial_examen_fisico detalle
-      LEFT JOIN parametros_examen_fisico parametro
+      LEFT JOIN parametro_examen_fisico parametro
         ON parametro.parametro_id = detalle.parametro_id
-      LEFT JOIN estados_examen_fisico estado
+      LEFT JOIN estado_examen_fisico estado
         ON estado.estado_examen_id = detalle.estado_examen_id
       WHERE parametro.parametro_id IS NULL
          OR estado.estado_examen_id IS NULL
     `),
     esquemasInvalidos: await scalar(`
       SELECT COUNT(*)
-      FROM esquemas_vacunacion_paciente esquema
+      FROM esquema_vacunacion_paciente esquema
       LEFT JOIN (
         SELECT esquema_id, COUNT(*) AS dosis
-        FROM aplicaciones_vacuna
+        FROM aplicacion_vacuna
         GROUP BY esquema_id
       ) aplicaciones
         ON aplicaciones.esquema_id = esquema.esquema_id
@@ -155,7 +155,7 @@ const run = async () => {
     `),
     aplicacionesInvalidas: await scalar(`
       SELECT COUNT(*)
-      FROM aplicaciones_vacuna
+      FROM aplicacion_vacuna
       WHERE numero_dosis < 1
         OR (
           fecha_desconocida = 0
@@ -168,8 +168,8 @@ const run = async () => {
     `),
     tratamientosSinCatalogo: await scalar(`
       SELECT COUNT(*)
-      FROM tratamientos_servicios tratamiento
-      INNER JOIN tipos_tratamiento tipo
+      FROM tratamiento_servicio tratamiento
+      INNER JOIN tipo_tratamiento tipo
         ON tipo.tipo_tratamiento_id = tratamiento.tipo_tratamiento_id
       WHERE tratamiento.estado_tratamiento_id IS NULL
          OR tratamiento.tipo_tratamiento_id IS NULL
@@ -187,23 +187,23 @@ const run = async () => {
     `),
     productosSinUnidadOLote: await scalar(`
       SELECT COUNT(*)
-      FROM productos_inventario producto
+      FROM producto_inventario producto
       WHERE producto.unidad_medida_id IS NULL
          OR NOT EXISTS (
            SELECT 1
-           FROM lotes_producto lote
+           FROM lote_producto lote
            WHERE lote.producto_id = producto.producto_id
          )
     `),
     lotesInvalidos: await scalar(`
       SELECT COUNT(*)
-      FROM lotes_producto
+      FROM lote_producto
       WHERE stock < 0
         OR (precio_compra IS NOT NULL AND precio_compra < 0)
     `),
     ventasConReferenciaInvalida: await scalar(`
       SELECT COUNT(*)
-      FROM cierre_ventas_detalle
+      FROM cierre_venta_detalle
       WHERE NOT (
         (
           tipo = 'Producto'
@@ -220,10 +220,10 @@ const run = async () => {
     `),
     ventasSinAsignacionDeLote: await scalar(`
       SELECT COUNT(*)
-      FROM cierre_ventas_detalle detalle
+      FROM cierre_venta_detalle detalle
       LEFT JOIN (
         SELECT detalle_id, SUM(cantidad) AS cantidad
-        FROM venta_detalle_lotes
+        FROM venta_detalle_lote
         GROUP BY detalle_id
       ) asignacion ON asignacion.detalle_id = detalle.detalle_id
       WHERE detalle.tipo = 'Producto'
@@ -233,12 +233,12 @@ const run = async () => {
     `),
     recetasSinAsignacionDeLote: await scalar(`
       SELECT COUNT(*)
-      FROM receta_medicamentos medicamento
-      INNER JOIN modos_entrega_receta modo
+      FROM receta_medicamento medicamento
+      INNER JOIN modo_entrega_receta modo
         ON modo.modo_entrega_id = medicamento.modo_entrega_id
       LEFT JOIN (
         SELECT receta_medicamento_id, SUM(cantidad) AS cantidad
-        FROM receta_medicamento_lotes
+        FROM receta_medicamento_lote
         GROUP BY receta_medicamento_id
       ) asignacion
         ON asignacion.receta_medicamento_id =
@@ -250,29 +250,29 @@ const run = async () => {
     `),
     ventasSinPago: await scalar(`
       SELECT COUNT(*)
-      FROM cierres_ventas venta
+      FROM cierre_venta venta
       WHERE EXISTS (
         SELECT 1
-        FROM cierre_ventas_detalle detalle
+        FROM cierre_venta_detalle detalle
         WHERE detalle.venta_id = venta.venta_id
       )
       AND NOT EXISTS (
         SELECT 1
-        FROM venta_pagos pago
+        FROM venta_pago pago
         WHERE pago.venta_id = venta.venta_id
       )
     `),
     pagosQueNoCuadran: await scalar(`
       SELECT COUNT(*)
-      FROM cierres_ventas venta
+      FROM cierre_venta venta
       LEFT JOIN (
         SELECT venta_id, SUM(subtotal) AS total
-        FROM cierre_ventas_detalle
+        FROM cierre_venta_detalle
         GROUP BY venta_id
       ) detalle ON detalle.venta_id = venta.venta_id
       LEFT JOIN (
         SELECT venta_id, SUM(monto) AS total
-        FROM venta_pagos
+        FROM venta_pago
         GROUP BY venta_id
       ) pago ON pago.venta_id = venta.venta_id
       WHERE ABS(
@@ -283,17 +283,17 @@ const run = async () => {
       SELECT COUNT(*)
       FROM (
         SELECT 1
-        FROM horarios_atencion
+        FROM horario_atencion
         GROUP BY modulo_id, IFNULL(tipo_grooming_id, 0), dia_semana
         HAVING COUNT(*) > 1
       ) duplicados
     `),
     especialidadesHuerfanas: await scalar(`
       SELECT COUNT(*)
-      FROM usuario_especialidades relacion
-      LEFT JOIN usuarios usuario
+      FROM usuario_especialidad relacion
+      LEFT JOIN usuario usuario
         ON usuario.usuario_id = relacion.usuario_id
-      LEFT JOIN especialidades especialidad
+      LEFT JOIN especialidad especialidad
         ON especialidad.especialidad_id = relacion.especialidad_id
       WHERE usuario.usuario_id IS NULL
          OR especialidad.especialidad_id IS NULL

@@ -148,6 +148,15 @@ const run = async () => {
   const connection = await pool.getConnection();
 
   try {
+    const [singularSchema] = await connection.query(`
+      SELECT 1 FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tutor'
+      LIMIT 1
+    `);
+    if (singularSchema.length > 0) {
+      throw new Error('Esta migración histórica no se ejecuta sobre tablas singulares.');
+    }
+
     const [tutores] = await connection.query('SELECT * FROM tutores');
     const [usuarios] = await connection.query('SELECT * FROM usuarios');
     const backupDir = path.join(__dirname, '../../backups');

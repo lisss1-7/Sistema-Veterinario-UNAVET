@@ -122,10 +122,13 @@ export default function ThemedSelect({
         title={title}
         autoFocus={autoFocus}
         tabIndex={tabIndex}
+        aria-required={required || undefined}
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
         aria-describedby={ariaDescribedBy}
         aria-invalid={ariaInvalid}
+        data-required-field={required || undefined}
+        data-field-value={value === undefined ? defaultValue : value}
         className={`themed-select-trigger inline-flex items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
       >
         <SelectPrimitive.Value />

@@ -20,8 +20,8 @@ const PRODUCT_SELECT = `
       AS fecha_vencimiento,
     (
       SELECT proveedor.nombre
-      FROM lotes_producto lote_proveedor
-      LEFT JOIN proveedores proveedor
+      FROM lote_producto lote_proveedor
+      LEFT JOIN proveedor proveedor
         ON proveedor.proveedor_id = lote_proveedor.proveedor_id
       WHERE lote_proveedor.producto_id = producto.producto_id
       ORDER BY
@@ -40,18 +40,18 @@ const PRODUCT_SELECT = `
         THEN estado_agotado.nombre
       ELSE estado_activo.nombre
     END AS estado
-  FROM productos_inventario producto
-  INNER JOIN categorias_inventario categoria
+  FROM producto_inventario producto
+  INNER JOIN categoria_inventario categoria
     ON categoria.categoria_id = producto.categoria_id
-  INNER JOIN unidades_medida unidad
+  INNER JOIN unidad_medida unidad
     ON unidad.unidad_medida_id = producto.unidad_medida_id
-  INNER JOIN estados_producto estado_activo
+  INNER JOIN estado_producto estado_activo
     ON estado_activo.es_inicial = 1
    AND estado_activo.activo = 1
-  INNER JOIN estados_producto estado_agotado
+  INNER JOIN estado_producto estado_agotado
     ON estado_agotado.sin_existencias = 1
    AND estado_agotado.activo = 1
-  INNER JOIN estados_producto estado_inactivo
+  INNER JOIN estado_producto estado_inactivo
     ON estado_inactivo.es_inicial = 0
    AND estado_inactivo.sin_existencias = 0
    AND estado_inactivo.activo = 1
@@ -62,7 +62,7 @@ const PRODUCT_SELECT = `
       MIN(
         CASE WHEN stock > 0 THEN fecha_vencimiento END
       ) AS proximo_vencimiento
-    FROM lotes_producto
+    FROM lote_producto
     GROUP BY producto_id
   ) lotes
     ON lotes.producto_id = producto.producto_id
@@ -85,7 +85,7 @@ const mapProductoToFrontend = (row) => ({
 const getOrCreateCategory = async (connection, name) => {
   const normalizedName = String(name || '').trim();
   await connection.query(
-    `INSERT INTO categorias_inventario (
+    `INSERT INTO categoria_inventario (
        nombre,
        descripcion,
        activo
@@ -96,7 +96,7 @@ const getOrCreateCategory = async (connection, name) => {
   );
   const [rows] = await connection.query(
     `SELECT categoria_id
-     FROM categorias_inventario
+     FROM categoria_inventario
      WHERE nombre = ?
      LIMIT 1`,
     [normalizedName]
@@ -108,14 +108,14 @@ const getOrCreateSupplier = async (connection, name) => {
   const normalizedName = String(name || '').trim();
   if (!normalizedName) return null;
   await connection.query(
-    `INSERT INTO proveedores (nombre, activo)
+    `INSERT INTO proveedor (nombre, activo)
      VALUES (?, 1)
      ON DUPLICATE KEY UPDATE activo = 1`,
     [normalizedName]
   );
   const [rows] = await connection.query(
     `SELECT proveedor_id
-     FROM proveedores
+     FROM proveedor
      WHERE nombre = ?
      LIMIT 1`,
     [normalizedName]
@@ -126,14 +126,14 @@ const getOrCreateSupplier = async (connection, name) => {
 const getOrCreateUnit = async (connection, name) => {
   const normalizedName = String(name || '').trim();
   await connection.query(
-    `INSERT INTO unidades_medida (nombre, activo)
+    `INSERT INTO unidad_medida (nombre, activo)
      VALUES (?, 1)
      ON DUPLICATE KEY UPDATE activo = 1`,
     [normalizedName]
   );
   const [rows] = await connection.query(
     `SELECT unidad_medida_id
-     FROM unidades_medida
+     FROM unidad_medida
      WHERE nombre = ?
      LIMIT 1`,
     [normalizedName]
@@ -227,7 +227,7 @@ const crearProducto = async (req, res) => {
       getOrCreateUnit(connection, presentation),
     ]);
     const [result] = await connection.query(
-      `INSERT INTO productos_inventario (
+      `INSERT INTO producto_inventario (
          categoria_id,
          nombre,
          descripcion,
@@ -248,7 +248,7 @@ const crearProducto = async (req, res) => {
       ]
     );
     const [lotResult] = await connection.query(
-      `INSERT INTO lotes_producto (
+      `INSERT INTO lote_producto (
          producto_id,
          proveedor_id,
          codigo_lote,
@@ -323,7 +323,7 @@ const actualizarProducto = async (req, res) => {
     await connection.beginTransaction();
     const [existing] = await connection.query(
       `SELECT producto_id
-       FROM productos_inventario
+       FROM producto_inventario
        WHERE producto_id = ?
        LIMIT 1
        FOR UPDATE`,
@@ -342,7 +342,7 @@ const actualizarProducto = async (req, res) => {
       getOrCreateUnit(connection, presentation),
     ]);
     await connection.query(
-      `UPDATE productos_inventario
+      `UPDATE producto_inventario
        SET
          categoria_id = ?,
          nombre = ?,
@@ -438,7 +438,7 @@ const ajustarStock = async (req, res) => {
 const eliminarProducto = async (req, res) => {
   try {
     const [result] = await pool.query(
-      `UPDATE productos_inventario
+      `UPDATE producto_inventario
        SET activo = 0
        WHERE producto_id = ? AND activo = 1`,
       [req.params.id]

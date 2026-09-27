@@ -27,6 +27,7 @@ import {
 import { formatDateForDisplay } from '../utils/dateFormat';
 import { useModulePermissions } from '../hooks/useModulePermissions';
 import { API_URL } from '../config/api';
+import { getAuthHeaders } from '../utils/apiClient';
 
 type AppointmentFormData = Partial<Appointment> & {
   animalSize?: string;
@@ -39,15 +40,6 @@ type DeleteTarget = {
   petName: string;
   date: string;
   time: string;
-};
-
-const getAuthHeaders = () => {
-  const token = localStorage.getItem('unavet_token');
-
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
-  };
 };
 
 type CatalogItem = {

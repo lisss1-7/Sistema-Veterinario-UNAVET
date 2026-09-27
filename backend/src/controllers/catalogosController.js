@@ -11,127 +11,127 @@ const db = require('../config/db');
  */
 const CATALOGOS = {
   especies: {
-    tabla: 'especies',
+    tabla: 'especie',
     idColumn: 'especie_id',
     hasActive: true,
   },
 
   sexos: {
-    tabla: 'sexos',
+    tabla: 'sexo',
     idColumn: 'sexo_id',
     hasActive: false,
   },
 
   estadosReproductivos: {
-    tabla: 'estados_reproductivos',
+    tabla: 'estado_reproductivo',
     idColumn: 'estado_reproductivo_id',
     hasActive: false,
   },
 
   tiposConsulta: {
-    tabla: 'tipos_consulta',
+    tabla: 'tipo_consulta',
     idColumn: 'tipo_consulta_id',
     hasActive: false,
   },
 
   vacunas: {
-    tabla: 'vacunas_catalogo',
+    tabla: 'vacuna_catalogo',
     idColumn: 'vacuna_id',
     hasActive: false,
   },
 
   pruebasLaboratorio: {
-    tabla: 'pruebas_laboratorio',
+    tabla: 'prueba_laboratorio',
     idColumn: 'prueba_id',
     hasActive: false,
   },
 
   estadosCita: {
-    tabla: 'estados_cita',
+    tabla: 'estado_cita',
     idColumn: 'estado_cita_id',
     hasActive: false,
   },
 
   tamanosAnimales: {
-    tabla: 'tamanos_animales',
+    tabla: 'tamano_animal',
     idColumn: 'tamano_animal_id',
     hasActive: false,
   },
 
   tiposGrooming: {
-    tabla: 'tipos_grooming',
+    tabla: 'tipo_grooming',
     idColumn: 'tipo_grooming_id',
     hasActive: false,
   },
 
   estadosGrooming: {
-    tabla: 'estados_grooming',
+    tabla: 'estado_grooming',
     idColumn: 'estado_grooming_id',
     hasActive: false,
   },
 
   categoriasInventario: {
-    tabla: 'categorias_inventario',
+    tabla: 'categoria_inventario',
     idColumn: 'categoria_id',
     hasActive: true,
   },
 
   estadosProducto: {
-    tabla: 'estados_producto',
+    tabla: 'estado_producto',
     idColumn: 'estado_producto_id',
     hasActive: true,
   },
 
   tiposTratamiento: {
-    tabla: 'tipos_tratamiento',
+    tabla: 'tipo_tratamiento',
     idColumn: 'tipo_tratamiento_id',
     hasActive: false,
   },
 
   estadosTratamiento: {
-    tabla: 'estados_tratamiento',
+    tabla: 'estado_tratamiento',
     idColumn: 'estado_tratamiento_id',
     hasActive: false,
   },
 
   modosEntrega: {
-    tabla: 'modos_entrega_receta',
+    tabla: 'modo_entrega_receta',
     idColumn: 'modo_entrega_id',
     hasActive: true,
   },
 
   roles: {
-    tabla: 'roles',
+    tabla: 'rol',
     idColumn: 'rol_id',
     hasActive: true,
   },
 
   unidadesMedida: {
-    tabla: 'unidades_medida',
+    tabla: 'unidad_medida',
     idColumn: 'unidad_medida_id',
     hasActive: true,
   },
 
   estadosUsuario: {
-    tabla: 'estados_usuario',
+    tabla: 'estado_usuario',
     idColumn: 'estado_usuario_id',
     hasActive: true,
   },
 
   estadosExamenFisico: {
-    tabla: 'estados_examen_fisico',
+    tabla: 'estado_examen_fisico',
     idColumn: 'estado_examen_id',
     hasActive: false,
   },
 
   unidadesIntervalo: {
-    tabla: 'unidades_intervalo',
+    tabla: 'unidad_intervalo',
     idColumn: 'unidad_intervalo_id',
     hasActive: false,
   },
 
   estadosVacunacion: {
-    tabla: 'estados_vacunacion',
+    tabla: 'estado_vacunacion',
     idColumn: 'estado_vacunacion_id',
     hasActive: true,
   },
@@ -238,7 +238,7 @@ exports.obtenerRazasPorEspecie = async (
         nombre,
         activo,
         creado_en
-      FROM razas
+      FROM raza
       WHERE especie_id = ?
         AND activo = 1
       ORDER BY nombre ASC
@@ -524,7 +524,7 @@ exports.obtenerVeterinarios = async (req, res) => {
           primer_apellido,
           segundo_apellido
         ) AS nombre
-      FROM veterinarios
+      FROM veterinario
       WHERE activo = 1
       ORDER BY primer_apellido, segundo_apellido, primer_nombre, segundo_nombre
     `);
@@ -546,8 +546,8 @@ exports.obtenerServicios = async (req, res) => {
         s.descripcion,
         s.precio_base,
         cs.nombre AS categoria
-      FROM servicios s
-      INNER JOIN categorias_servicio cs
+      FROM servicio s
+      INNER JOIN categoria_servicio cs
         ON cs.categoria_servicio_id = s.categoria_servicio_id
       WHERE s.activo = 1 AND cs.activo = 1
       ORDER BY cs.nombre, s.nombre
@@ -565,7 +565,7 @@ exports.obtenerFormasPago = async (req, res) => {
   try {
     const [rows] = await db.query(`
       SELECT forma_pago_id AS id, codigo, nombre, orden
-      FROM formas_pago
+      FROM forma_pago
       WHERE activo = 1
       ORDER BY orden, nombre
     `);
@@ -602,8 +602,8 @@ exports.obtenerHorarios = async (req, res) => {
         TIME_FORMAT(h.hora_fin, '%H:%i') AS hora_fin,
         h.intervalo_minutos,
         h.capacidad_diaria
-      FROM horarios_atencion h
-      INNER JOIN modulos_sistema m ON m.modulo_id = h.modulo_id
+      FROM horario_atencion h
+      INNER JOIN modulo_sistema m ON m.modulo_id = h.modulo_id
       WHERE m.codigo = ?
         AND h.dia_semana = DAYOFWEEK(?) - 1
         AND h.activo = 1
@@ -663,11 +663,11 @@ exports.obtenerMisModulos = async (req, res) => {
         rp.puede_crear,
         rp.puede_editar,
         rp.puede_eliminar
-      FROM usuarios u
-      INNER JOIN estados_usuario eu
+      FROM usuario u
+      INNER JOIN estado_usuario eu
         ON eu.estado_usuario_id = u.estado_usuario_id
-      INNER JOIN rol_permisos rp ON rp.rol_id = u.rol_id
-      INNER JOIN modulos_sistema m ON m.modulo_id = rp.modulo_id
+      INNER JOIN rol_permiso rp ON rp.rol_id = u.rol_id
+      INNER JOIN modulo_sistema m ON m.modulo_id = rp.modulo_id
       WHERE u.usuario_id = ?
         AND u.eliminado_en IS NULL
         AND eu.permite_acceso = 1
@@ -691,7 +691,7 @@ exports.obtenerModulosSistema = async (_req, res) => {
     const [rows] = await db.query(
       `
       SELECT codigo, nombre, ruta, orden
-      FROM modulos_sistema
+      FROM modulo_sistema
       WHERE activo = 1
       ORDER BY orden, nombre
       `

@@ -22,6 +22,7 @@ import { drawUnavetPdfHeader, getUnavetLogoBase64 } from '../utils/pdfBranding';
 import PdfPreviewModal from '../components/PdfPreviewModal';
 import { useModulePermissions } from '../hooks/useModulePermissions';
 import { API_URL } from '../config/api';
+import { getAuthHeaders } from '../utils/apiClient';
 
 type CatalogItem = {
   id?: number;
@@ -30,17 +31,6 @@ type CatalogItem = {
   nombre: string;
   descripcion?: string;
   activo?: number;
-};
-
-const getAuthHeaders = () => {
-  const token =
-    localStorage.getItem('unavet_token') ||
-    localStorage.getItem('token');
-
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
-  };
 };
 
 export default function Prescriptions() {

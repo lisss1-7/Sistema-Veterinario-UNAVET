@@ -30,9 +30,9 @@ const verificarToken = async (req, res, next) => {
         u.usuario_id,
         r.nombre AS rol,
         eu.permite_acceso
-      FROM usuarios u
-      INNER JOIN roles r ON r.rol_id = u.rol_id
-      INNER JOIN estados_usuario eu
+      FROM usuario u
+      INNER JOIN rol r ON r.rol_id = u.rol_id
+      INNER JOIN estado_usuario eu
         ON eu.estado_usuario_id = u.estado_usuario_id
       WHERE u.usuario_id = ?
         AND u.eliminado_en IS NULL

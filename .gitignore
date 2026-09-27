@@ -9,6 +9,8 @@ node_modules/
 # Compilación
 dist/
 build/
+backend/storage/media/
+backend/backups/
 
 # Logs
 *.log

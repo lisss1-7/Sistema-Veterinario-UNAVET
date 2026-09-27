@@ -22,8 +22,8 @@ const syncVeterinarianForUser = async (
       usuario.primer_apellido,
       usuario.segundo_apellido,
       rol.nombre AS rol
-    FROM usuarios usuario
-    INNER JOIN roles rol ON rol.rol_id = usuario.rol_id
+    FROM usuario usuario
+    INNER JOIN rol rol ON rol.rol_id = usuario.rol_id
     WHERE usuario.usuario_id = ?
       AND usuario.eliminado_en IS NULL
     LIMIT 1
@@ -36,7 +36,7 @@ const syncVeterinarianForUser = async (
   const veterinarianRole = roleName || user.rol;
   if (!isVeterinarianRole(veterinarianRole)) {
     await connection.query(
-      'UPDATE veterinarios SET activo = 0 WHERE usuario_id = ?',
+      'UPDATE veterinario SET activo = 0 WHERE usuario_id = ?',
       [userId]
     );
     return null;
@@ -44,7 +44,7 @@ const syncVeterinarianForUser = async (
 
   await connection.query(
     `
-    INSERT INTO veterinarios (
+    INSERT INTO veterinario (
       usuario_id,
       primer_nombre,
       segundo_nombre,
@@ -70,7 +70,7 @@ const syncVeterinarianForUser = async (
   );
 
   const [veterinarians] = await connection.query(
-    'SELECT veterinario_id FROM veterinarios WHERE usuario_id = ? LIMIT 1',
+    'SELECT veterinario_id FROM veterinario WHERE usuario_id = ? LIMIT 1',
     [userId]
   );
   return veterinarians[0]?.veterinario_id || null;

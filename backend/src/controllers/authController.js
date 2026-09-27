@@ -7,7 +7,8 @@ const {
 
 const login = async (req, res) => {
   try {
-    const { correo, password } = req.body;
+    const correo = String(req.body.correo || '').trim().toLowerCase();
+    const password = String(req.body.password || '');
 
     if (!correo || !password) {
       return res.status(400).json({
@@ -32,9 +33,9 @@ const login = async (req, res) => {
         eu.nombre AS estado,
         eu.permite_acceso,
         r.nombre AS rol
-      FROM usuarios u
-      INNER JOIN roles r ON u.rol_id = r.rol_id
-      INNER JOIN estados_usuario eu
+      FROM usuario u
+      INNER JOIN rol r ON u.rol_id = r.rol_id
+      INNER JOIN estado_usuario eu
         ON eu.estado_usuario_id = u.estado_usuario_id
       WHERE u.correo = ?
         AND u.eliminado_en IS NULL
@@ -57,6 +58,12 @@ const login = async (req, res) => {
       });
     }
 
+    if (correo.length > 254 || password.length > 128) {
+      return res.status(401).json({
+        message: 'Correo o contraseña incorrectos',
+      });
+    }
+
     const passwordValida = await bcrypt.compare(password, user.password_hash);
 
     if (!passwordValida) {
@@ -66,7 +73,7 @@ const login = async (req, res) => {
     }
 
     await pool.query(
-      'UPDATE usuarios SET ultimo_acceso = NOW() WHERE usuario_id = ?',
+      'UPDATE usuario SET ultimo_acceso = NOW() WHERE usuario_id = ?',
       [user.usuario_id]
     );
 

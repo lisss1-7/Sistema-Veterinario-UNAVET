@@ -40,11 +40,11 @@ const HISTORIAL_SELECT = `
       creador.segundo_apellido
     ) AS creado_por_nombre
   FROM historial_clinico historial
-  INNER JOIN tipos_consulta tipo
+  INNER JOIN tipo_consulta tipo
     ON tipo.tipo_consulta_id = historial.tipo_consulta_id
-  LEFT JOIN veterinarios veterinario
+  LEFT JOIN veterinario veterinario
     ON veterinario.veterinario_id = historial.veterinario_id
-  LEFT JOIN usuarios creador
+  LEFT JOIN usuario creador
     ON creador.usuario_id = historial.creado_por
   LEFT JOIN (
     SELECT
@@ -82,9 +82,9 @@ const HISTORIAL_SELECT = `
           THEN estado.nombre END
       ) AS exam_pressure
     FROM historial_examen_fisico detalle
-    INNER JOIN parametros_examen_fisico parametro
+    INNER JOIN parametro_examen_fisico parametro
       ON parametro.parametro_id = detalle.parametro_id
-    INNER JOIN estados_examen_fisico estado
+    INNER JOIN estado_examen_fisico estado
       ON estado.estado_examen_id = detalle.estado_examen_id
     GROUP BY detalle.historial_id
   ) examen
@@ -144,7 +144,7 @@ const normalizePhysicalExam = (body) => ({
 const getConsultationType = async (connection, name) => {
   const [rows] = await connection.query(
     `SELECT tipo_consulta_id
-     FROM tipos_consulta
+     FROM tipo_consulta
      WHERE nombre = ?
      LIMIT 1`,
     [name]
@@ -168,8 +168,8 @@ const savePhysicalExam = async (connection, historyId, exam) => {
          estado_examen_id
        )
        SELECT ?, parametro.parametro_id, estado.estado_examen_id
-       FROM parametros_examen_fisico parametro
-       INNER JOIN estados_examen_fisico estado
+       FROM parametro_examen_fisico parametro
+       INNER JOIN estado_examen_fisico estado
          ON estado.nombre = ?
        WHERE parametro.codigo = ? AND parametro.activo = 1`,
       [historyId, state, code]

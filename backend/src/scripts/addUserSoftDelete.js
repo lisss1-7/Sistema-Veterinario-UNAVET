@@ -32,9 +32,9 @@ const run = async () => {
   const connection = await pool.getConnection();
 
   try {
-    if (!(await columnExists(connection, 'usuarios', 'eliminado_en'))) {
+    if (!(await columnExists(connection, 'usuario', 'eliminado_en'))) {
       await connection.query(`
-        ALTER TABLE usuarios
+        ALTER TABLE usuario
         ADD COLUMN eliminado_en DATETIME NULL
           COMMENT 'Fecha y hora del borrado lógico del usuario.'
           AFTER actualizado_en
@@ -43,11 +43,11 @@ const run = async () => {
 
     if (!(await indexExists(
       connection,
-      'usuarios',
+      'usuario',
       'idx_usuarios_eliminado_en'
     ))) {
       await connection.query(`
-        ALTER TABLE usuarios
+        ALTER TABLE usuario
         ADD INDEX idx_usuarios_eliminado_en (eliminado_en)
       `);
     }

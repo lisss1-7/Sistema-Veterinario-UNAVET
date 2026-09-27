@@ -1,59 +1,57 @@
 import { createBrowserRouter } from 'react-router';
+import type { ComponentType } from 'react';
 import Layout from './components/Layout';
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Patients from './pages/Patients';
-import PatientDetail from './pages/PatientDetail';
-import PatientCatalogs from './pages/PatientCatalogs';
-import Appointments from './pages/Appointments';
-import Grooming from './pages/Grooming';
-import Inventory from './pages/Inventory';
-import Prescriptions from './pages/Prescriptions';
-import AIReports from './pages/AIReports';
-import Users from './pages/Users';
-import DeliveryPlaceholder from './pages/DeliveryPlaceholder';
 import { isModuleContentEnabled } from './config/deliveryScope';
-import ResetPassword from './pages/ResetPassword';
 
-const AppointmentsRoute = isModuleContentEnabled('appointments')
-  ? Appointments
-  : DeliveryPlaceholder;
-const GroomingRoute = isModuleContentEnabled('grooming')
-  ? Grooming
-  : DeliveryPlaceholder;
-const InventoryRoute = isModuleContentEnabled('inventory')
-  ? Inventory
-  : DeliveryPlaceholder;
-const PrescriptionsRoute = isModuleContentEnabled('prescriptions')
-  ? Prescriptions
-  : DeliveryPlaceholder;
-const AIReportsRoute = isModuleContentEnabled('aiReports')
-  ? AIReports
-  : DeliveryPlaceholder;
+const page = (loader: () => Promise<{ default: ComponentType }>) =>
+  async () => ({ Component: (await loader()).default });
+
+const optionalPage = (
+  moduleCode: Parameters<typeof isModuleContentEnabled>[0],
+  loader: () => Promise<{ default: ComponentType }>
+) =>
+  isModuleContentEnabled(moduleCode)
+    ? page(loader)
+    : page(() => import('./pages/DeliveryPlaceholder'));
 
 export const router = createBrowserRouter([
   {
     path: '/login',
-    Component: Login,
+    lazy: page(() => import('./pages/Login')),
   },
   {
     path: '/reset-password',
-    Component: ResetPassword,
+    lazy: page(() => import('./pages/ResetPassword')),
   },
   {
     path: '/',
     Component: Layout,
     children: [
-      { index: true, Component: Dashboard },
-      { path: 'patients', Component: Patients },
-      { path: 'maintenance', Component: PatientCatalogs },
-      { path: 'patients/:id', Component: PatientDetail },
-      { path: 'appointments', Component: AppointmentsRoute },
-      { path: 'grooming', Component: GroomingRoute },
-      { path: 'inventory', Component: InventoryRoute },
-      { path: 'prescriptions', Component: PrescriptionsRoute },
-      { path: 'ai-reports', Component: AIReportsRoute },
-      { path: 'users', Component: Users },
+      { index: true, lazy: page(() => import('./pages/Dashboard')) },
+      { path: 'patients', lazy: page(() => import('./pages/Patients')) },
+      { path: 'maintenance', lazy: page(() => import('./pages/PatientCatalogs')) },
+      { path: 'patients/:id', lazy: page(() => import('./pages/PatientDetail')) },
+      {
+        path: 'appointments',
+        lazy: optionalPage('appointments', () => import('./pages/Appointments')),
+      },
+      {
+        path: 'grooming',
+        lazy: optionalPage('grooming', () => import('./pages/Grooming')),
+      },
+      {
+        path: 'inventory',
+        lazy: optionalPage('inventory', () => import('./pages/Inventory')),
+      },
+      {
+        path: 'prescriptions',
+        lazy: optionalPage('prescriptions', () => import('./pages/Prescriptions')),
+      },
+      {
+        path: 'ai-reports',
+        lazy: optionalPage('aiReports', () => import('./pages/AIReports')),
+      },
+      { path: 'users', lazy: page(() => import('./pages/Users')) },
     ],
   },
 ]);

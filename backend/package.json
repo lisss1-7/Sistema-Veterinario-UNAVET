@@ -8,6 +8,10 @@
     "dev": "nodemon src/server.js",
     "seed:users": "node src/scripts/seedUsers.js",
     "backup:database": "node src/scripts/backupDatabase.js",
+    "audit:singular-tables": "node src/scripts/renameTablesToSingular.js",
+    "migrate:singular-tables": "node src/scripts/renameTablesToSingular.js --apply",
+    "audit:media": "node src/scripts/migrateMediaFiles.js",
+    "migrate:media-files": "node src/scripts/migrateMediaFiles.js --apply",
     "migrate:remove-runtime-tables": "node src/scripts/removeRuntimeTables.js",
     "migrate:normalize": "node src/scripts/normalizeBusinessData.js",
     "migrate:structural-integrity": "node src/scripts/normalizeStructuralIntegrity.js",
@@ -25,6 +29,7 @@
     "verify:email": "node src/scripts/verifyEmail.js",
     "test:email": "node src/scripts/sendTestEmail.js",
     "test:person-names": "node src/scripts/smokePersonNames.js",
+    "test": "node --test tests/*.test.js",
     "test:users": "node --test tests/usuariosSoftDelete.test.js",
     "test:attribution": "node --test tests/recordAttribution.test.js",
     "test:reports": "node --test tests/aiReports.test.js"
@@ -35,12 +40,13 @@
   "type": "commonjs",
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "compression": "^1.8.2",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
-    "mysql2": "^3.22.5",
-    "nodemailer": "^7.0.13"
+    "mysql2": "^3.24.4",
+    "nodemailer": "^10.0.10"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"

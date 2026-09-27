@@ -186,4 +186,5 @@ export interface SystemUser {
   status: string;
   lastAccess?: string;
   creationDate: string;
+  deletedAt?: string | null;
 }

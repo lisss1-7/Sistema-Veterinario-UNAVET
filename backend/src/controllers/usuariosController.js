@@ -26,13 +26,14 @@ const mapUsuarioToFrontend = (row) => ({
   status: row.estado,
   lastAccess: row.ultimo_acceso || null,
   creationDate: row.fecha_creacion,
+  deletedAt: row.fecha_eliminacion || null,
 });
 
 const obtenerRolId = async (connection, roleName) => {
   const [rows] = await connection.query(
     `
     SELECT rol_id
-    FROM roles
+    FROM rol
     WHERE nombre = ? AND activo = 1
     LIMIT 1
     `,
@@ -46,7 +47,7 @@ const obtenerEstadoUsuario = async (connection, status) => {
   const [rows] = await connection.query(
     `
     SELECT estado_usuario_id, nombre
-    FROM estados_usuario
+    FROM estado_usuario
     WHERE activo = 1
       AND (? IS NULL OR nombre = ?)
     ORDER BY permite_acceso DESC, estado_usuario_id
@@ -59,6 +60,7 @@ const obtenerEstadoUsuario = async (connection, status) => {
 
 const listarUsuarios = async (req, res) => {
   try {
+    const includeDeleted = req.query?.includeDeleted === 'true';
     const [rows] = await pool.query(
       `
       SELECT
@@ -75,14 +77,16 @@ const listarUsuarios = async (req, res) => {
         estado.nombre AS estado,
         u.ultimo_acceso,
         DATE_FORMAT(u.creado_en, '%Y-%m-%d') AS fecha_creacion,
+        u.eliminado_en AS fecha_eliminacion,
         r.nombre AS rol
-      FROM usuarios u
-      INNER JOIN roles r ON u.rol_id = r.rol_id
-      INNER JOIN estados_usuario estado
+      FROM usuario u
+      INNER JOIN rol r ON u.rol_id = r.rol_id
+      INNER JOIN estado_usuario estado
         ON estado.estado_usuario_id = u.estado_usuario_id
-      WHERE u.eliminado_en IS NULL
+      WHERE (? = 1 OR u.eliminado_en IS NULL)
       ORDER BY u.usuario_id ASC
-      `
+      `,
+      [includeDeleted ? 1 : 0]
     );
 
     res.json(rows.map(mapUsuarioToFrontend));
@@ -115,9 +119,9 @@ const obtenerUsuarioPorId = async (req, res) => {
         u.ultimo_acceso,
         DATE_FORMAT(u.creado_en, '%Y-%m-%d') AS fecha_creacion,
         r.nombre AS rol
-      FROM usuarios u
-      INNER JOIN roles r ON u.rol_id = r.rol_id
-      INNER JOIN estados_usuario estado
+      FROM usuario u
+      INNER JOIN rol r ON u.rol_id = r.rol_id
+      INNER JOIN estado_usuario estado
         ON estado.estado_usuario_id = u.estado_usuario_id
       WHERE u.usuario_id = ?
         AND u.eliminado_en IS NULL
@@ -178,7 +182,7 @@ const crearUsuario = async (req, res) => {
     await connection.beginTransaction();
 
     const [existing] = await connection.query(
-      'SELECT usuario_id FROM usuarios WHERE correo = ? LIMIT 1',
+      'SELECT usuario_id FROM usuario WHERE correo = ? LIMIT 1',
       [email]
     );
 
@@ -205,7 +209,7 @@ const crearUsuario = async (req, res) => {
 
     const [result] = await connection.query(
       `
-      INSERT INTO usuarios (
+      INSERT INTO usuario (
         rol_id,
         primer_nombre,
         segundo_nombre,
@@ -286,7 +290,7 @@ const actualizarUsuario = async (req, res) => {
 
     const [existing] = await connection.query(
       `SELECT usuario_id
-       FROM usuarios
+       FROM usuario
        WHERE usuario_id = ? AND eliminado_en IS NULL
        LIMIT 1`,
       [id]
@@ -303,7 +307,7 @@ const actualizarUsuario = async (req, res) => {
     const [emailRows] = await connection.query(
       `
       SELECT usuario_id
-      FROM usuarios
+      FROM usuario
       WHERE correo = ? AND usuario_id <> ?
       LIMIT 1
       `,
@@ -342,7 +346,7 @@ const actualizarUsuario = async (req, res) => {
 
       await connection.query(
         `
-        UPDATE usuarios
+        UPDATE usuario
         SET
           rol_id = ?,
           primer_nombre = ?,
@@ -371,7 +375,7 @@ const actualizarUsuario = async (req, res) => {
     } else {
       await connection.query(
         `
-        UPDATE usuarios
+        UPDATE usuario
         SET
           rol_id = ?,
           primer_nombre = ?,
@@ -421,9 +425,9 @@ const actualizarUsuario = async (req, res) => {
         u.ultimo_acceso,
         DATE_FORMAT(u.creado_en, '%Y-%m-%d') AS fecha_creacion,
         r.nombre AS rol
-      FROM usuarios u
-      INNER JOIN roles r ON u.rol_id = r.rol_id
-      INNER JOIN estados_usuario estado
+      FROM usuario u
+      INNER JOIN rol r ON u.rol_id = r.rol_id
+      INNER JOIN estado_usuario estado
         ON estado.estado_usuario_id = u.estado_usuario_id
       WHERE u.usuario_id = ?
         AND u.eliminado_en IS NULL
@@ -456,7 +460,7 @@ const cambiarEstadoUsuario = async (req, res) => {
     const { status } = req.body;
 
     const [validStatuses] = await pool.query(
-      'SELECT estado_usuario_id, permite_acceso FROM estados_usuario WHERE nombre = ? AND activo = 1 LIMIT 1',
+      'SELECT estado_usuario_id, permite_acceso FROM estado_usuario WHERE nombre = ? AND activo = 1 LIMIT 1',
       [status]
     );
     if (validStatuses.length === 0) {
@@ -475,7 +479,7 @@ const cambiarEstadoUsuario = async (req, res) => {
     }
 
     const [result] = await pool.query(
-      `UPDATE usuarios
+      `UPDATE usuario
        SET estado_usuario_id = ?
        WHERE usuario_id = ? AND eliminado_en IS NULL`,
       [validStatuses[0].estado_usuario_id, id]
@@ -513,19 +517,27 @@ const eliminarUsuario = async (req, res) => {
 
     const [inactiveStatuses] = await connection.query(
       `SELECT estado_usuario_id
-       FROM estados_usuario
+       FROM estado_usuario
        WHERE activo = 1 AND permite_acceso = 0
        ORDER BY estado_usuario_id
        LIMIT 1`
     );
 
+    if (inactiveStatuses.length === 0) {
+      await connection.rollback();
+
+      return res.status(500).json({
+        message: 'No existe un estado inactivo configurado para el usuario',
+      });
+    }
+
     const [result] = await connection.query(
-      `UPDATE usuarios
+      `UPDATE usuario
        SET
          eliminado_en = NOW(),
-         estado_usuario_id = COALESCE(?, estado_usuario_id)
+         estado_usuario_id = ?
        WHERE usuario_id = ? AND eliminado_en IS NULL`,
-      [inactiveStatuses[0]?.estado_usuario_id || null, id]
+      [inactiveStatuses[0].estado_usuario_id, id]
     );
 
     if (result.affectedRows === 0) {
@@ -537,20 +549,78 @@ const eliminarUsuario = async (req, res) => {
     }
 
     await connection.query(
-      'UPDATE veterinarios SET activo = 0 WHERE usuario_id = ?',
+      'UPDATE veterinario SET activo = 0 WHERE usuario_id = ?',
       [id]
     );
 
     await connection.commit();
 
     res.json({
-      message: 'Usuario eliminado correctamente',
+      message: 'Usuario dado de baja correctamente',
     });
   } catch (error) {
     await connection.rollback();
 
     res.status(500).json({
       message: 'Error al eliminar usuario',
+      error: error.message,
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+const restaurarUsuario = async (req, res) => {
+  const { id } = req.params;
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [activeStatuses] = await connection.query(
+      `SELECT estado_usuario_id
+       FROM estado_usuario
+       WHERE activo = 1 AND permite_acceso = 1
+       ORDER BY estado_usuario_id
+       LIMIT 1`
+    );
+
+    if (activeStatuses.length === 0) {
+      await connection.rollback();
+
+      return res.status(500).json({
+        message: 'No existe un estado activo configurado para el usuario',
+      });
+    }
+
+    const [result] = await connection.query(
+      `UPDATE usuario
+       SET
+         eliminado_en = NULL,
+         estado_usuario_id = ?
+       WHERE usuario_id = ? AND eliminado_en IS NOT NULL`,
+      [activeStatuses[0].estado_usuario_id, id]
+    );
+
+    if (result.affectedRows === 0) {
+      await connection.rollback();
+
+      return res.status(404).json({
+        message: 'Usuario dado de baja no encontrado',
+      });
+    }
+
+    await syncVeterinarianForUser(connection, id);
+    await connection.commit();
+
+    res.json({
+      message: 'Usuario restaurado correctamente',
+    });
+  } catch (error) {
+    await connection.rollback();
+
+    res.status(500).json({
+      message: 'Error al restaurar usuario',
       error: error.message,
     });
   } finally {
@@ -565,4 +635,5 @@ module.exports = {
   actualizarUsuario,
   cambiarEstadoUsuario,
   eliminarUsuario,
+  restaurarUsuario,
 };

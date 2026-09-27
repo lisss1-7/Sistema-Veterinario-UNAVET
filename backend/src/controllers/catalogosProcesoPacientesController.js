@@ -5,7 +5,7 @@ const db = require('../config/db');
 // allowlist cerrada.
 const PATIENT_PROCESS_CATALOGS = Object.freeze({
   especies: {
-    table: 'especies',
+    table: 'especie',
     idColumn: 'especie_id',
     writableColumns: ['nombre'],
     hasActive: true,
@@ -14,7 +14,7 @@ const PATIENT_PROCESS_CATALOGS = Object.freeze({
     extraSelect: ', c.creado_en',
   },
   razas: {
-    table: 'razas',
+    table: 'raza',
     idColumn: 'raza_id',
     writableColumns: ['especie_id', 'nombre'],
     hasActive: true,
@@ -22,10 +22,10 @@ const PATIENT_PROCESS_CATALOGS = Object.freeze({
     requiresSpecies: true,
     extraSelect:
       ', c.especie_id, especie.nombre AS especie_nombre, especie.activo AS especie_activa, c.creado_en',
-    join: 'INNER JOIN especies especie ON especie.especie_id = c.especie_id',
+    join: 'INNER JOIN especie especie ON especie.especie_id = c.especie_id',
   },
   sexos: {
-    table: 'sexos',
+    table: 'sexo',
     idColumn: 'sexo_id',
     writableColumns: ['nombre'],
     hasActive: false,
@@ -33,7 +33,7 @@ const PATIENT_PROCESS_CATALOGS = Object.freeze({
     readOnly: true,
   },
   'estados-reproductivos': {
-    table: 'estados_reproductivos',
+    table: 'estado_reproductivo',
     idColumn: 'estado_reproductivo_id',
     writableColumns: ['nombre'],
     hasActive: false,
@@ -41,14 +41,14 @@ const PATIENT_PROCESS_CATALOGS = Object.freeze({
     readOnly: true,
   },
   'tipos-consulta': {
-    table: 'tipos_consulta',
+    table: 'tipo_consulta',
     idColumn: 'tipo_consulta_id',
     writableColumns: ['nombre'],
     hasActive: false,
     maxNameLength: 100,
   },
   vacunas: {
-    table: 'vacunas_catalogo',
+    table: 'vacuna_catalogo',
     idColumn: 'vacuna_id',
     writableColumns: ['nombre'],
     hasActive: false,
@@ -56,28 +56,28 @@ const PATIENT_PROCESS_CATALOGS = Object.freeze({
     readOnly: true,
   },
   'pruebas-laboratorio': {
-    table: 'pruebas_laboratorio',
+    table: 'prueba_laboratorio',
     idColumn: 'prueba_id',
     writableColumns: ['nombre'],
     hasActive: false,
     maxNameLength: 150,
   },
   'tipos-tratamiento': {
-    table: 'tipos_tratamiento',
+    table: 'tipo_tratamiento',
     idColumn: 'tipo_tratamiento_id',
     writableColumns: ['nombre'],
     hasActive: false,
     maxNameLength: 150,
   },
   'estados-tratamiento': {
-    table: 'estados_tratamiento',
+    table: 'estado_tratamiento',
     idColumn: 'estado_tratamiento_id',
     writableColumns: ['nombre'],
     hasActive: false,
     maxNameLength: 100,
   },
   'estados-examen-fisico': {
-    table: 'estados_examen_fisico',
+    table: 'estado_examen_fisico',
     idColumn: 'estado_examen_id',
     writableColumns: ['nombre'],
     hasActive: false,
@@ -85,7 +85,7 @@ const PATIENT_PROCESS_CATALOGS = Object.freeze({
     readOnly: true,
   },
   'unidades-intervalo': {
-    table: 'unidades_intervalo',
+    table: 'unidad_intervalo',
     idColumn: 'unidad_intervalo_id',
     writableColumns: ['nombre', 'dias_por_unidad', 'meses_por_unidad'],
     hasActive: false,
@@ -95,7 +95,7 @@ const PATIENT_PROCESS_CATALOGS = Object.freeze({
     readOnly: true,
   },
   'tamanos-animales': {
-    table: 'tamanos_animales',
+    table: 'tamano_animal',
     idColumn: 'tamano_animal_id',
     writableColumns: ['nombre'],
     hasActive: false,
@@ -103,7 +103,7 @@ const PATIENT_PROCESS_CATALOGS = Object.freeze({
     readOnly: true,
   },
   'estados-cita': {
-    table: 'estados_cita',
+    table: 'estado_cita',
     idColumn: 'estado_cita_id',
     writableColumns: ['nombre'],
     hasActive: false,
@@ -111,7 +111,7 @@ const PATIENT_PROCESS_CATALOGS = Object.freeze({
     readOnly: true,
   },
   'tipos-grooming': {
-    table: 'tipos_grooming',
+    table: 'tipo_grooming',
     idColumn: 'tipo_grooming_id',
     writableColumns: ['nombre'],
     hasActive: false,
@@ -119,7 +119,7 @@ const PATIENT_PROCESS_CATALOGS = Object.freeze({
     readOnly: true,
   },
   'estados-grooming': {
-    table: 'estados_grooming',
+    table: 'estado_grooming',
     idColumn: 'estado_grooming_id',
     writableColumns: ['nombre'],
     hasActive: false,
@@ -127,14 +127,14 @@ const PATIENT_PROCESS_CATALOGS = Object.freeze({
     readOnly: true,
   },
   'categorias-inventario': {
-    table: 'categorias_inventario',
+    table: 'categoria_inventario',
     idColumn: 'categoria_id',
     writableColumns: ['nombre'],
     hasActive: true,
     maxNameLength: 100,
   },
   'estados-producto': {
-    table: 'estados_producto',
+    table: 'estado_producto',
     idColumn: 'estado_producto_id',
     writableColumns: ['nombre'],
     hasActive: true,
@@ -142,21 +142,21 @@ const PATIENT_PROCESS_CATALOGS = Object.freeze({
     readOnly: true,
   },
   'unidades-medida': {
-    table: 'unidades_medida',
+    table: 'unidad_medida',
     idColumn: 'unidad_medida_id',
     writableColumns: ['nombre'],
     hasActive: true,
     maxNameLength: 80,
   },
   'modos-entrega': {
-    table: 'modos_entrega_receta',
+    table: 'modo_entrega_receta',
     idColumn: 'modo_entrega_id',
     writableColumns: ['nombre'],
     hasActive: true,
     maxNameLength: 100,
   },
   'categorias-servicio': {
-    table: 'categorias_servicio',
+    table: 'categoria_servicio',
     idColumn: 'categoria_servicio_id',
     writableColumns: ['nombre', 'descripcion'],
     hasActive: true,
@@ -165,7 +165,7 @@ const PATIENT_PROCESS_CATALOGS = Object.freeze({
     extraSelect: ', c.descripcion',
   },
   servicios: {
-    table: 'servicios',
+    table: 'servicio',
     idColumn: 'servicio_id',
     writableColumns: [
       'categoria_servicio_id',
@@ -183,10 +183,10 @@ const PATIENT_PROCESS_CATALOGS = Object.freeze({
     extraSelect:
       ', c.categoria_servicio_id, categoria.nombre AS categoria_nombre, c.descripcion, c.precio_base, c.controla_inventario',
     join:
-      'INNER JOIN categorias_servicio categoria ON categoria.categoria_servicio_id = c.categoria_servicio_id',
+      'INNER JOIN categoria_servicio categoria ON categoria.categoria_servicio_id = c.categoria_servicio_id',
   },
   'estados-vacunacion': {
-    table: 'estados_vacunacion',
+    table: 'estado_vacunacion',
     idColumn: 'estado_vacunacion_id',
     writableColumns: ['nombre'],
     hasActive: true,
@@ -194,7 +194,7 @@ const PATIENT_PROCESS_CATALOGS = Object.freeze({
     readOnly: true,
   },
   roles: {
-    table: 'roles',
+    table: 'rol',
     idColumn: 'rol_id',
     writableColumns: ['nombre'],
     hasActive: true,
@@ -202,7 +202,7 @@ const PATIENT_PROCESS_CATALOGS = Object.freeze({
     managesPermissions: true,
   },
   'estados-usuario': {
-    table: 'estados_usuario',
+    table: 'estado_usuario',
     idColumn: 'estado_usuario_id',
     writableColumns: ['nombre'],
     hasActive: true,
@@ -278,7 +278,7 @@ const buildPayload = async (body, config) => {
     }
     const [categories] = await db.query(
       `SELECT categoria_servicio_id
-       FROM categorias_servicio
+       FROM categoria_servicio
        WHERE categoria_servicio_id = ? AND activo = 1
        LIMIT 1`,
       [categoriaId]
@@ -313,7 +313,7 @@ const buildPayload = async (body, config) => {
     }
 
     const [species] = await db.query(
-      'SELECT especie_id FROM especies WHERE especie_id = ? LIMIT 1',
+      'SELECT especie_id FROM especie WHERE especie_id = ? LIMIT 1',
       [especieId]
     );
     if (species.length === 0) {
@@ -397,9 +397,9 @@ const listarCatalogo = async (req, res) => {
           COALESCE(rp.puede_crear, 0) AS puede_crear,
           COALESCE(rp.puede_editar, 0) AS puede_editar,
           COALESCE(rp.puede_eliminar, 0) AS puede_eliminar
-        FROM roles r
-        CROSS JOIN modulos_sistema m
-        LEFT JOIN rol_permisos rp
+        FROM rol r
+        CROSS JOIN modulo_sistema m
+        LEFT JOIN rol_permiso rp
           ON rp.rol_id = r.rol_id
           AND rp.modulo_id = m.modulo_id
         WHERE m.activo = 1
@@ -454,13 +454,13 @@ const saveRolePermissions = async (connection, roleId, permissions) => {
       statusCode: 400,
     });
   }
-  await connection.query('DELETE FROM rol_permisos WHERE rol_id = ?', [roleId]);
+  await connection.query('DELETE FROM rol_permiso WHERE rol_id = ?', [roleId]);
   for (const permission of permissions) {
     const [insertResult] = await connection.query(
-      `INSERT INTO rol_permisos
+      `INSERT INTO rol_permiso
         (rol_id, modulo_id, puede_ver, puede_crear, puede_editar, puede_eliminar)
        SELECT ?, modulo_id, ?, ?, ?, ?
-       FROM modulos_sistema
+       FROM modulo_sistema
        WHERE codigo = ? AND activo = 1`,
       [
         roleId,
@@ -498,7 +498,7 @@ const crearCatalogo = async (req, res) => {
       try {
         await connection.beginTransaction();
         const [insertResult] = await connection.query(
-          'INSERT INTO roles (nombre) VALUES (?)',
+          'INSERT INTO rol (nombre) VALUES (?)',
           [result.payload.nombre]
         );
         await saveRolePermissions(connection, insertResult.insertId, permissions);
@@ -558,7 +558,7 @@ const actualizarCatalogo = async (req, res) => {
       try {
         await connection.beginTransaction();
         const [existingRoles] = await connection.query(
-          'SELECT rol_id FROM roles WHERE rol_id = ? LIMIT 1 FOR UPDATE',
+          'SELECT rol_id FROM rol WHERE rol_id = ? LIMIT 1 FOR UPDATE',
           [id]
         );
         if (existingRoles.length === 0) {
@@ -566,7 +566,7 @@ const actualizarCatalogo = async (req, res) => {
           return res.status(404).json({ message: 'Rol no encontrado' });
         }
         await connection.query(
-          'UPDATE roles SET nombre = ? WHERE rol_id = ?',
+          'UPDATE rol SET nombre = ? WHERE rol_id = ?',
           [result.payload.nombre, id]
         );
         await saveRolePermissions(connection, id, permissions);
@@ -655,7 +655,7 @@ const eliminarCatalogo = async (req, res) => {
     if (req.params.catalogo === 'categorias-servicio') {
       const [services] = await db.query(
         `SELECT servicio_id
-         FROM servicios
+         FROM servicio
          WHERE categoria_servicio_id = ? AND activo = 1
          LIMIT 1`,
         [id]
@@ -670,7 +670,7 @@ const eliminarCatalogo = async (req, res) => {
     if (req.params.catalogo === 'roles') {
       const [users] = await db.query(
         `SELECT usuario_id
-         FROM usuarios
+         FROM usuario
          WHERE rol_id = ? AND eliminado_en IS NULL
          LIMIT 1`,
         [id]

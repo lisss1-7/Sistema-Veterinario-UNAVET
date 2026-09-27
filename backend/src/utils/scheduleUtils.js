@@ -12,7 +12,7 @@ const validarHorarioConfigurado = async ({
     typeFilter = `
       AND h.tipo_grooming_id = (
         SELECT tipo_grooming_id
-        FROM tipos_grooming
+        FROM tipo_grooming
         WHERE nombre = ?
         LIMIT 1
       )
@@ -23,8 +23,8 @@ const validarHorarioConfigurado = async ({
   const [rows] = await connection.query(
     `
     SELECT 1
-    FROM horarios_atencion h
-    INNER JOIN modulos_sistema m ON m.modulo_id = h.modulo_id
+    FROM horario_atencion h
+    INNER JOIN modulo_sistema m ON m.modulo_id = h.modulo_id
     WHERE m.codigo = ?
       AND h.dia_semana = DAYOFWEEK(?) - 1
       AND h.activo = 1

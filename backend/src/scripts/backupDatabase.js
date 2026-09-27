@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const pool = require('../config/db');
+const { getStorageRoot } = require('../utils/mediaStorage');
 
 const run = async () => {
   const connection = await pool.getConnection();
@@ -38,6 +39,13 @@ const run = async () => {
     );
     fs.writeFileSync(outputPath, JSON.stringify(backup, null, 2), 'utf8');
     console.log(`Respaldo completo creado: ${outputPath}`);
+
+    const mediaSource = getStorageRoot();
+    if (fs.existsSync(mediaSource)) {
+      const mediaOutput = path.join(backupDir, `media-${timestamp}`);
+      fs.cpSync(mediaSource, mediaOutput, { recursive: true });
+      console.log(`Archivos multimedia respaldados: ${mediaOutput}`);
+    }
   } finally {
     connection.release();
     await pool.end();

@@ -27,7 +27,9 @@ import { formatDateForDisplay } from '../utils/dateFormat';
 import ThemedSelect from '../components/ThemedSelect';
 import PdfPreviewModal from '../components/PdfPreviewModal';
 import { useModulePermissions } from '../hooks/useModulePermissions';
-import { API_URL } from '../config/api';
+import { requestJson } from '../utils/apiClient';
+import { compressImageFile } from '../utils/imageCompression';
+import { loadMediaAsDataUrl, resolveMediaUrl } from '../utils/media';
 
 type PatientWithPhoto = Patient & {
   photo?: string;
@@ -58,15 +60,6 @@ type DeleteTarget = {
   id: string;
   type: 'clinical' | 'vaccination' | 'treatment';
   title: string;
-};
-
-const getAuthHeaders = () => {
-  const token = localStorage.getItem('unavet_token');
-
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
-  };
 };
 
 type CatalogItem = {
@@ -154,17 +147,9 @@ export default function PatientDetail() {
     setter: React.Dispatch<React.SetStateAction<string[]>>
   ) => {
     try {
-      const response = await fetch(`${API_URL}/catalogos/${endpoint}`, {
-        method: 'GET',
-        headers: getAuthHeaders(),
+      const data = await requestJson<CatalogItem[]>(`catalogos/${endpoint}`, {
+        defaultError: `Error al cargar catálogo ${endpoint}`,
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || `Error al cargar catálogo ${endpoint}`);
-      }
-
       setter(mapCatalogNames(data));
     } catch (error) {
       console.error(`Error al cargar catálogo ${endpoint}:`, error);
@@ -181,15 +166,10 @@ export default function PatientDetail() {
       fetchCatalogSafely('estados-tratamiento', setTreatmentStatusOptions),
       fetchCatalogSafely('estados-examen-fisico', setExamStatusOptions),
       fetchCatalogSafely('unidades-intervalo', setIntervalUnitOptions),
-      fetch(`${API_URL}/catalogos/veterinarios`, {
-        method: 'GET',
-        headers: getAuthHeaders(),
+      requestJson<CatalogItem[]>('catalogos/veterinarios', {
+        defaultError: 'Error al cargar veterinarios',
       })
-        .then(async (response) => {
-          const data = await response.json();
-          if (!response.ok) {
-            throw new Error(data.message || 'Error al cargar veterinarios');
-          }
+        .then((data) => {
           setVeterinarianOptions(
             data.map((item: CatalogItem) => ({
               value: String(item.veterinario_id || item.id),
@@ -208,16 +188,10 @@ export default function PatientDetail() {
     if (!id) return;
 
     try {
-      const response = await fetch(`${API_URL}/historial-clinico/paciente/${id}`, {
-        method: 'GET',
-        headers: getAuthHeaders(),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Error al cargar historial clínico');
-      }
+      const data = await requestJson<ClinicalRecordExtended[]>(
+        `historial-clinico/paciente/${id}`,
+        { defaultError: 'Error al cargar historial clínico' }
+      );
 
       setClinicalRecords(data);
     } catch (error) {
@@ -230,16 +204,10 @@ export default function PatientDetail() {
     if (!id) return;
 
     try {
-      const response = await fetch(`${API_URL}/vacunaciones/paciente/${id}`, {
-        method: 'GET',
-        headers: getAuthHeaders(),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Error al cargar vacunaciones');
-      }
+      const data = await requestJson<VaccinationExtended[]>(
+        `vacunaciones/paciente/${id}`,
+        { defaultError: 'Error al cargar vacunaciones' }
+      );
 
       setVaccinations(data);
     } catch (error) {
@@ -252,16 +220,10 @@ export default function PatientDetail() {
     if (!id) return;
 
     try {
-      const response = await fetch(`${API_URL}/tratamientos/paciente/${id}`, {
-        method: 'GET',
-        headers: getAuthHeaders(),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Error al cargar tratamientos y servicios');
-      }
+      const data = await requestJson<TreatmentServiceExtended[]>(
+        `tratamientos/paciente/${id}`,
+        { defaultError: 'Error al cargar tratamientos y servicios' }
+      );
 
       setTreatments(data);
     } catch (error) {
@@ -274,16 +236,9 @@ export default function PatientDetail() {
     if (!id) return;
 
     try {
-      const response = await fetch(`${API_URL}/pacientes/${id}`, {
-        method: 'GET',
-        headers: getAuthHeaders(),
+      const data = await requestJson<PatientWithPhoto>(`pacientes/${id}`, {
+        defaultError: 'Error al cargar paciente',
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Error al cargar paciente');
-      }
 
       setPatient(data);
     } catch (error) {
@@ -342,24 +297,18 @@ export default function PatientDetail() {
     closeFormModal();
   };
 
-  const handleAttachmentPhoto = (file?: File) => {
+  const handleAttachmentPhoto = async (file?: File) => {
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      alert('Debe seleccionar una imagen válida');
-      return;
-    }
-
-    const reader = new FileReader();
-
-    reader.onloadend = () => {
+    try {
+      const attachmentPhoto = await compressImageFile(file);
       setFormData({
         ...formData,
-        attachmentPhoto: reader.result as string,
+        attachmentPhoto,
       });
-    };
-
-    reader.readAsDataURL(file);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'No fue posible procesar la imagen');
+    }
   };
 
   const removeAttachmentPhoto = () => {
@@ -375,9 +324,9 @@ export default function PatientDetail() {
     if (!id) return;
 
     try {
-      const url = editingClinicalRecord
-        ? `${API_URL}/historial-clinico/${editingClinicalRecord.id}`
-        : `${API_URL}/historial-clinico`;
+      const endpoint = editingClinicalRecord
+        ? `historial-clinico/${editingClinicalRecord.id}`
+        : 'historial-clinico';
 
       const method = editingClinicalRecord ? 'PUT' : 'POST';
 
@@ -387,17 +336,11 @@ export default function PatientDetail() {
         clinicalStatus: 'Completado',
       };
 
-      const response = await fetch(url, {
+      await requestJson<unknown>(endpoint, {
         method,
-        headers: getAuthHeaders(),
-        body: JSON.stringify(body),
+        body,
+        defaultError: 'Error al guardar historial clínico',
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Error al guardar historial clínico');
-      }
 
       await loadClinicalRecords();
 
@@ -439,20 +382,14 @@ export default function PatientDetail() {
     }
 
     try {
-      const response = await fetch(`${API_URL}/vacunaciones`, {
+      await requestJson<unknown>('vacunaciones', {
         method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
+        body: {
           ...formData,
           patientId: id,
-        }),
+        },
+        defaultError: 'Error al registrar vacuna',
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Error al registrar vacuna');
-      }
 
       await loadVaccinations();
 
@@ -470,20 +407,14 @@ export default function PatientDetail() {
     if (!id) return;
 
     try {
-      const response = await fetch(`${API_URL}/tratamientos`, {
+      await requestJson<unknown>('tratamientos', {
         method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
+        body: {
           ...formData,
           patientId: id,
-        }),
+        },
+        defaultError: 'Error al agregar tratamiento o servicio',
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Error al agregar tratamiento o servicio');
-      }
 
       await loadTreatments();
 
@@ -532,67 +463,35 @@ export default function PatientDetail() {
   const confirmDelete = async () => {
     if (!deleteTarget) return;
 
-    if (deleteTarget.type === 'clinical') {
-      try {
-        const response = await fetch(`${API_URL}/historial-clinico/${deleteTarget.id}`, {
-          method: 'DELETE',
-          headers: getAuthHeaders(),
-        });
+    const operations = {
+      clinical: {
+        endpoint: 'historial-clinico',
+        description: 'registro clínico',
+        reload: loadClinicalRecords,
+      },
+      vaccination: {
+        endpoint: 'vacunaciones',
+        description: 'vacuna',
+        reload: loadVaccinations,
+      },
+      treatment: {
+        endpoint: 'tratamientos',
+        description: 'tratamiento o servicio',
+        reload: loadTreatments,
+      },
+    };
+    const operation = operations[deleteTarget.type];
 
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.message || 'Error al eliminar registro clínico');
-        }
-
-        await loadClinicalRecords();
-      } catch (error) {
-        console.error('Error al eliminar registro clínico:', error);
-        alert('No se pudo eliminar el registro clínico.');
-        return;
-      }
-    }
-
-    if (deleteTarget.type === 'vaccination') {
-      try {
-        const response = await fetch(`${API_URL}/vacunaciones/${deleteTarget.id}`, {
-          method: 'DELETE',
-          headers: getAuthHeaders(),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.message || 'Error al eliminar vacuna');
-        }
-
-        await loadVaccinations();
-      } catch (error) {
-        console.error('Error al eliminar vacuna:', error);
-        alert('No se pudo eliminar la vacuna.');
-        return;
-      }
-    }
-
-    if (deleteTarget.type === 'treatment') {
-      try {
-        const response = await fetch(`${API_URL}/tratamientos/${deleteTarget.id}`, {
-          method: 'DELETE',
-          headers: getAuthHeaders(),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.message || 'Error al eliminar tratamiento o servicio');
-        }
-
-        await loadTreatments();
-      } catch (error) {
-        console.error('Error al eliminar tratamiento o servicio:', error);
-        alert('No se pudo eliminar el tratamiento o servicio.');
-        return;
-      }
+    try {
+      await requestJson<unknown>(`${operation.endpoint}/${deleteTarget.id}`, {
+        method: 'DELETE',
+        defaultError: `Error al eliminar ${operation.description}`,
+      });
+      await operation.reload();
+    } catch (error) {
+      console.error(`Error al eliminar ${operation.description}:`, error);
+      alert(`No se pudo eliminar ${operation.description === 'vacuna' ? 'la' : 'el'} ${operation.description}.`);
+      return;
     }
 
     setShowDeleteModal(false);
@@ -633,10 +532,12 @@ export default function PatientDetail() {
 
     if (patient?.photo) {
       try {
-        doc.addImage(patient.photo, 'JPEG', 160, 38, 30, 30);
+        const patientPhoto = await loadMediaAsDataUrl(patient.photo);
+        doc.addImage(patientPhoto, 'JPEG', 160, 38, 30, 30);
       } catch {
         try {
-          doc.addImage(patient.photo, 'PNG', 160, 38, 30, 30);
+          const patientPhoto = await loadMediaAsDataUrl(patient.photo);
+          doc.addImage(patientPhoto, 'PNG', 160, 38, 30, 30);
         } catch {
           // Si la imagen no se puede cargar, el PDF se genera sin imagen.
         }
@@ -952,10 +853,12 @@ export default function PatientDetail() {
       y += 7;
 
       try {
-        doc.addImage(treat.attachmentPhoto, 'JPEG', 16, y, 80, 60);
+        const attachmentPhoto = await loadMediaAsDataUrl(treat.attachmentPhoto);
+        doc.addImage(attachmentPhoto, 'JPEG', 16, y, 80, 60);
       } catch {
         try {
-          doc.addImage(treat.attachmentPhoto, 'PNG', 16, y, 80, 60);
+          const attachmentPhoto = await loadMediaAsDataUrl(treat.attachmentPhoto);
+          doc.addImage(attachmentPhoto, 'PNG', 16, y, 80, 60);
         } catch {
           doc.setFont('helvetica', 'normal');
           doc.text('No fue posible cargar la fotografía adjunta.', 16, y);
@@ -977,6 +880,13 @@ export default function PatientDetail() {
     const bottomLimit = pageHeight - 24;
     let y = 94;
     let currentRecordLabel = '';
+    const attachmentPhotos = await Promise.all(
+      treatments.map((treatment) =>
+        treatment.attachmentPhoto
+          ? loadMediaAsDataUrl(treatment.attachmentPhoto).catch(() => '')
+          : Promise.resolve('')
+      )
+    );
 
     const addContinuationPage = () => {
       addPdfFooter(doc);
@@ -1114,7 +1024,7 @@ export default function PatientDetail() {
         treat.observations || 'Sin observaciones registradas.'
       );
 
-      if (treat.attachmentPhoto) {
+      if (attachmentPhotos[index]) {
         ensureSpace(70);
 
         doc.setTextColor('#6B6255');
@@ -1124,11 +1034,11 @@ export default function PatientDetail() {
         y += 5;
 
         try {
-          doc.addImage(treat.attachmentPhoto, 'JPEG', 18, y, 80, 60);
+          doc.addImage(attachmentPhotos[index], 'JPEG', 18, y, 80, 60);
           y += 65;
         } catch {
           try {
-            doc.addImage(treat.attachmentPhoto, 'PNG', 18, y, 80, 60);
+            doc.addImage(attachmentPhotos[index], 'PNG', 18, y, 80, 60);
             y += 65;
           } catch {
             doc.setTextColor('#2F2924');
@@ -1292,7 +1202,7 @@ export default function PatientDetail() {
           <div className="w-32 h-32 rounded-2xl overflow-hidden bg-secondary border-4 border-border shadow-md flex items-center justify-center">
             {patient.photo ? (
               <img
-                src={patient.photo}
+                src={resolveMediaUrl(patient.photo)}
                 alt={`Foto de ${patient.petName}`}
                 className="w-full h-full object-cover"
               />
@@ -1787,7 +1697,7 @@ export default function PatientDetail() {
 
                     {treat.attachmentPhoto && (
                       <img
-                        src={treat.attachmentPhoto}
+                        src={resolveMediaUrl(treat.attachmentPhoto)}
                         alt="Fotografía adjunta"
                         className="mt-3 w-32 h-24 object-cover rounded-lg border border-border"
                       />
@@ -2239,7 +2149,7 @@ export default function PatientDetail() {
                   <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                     {formData.attachmentPhoto ? (
                       <img
-                        src={formData.attachmentPhoto}
+                        src={resolveMediaUrl(formData.attachmentPhoto)}
                         alt="Fotografía adjunta"
                         className="w-32 h-24 rounded-xl object-cover border-4 border-border"
                       />
@@ -2411,7 +2321,7 @@ export default function PatientDetail() {
                   <div>
                     <p className="text-muted-foreground text-sm mb-2">Fotografía adjunta</p>
                     <img
-                      src={(viewTarget.item as TreatmentServiceExtended).attachmentPhoto}
+                      src={resolveMediaUrl((viewTarget.item as TreatmentServiceExtended).attachmentPhoto)}
                       alt="Adjunto del registro"
                       className="max-h-64 rounded-xl border border-border object-cover"
                     />

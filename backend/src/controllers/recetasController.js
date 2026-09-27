@@ -62,13 +62,13 @@ const obtenerMedicamentosPorReceta = async (
       modo.descuenta_inventario,
       (
         SELECT COALESCE(SUM(lote.stock), 0)
-        FROM lotes_producto lote
+        FROM lote_producto lote
         WHERE lote.producto_id = rm.producto_id
       ) AS stock_actual
-    FROM receta_medicamentos rm
-    LEFT JOIN productos_inventario p
+    FROM receta_medicamento rm
+    LEFT JOIN producto_inventario p
       ON rm.producto_id = p.producto_id
-    INNER JOIN modos_entrega_receta modo
+    INNER JOIN modo_entrega_receta modo
       ON modo.modo_entrega_id = rm.modo_entrega_id
     WHERE rm.receta_id = ?
     ORDER BY rm.receta_medicamento_id ASC
@@ -115,14 +115,14 @@ const listarRecetas = async (req, res) => {
         CONCAT_WS(' ', t.primer_nombre, t.segundo_nombre,
           t.primer_apellido, t.segundo_apellido) AS nombre_tutor,
         t.telefono AS telefono_tutor
-      FROM recetas r
-      LEFT JOIN tutores t
+      FROM receta r
+      LEFT JOIN tutor t
         ON r.tutor_id = t.tutor_id
-      LEFT JOIN veterinarios veterinario
+      LEFT JOIN veterinario veterinario
         ON veterinario.veterinario_id = r.veterinario_id
-      LEFT JOIN usuarios creador
+      LEFT JOIN usuario creador
         ON creador.usuario_id = r.creado_por
-      INNER JOIN estados_receta estado
+      INNER JOIN estado_receta estado
         ON estado.estado_receta_id = r.estado_receta_id
       ORDER BY r.receta_id DESC
       `
@@ -193,14 +193,14 @@ const obtenerRecetaPorId = async (req, res) => {
         CONCAT_WS(' ', t.primer_nombre, t.segundo_nombre,
           t.primer_apellido, t.segundo_apellido) AS nombre_tutor,
         t.telefono AS telefono_tutor
-      FROM recetas r
-      LEFT JOIN tutores t
+      FROM receta r
+      LEFT JOIN tutor t
         ON r.tutor_id = t.tutor_id
-      LEFT JOIN veterinarios veterinario
+      LEFT JOIN veterinario veterinario
         ON veterinario.veterinario_id = r.veterinario_id
-      LEFT JOIN usuarios creador
+      LEFT JOIN usuario creador
         ON creador.usuario_id = r.creado_por
-      INNER JOIN estados_receta estado
+      INNER JOIN estado_receta estado
         ON estado.estado_receta_id = r.estado_receta_id
       WHERE r.receta_id = ?
       LIMIT 1
@@ -285,7 +285,7 @@ const descontarMedicamentosDelInventario =
       const deliveryMode = med.deliveryMode;
       const [deliveryModes] = await connection.query(
         `SELECT modo_entrega_id, descuenta_inventario
-         FROM modos_entrega_receta
+         FROM modo_entrega_receta
          WHERE nombre = ? AND activo = 1
          LIMIT 1`,
         [deliveryMode]
@@ -302,7 +302,7 @@ const descontarMedicamentosDelInventario =
       }
 
       const [medicationResult] = await connection.query(
-        `INSERT INTO receta_medicamentos (
+        `INSERT INTO receta_medicamento (
           receta_id,
           producto_id,
           nombre_medicamento,
@@ -337,7 +337,7 @@ const descontarMedicamentosDelInventario =
         });
         for (const allocation of consumption.allocations) {
           await connection.query(
-            `INSERT INTO receta_medicamento_lotes (
+            `INSERT INTO receta_medicamento_lote (
                receta_medicamento_id,
                producto_lote_id,
                cantidad
@@ -390,7 +390,7 @@ const crearReceta = async (req, res) => {
         SELECT
           paciente_id,
           tutor_id
-        FROM pacientes
+        FROM paciente
         WHERE paciente_id = ?
           AND activo = 1
         LIMIT 1
@@ -412,7 +412,7 @@ const crearReceta = async (req, res) => {
     const [veterinarianRows] = await connection.query(
       `
       SELECT veterinario_id
-      FROM veterinarios
+      FROM veterinario
       WHERE usuario_id = ? AND activo = 1
       LIMIT 1
       `,
@@ -423,7 +423,7 @@ const crearReceta = async (req, res) => {
     const [recetaResult] =
       await connection.query(
         `
-        INSERT INTO recetas (
+        INSERT INTO receta (
           paciente_id,
           tutor_id,
           veterinario_id,
@@ -441,7 +441,7 @@ const crearReceta = async (req, res) => {
           ?,
           ?,
           (SELECT estado_receta_id
-           FROM estados_receta
+           FROM estado_receta
            WHERE es_inicial = 1 AND activo = 1
            LIMIT 1),
           ?
@@ -534,8 +534,8 @@ const actualizarReceta = async (req, res) => {
         SELECT
           receta.receta_id,
           estado.es_anulado
-        FROM recetas receta
-        INNER JOIN estados_receta estado
+        FROM receta receta
+        INNER JOIN estado_receta estado
           ON estado.estado_receta_id = receta.estado_receta_id
         WHERE receta.receta_id = ?
         LIMIT 1
@@ -568,7 +568,7 @@ const actualizarReceta = async (req, res) => {
         SELECT
           paciente_id,
           tutor_id
-        FROM pacientes
+        FROM paciente
         WHERE paciente_id = ?
           AND activo = 1
         LIMIT 1
@@ -590,8 +590,8 @@ const actualizarReceta = async (req, res) => {
          medicamento.producto_id,
          asignacion.producto_lote_id,
          asignacion.cantidad
-       FROM receta_medicamentos medicamento
-       INNER JOIN receta_medicamento_lotes asignacion
+       FROM receta_medicamento medicamento
+       INNER JOIN receta_medicamento_lote asignacion
          ON asignacion.receta_medicamento_id =
            medicamento.receta_medicamento_id
        WHERE medicamento.receta_id = ?
@@ -610,7 +610,7 @@ const actualizarReceta = async (req, res) => {
 
     await connection.query(
       `
-      UPDATE recetas
+      UPDATE receta
       SET
         paciente_id = ?,
         tutor_id = ?,
@@ -631,7 +631,7 @@ const actualizarReceta = async (req, res) => {
 
     await connection.query(
       `
-      DELETE FROM receta_medicamentos
+      DELETE FROM receta_medicamento
       WHERE receta_id = ?
       `,
       [id]
@@ -686,8 +686,8 @@ const anularReceta = async (req, res) => {
 
     const [recipes] = await connection.query(
       `SELECT receta.receta_id
-       FROM recetas receta
-       INNER JOIN estados_receta estado
+       FROM receta receta
+       INNER JOIN estado_receta estado
          ON estado.estado_receta_id = receta.estado_receta_id
        WHERE receta.receta_id = ? AND estado.es_anulado = 0
        LIMIT 1
@@ -707,8 +707,8 @@ const anularReceta = async (req, res) => {
          medicamento.producto_id,
          asignacion.producto_lote_id,
          asignacion.cantidad
-       FROM receta_medicamentos medicamento
-       INNER JOIN receta_medicamento_lotes asignacion
+       FROM receta_medicamento medicamento
+       INNER JOIN receta_medicamento_lote asignacion
          ON asignacion.receta_medicamento_id =
            medicamento.receta_medicamento_id
        WHERE medicamento.receta_id = ?
@@ -725,8 +725,8 @@ const anularReceta = async (req, res) => {
     });
 
     await connection.query(
-      `UPDATE recetas receta
-       INNER JOIN estados_receta anulado
+      `UPDATE receta receta
+       INNER JOIN estado_receta anulado
          ON anulado.es_anulado = 1 AND anulado.activo = 1
        SET receta.estado_receta_id = anulado.estado_receta_id
        WHERE receta.receta_id = ?`,

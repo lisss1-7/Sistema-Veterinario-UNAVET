@@ -22,12 +22,13 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
+  RotateCcw,
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import type { SystemUser } from '../utils/types';
 import ThemedSelect from '../components/ThemedSelect';
 import PdfPreviewModal from '../components/PdfPreviewModal';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, type User } from '../context/AuthContext';
 import { useModulePermissions } from '../hooks/useModulePermissions';
 import { formatDateForDisplay } from '../utils/dateFormat';
 import {
@@ -41,7 +42,7 @@ import {
   sanitizeName,
   sanitizePhone,
 } from '../utils/formValidation';
-import { API_URL } from '../config/api';
+import { requestJson } from '../utils/apiClient';
 
 type UserFormData = {
   id?: string;
@@ -69,6 +70,7 @@ type CatalogItem = {
   nombre: string;
   descripcion?: string;
   activo?: number;
+  permite_acceso?: number | boolean;
 };
 
 type SortField = 'name' | 'role' | 'status' | 'creationDate';
@@ -90,6 +92,7 @@ const normalizeText = (value?: string) =>
     .toLowerCase();
 
 const userIsActive = (user: SystemUser, enabledStatus: string) => {
+  if (user.deletedAt) return false;
   if (enabledStatus) return user.status === enabledStatus;
 
   return ['activo', 'activa', 'habilitado', 'habilitada'].includes(
@@ -97,16 +100,8 @@ const userIsActive = (user: SystemUser, enabledStatus: string) => {
   );
 };
 
-const getAuthHeaders = () => {
-  const token =
-    localStorage.getItem('unavet_token') ||
-    localStorage.getItem('token');
-
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token || ''}`,
-  };
-};
+const getUserStatusLabel = (user: SystemUser) =>
+  user.deletedAt ? 'Dado de baja' : user.status;
 
 export default function Users() {
   const { user: authenticatedUser, updateUser } = useAuth();
@@ -166,19 +161,13 @@ export default function Users() {
     useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [restoringUserId, setRestoringUserId] = useState<string | null>(null);
 
   const loadUsers = async () => {
     try {
-      const response = await fetch(`${API_URL}/usuarios`, {
-        method: 'GET',
-        headers: getAuthHeaders(),
+      const data = await requestJson<unknown>('usuarios?includeDeleted=true', {
+        defaultError: 'Error al cargar usuarios',
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Error al cargar usuarios');
-      }
 
       setUsers(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -191,20 +180,14 @@ export default function Users() {
     try {
       setLoadingRoles(true);
 
-      const [rolesResponse, statusesResponse] = await Promise.all([
-        fetch(`${API_URL}/catalogos/roles`, {
-          method: 'GET',
-          headers: getAuthHeaders(),
+      const [rolesData, statusesData] = await Promise.all([
+        requestJson<CatalogItem[]>('catalogos/roles', {
+          defaultError: 'Error al cargar roles',
         }),
-        fetch(`${API_URL}/catalogos/estados-usuario`, {
-          method: 'GET',
-          headers: getAuthHeaders(),
+        requestJson<CatalogItem[]>('catalogos/estados-usuario', {
+          defaultError: 'Error al cargar estados de usuario',
         }),
       ]);
-      const rolesData = await rolesResponse.json();
-      const statusesData = await statusesResponse.json();
-      if (!rolesResponse.ok) throw new Error(rolesData.message);
-      if (!statusesResponse.ok) throw new Error(statusesData.message);
 
       const roles = Array.isArray(rolesData)
         ? rolesData
@@ -223,10 +206,10 @@ export default function Users() {
           : []
       );
       const enabled = statusesData.find(
-        (item: any) => Boolean(item.permite_acceso)
+        (item) => Boolean(item.permite_acceso)
       );
       const disabled = statusesData.find(
-        (item: any) => !Boolean(item.permite_acceso)
+        (item) => !Boolean(item.permite_acceso)
       );
       setEnabledStatus(enabled?.nombre || '');
       setDisabledStatus(disabled?.nombre || '');
@@ -239,12 +222,10 @@ export default function Users() {
   };
 
   useEffect(() => {
-    void fetch(`${API_URL}/catalogos/mis-modulos`, {
-      headers: getAuthHeaders(),
+    void requestJson<{ codigo: string }[]>('catalogos/mis-modulos', {
+      defaultError: 'Error al validar permisos',
     })
-      .then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.message);
+      .then(async (data) => {
         const allowed =
           Array.isArray(data) &&
           data.some((module) => module.codigo === 'users');
@@ -408,21 +389,15 @@ export default function Users() {
         payload.password = formData.password;
       }
 
-      const url = editingUser
-        ? `${API_URL}/usuarios/${editingUser.id}`
-        : `${API_URL}/usuarios`;
+      const endpoint = editingUser
+        ? `usuarios/${editingUser.id}`
+        : 'usuarios';
 
-      const response = await fetch(url, {
+      const data = await requestJson<{ user?: User }>(endpoint, {
         method: editingUser ? 'PUT' : 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload),
+        body: payload,
+        defaultError: 'Error al guardar usuario',
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Error al guardar usuario');
-      }
 
       if (
         editingUser &&
@@ -478,20 +453,11 @@ export default function Users() {
           ? disabledStatus
           : enabledStatus;
 
-      const response = await fetch(
-        `${API_URL}/usuarios/${id}/estado`,
-        {
-          method: 'PATCH',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ status: newStatus }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Error al cambiar estado');
-      }
+      await requestJson<unknown>(`usuarios/${id}/estado`, {
+        method: 'PATCH',
+        body: { status: newStatus },
+        defaultError: 'Error al cambiar estado',
+      });
 
       await loadUsers();
 
@@ -534,7 +500,7 @@ export default function Users() {
   const confirmDelete = async () => {
     if (
       !deleteTarget ||
-      deleteConfirmation.trim().toLowerCase() !== 'eliminar'
+      deleteConfirmation.trim().toLowerCase() !== 'baja'
     ) {
       return;
     }
@@ -547,19 +513,10 @@ export default function Users() {
     if (isDeleting) return;
     setIsDeleting(true);
     try {
-      const response = await fetch(
-        `${API_URL}/usuarios/${deleteTarget.id}`,
-        {
-          method: 'DELETE',
-          headers: getAuthHeaders(),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Error al eliminar usuario');
-      }
+      await requestJson<unknown>(`usuarios/${deleteTarget.id}`, {
+        method: 'DELETE',
+        defaultError: 'Error al dar de baja al usuario',
+      });
 
       await loadUsers();
 
@@ -572,10 +529,38 @@ export default function Users() {
       alert(
         error instanceof Error
           ? error.message
-          : 'No se pudo eliminar el usuario.'
+          : 'No se pudo dar de baja al usuario.'
       );
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const restoreUser = async (userItem: SystemUser) => {
+    if (restoringUserId) return;
+
+    setRestoringUserId(userItem.id);
+    try {
+      await requestJson<unknown>(`usuarios/${userItem.id}/restaurar`, {
+        method: 'PATCH',
+        defaultError: 'Error al restaurar usuario',
+      });
+
+      await loadUsers();
+      setStatusMessage(`El usuario ${userItem.name} fue restaurado y activado.`);
+      setStatusModalError(false);
+      setShowStatusModal(true);
+    } catch (error) {
+      console.error('Error al restaurar usuario:', error);
+      setStatusMessage(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo restaurar el usuario.'
+      );
+      setStatusModalError(true);
+      setShowStatusModal(true);
+    } finally {
+      setRestoringUserId(null);
     }
   };
 
@@ -785,7 +770,7 @@ export default function Users() {
           userItem.email || 'Sin correo',
           userItem.role || 'Sin rol',
           userItem.phone || 'No registrado',
-          userItem.status || reportStatus,
+          getUserStatusLabel(userItem) || reportStatus,
           userItem.creationDate || 'No registrada',
         ];
         const lines = values.map((value, columnIndex) =>
@@ -1256,19 +1241,25 @@ export default function Users() {
                 <p className="text-sm text-muted-foreground break-all">{userItem.email}</p>
               </div>
 
-              {permissions.canEdit && <button
-                type="button"
-                onClick={() => toggleStatus(userItem.id)}
-                disabled={String(userItem.id) === String(authenticatedUser?.id)}
-                title={String(userItem.id) === String(authenticatedUser?.id) ? 'No puedes cambiar tu propio estado' : undefined}
-                className={`shrink-0 px-3 py-2 rounded-full text-xs disabled:opacity-50 disabled:cursor-not-allowed ${
-                  userItem.status === enabledStatus
-                    ? 'border border-primary/25 bg-primary/10 text-primary'
-                    : 'border border-border bg-muted text-muted-foreground'
-                }`}
-              >
-                {userItem.status}
-              </button>}
+              {permissions.canEdit ? (
+                <button
+                  type="button"
+                  onClick={() => toggleStatus(userItem.id)}
+                  disabled={Boolean(userItem.deletedAt) || String(userItem.id) === String(authenticatedUser?.id)}
+                  title={userItem.deletedAt ? 'Restaura el usuario para cambiar su estado' : String(userItem.id) === String(authenticatedUser?.id) ? 'No puedes cambiar tu propio estado' : undefined}
+                  className={`shrink-0 px-3 py-2 rounded-full text-xs disabled:opacity-50 disabled:cursor-not-allowed ${
+                    userItem.status === enabledStatus
+                      ? 'border border-primary/25 bg-primary/10 text-primary'
+                      : 'border border-border bg-muted text-muted-foreground'
+                  }`}
+                >
+                  {getUserStatusLabel(userItem)}
+                </button>
+              ) : (
+                <span className="shrink-0 rounded-full border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
+                  {getUserStatusLabel(userItem)}
+                </span>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3 text-sm">
@@ -1293,7 +1284,7 @@ export default function Users() {
                 Ver
               </button>
 
-              {permissions.canEdit && <button
+              {permissions.canEdit && !userItem.deletedAt && <button
                 type="button"
                 onClick={() => openModal(userItem)}
                 disabled={String(userItem.id) === String(authenticatedUser?.id)}
@@ -1303,14 +1294,25 @@ export default function Users() {
                 Editar
               </button>}
 
-              {permissions.canDelete && <button
+              {permissions.canDelete && !userItem.deletedAt && <button
                 type="button"
                 onClick={() => openDeleteModal(userItem)}
                 disabled={String(userItem.id) === String(authenticatedUser?.id)}
-                title={String(userItem.id) === String(authenticatedUser?.id) ? 'No puedes eliminar tu propio usuario' : 'Eliminar usuario'}
+                title={String(userItem.id) === String(authenticatedUser?.id) ? 'No puedes dar de baja tu propio usuario' : 'Dar usuario de baja'}
                 className="min-w-0 rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Eliminar
+                Dar de baja
+              </button>}
+
+              {permissions.canDelete && userItem.deletedAt && <button
+                type="button"
+                onClick={() => void restoreUser(userItem)}
+                disabled={restoringUserId === userItem.id}
+                title="Restaurar usuario"
+                className="flex min-w-0 items-center justify-center gap-1 rounded-xl bg-primary/10 px-3 py-2 text-sm text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RotateCcw className="w-4 h-4" />
+                {restoringUserId === userItem.id ? 'Restaurando...' : 'Restaurar'}
               </button>}
             </div>
           </article>
@@ -1363,19 +1365,25 @@ export default function Users() {
                   </td>
 
                   <td className="px-6 py-4">
-                    {permissions.canEdit && <button
-                      type="button"
-                      onClick={() => toggleStatus(userItem.id)}
-                      disabled={String(userItem.id) === String(authenticatedUser?.id)}
-                      title={String(userItem.id) === String(authenticatedUser?.id) ? 'No puedes cambiar tu propio estado' : undefined}
-                      className={`px-3 py-1 rounded-full text-sm disabled:opacity-50 disabled:cursor-not-allowed ${
-                        userItem.status === enabledStatus
-                          ? 'border border-primary/25 bg-primary/10 text-primary'
-                          : 'border border-border bg-muted text-muted-foreground'
-                      }`}
-                    >
-                      {userItem.status}
-                    </button>}
+                    {permissions.canEdit ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleStatus(userItem.id)}
+                        disabled={Boolean(userItem.deletedAt) || String(userItem.id) === String(authenticatedUser?.id)}
+                        title={userItem.deletedAt ? 'Restaura el usuario para cambiar su estado' : String(userItem.id) === String(authenticatedUser?.id) ? 'No puedes cambiar tu propio estado' : undefined}
+                        className={`px-3 py-1 rounded-full text-sm disabled:opacity-50 disabled:cursor-not-allowed ${
+                          userItem.status === enabledStatus
+                            ? 'border border-primary/25 bg-primary/10 text-primary'
+                            : 'border border-border bg-muted text-muted-foreground'
+                        }`}
+                      >
+                        {getUserStatusLabel(userItem)}
+                      </button>
+                    ) : (
+                      <span className="rounded-full border border-border bg-muted px-3 py-1 text-sm text-muted-foreground">
+                        {getUserStatusLabel(userItem)}
+                      </span>
+                    )}
                   </td>
 
                   <td className="px-6 py-4 text-foreground">
@@ -1394,7 +1402,7 @@ export default function Users() {
                         <Eye className="w-4 h-4" />
                       </button>
 
-                      {permissions.canEdit && <button
+                      {permissions.canEdit && !userItem.deletedAt && <button
                         type="button"
                         onClick={() => openModal(userItem)}
                         disabled={String(userItem.id) === String(authenticatedUser?.id)}
@@ -1404,16 +1412,26 @@ export default function Users() {
                         <Edit className="w-4 h-4" />
                       </button>}
 
-                      {permissions.canDelete && <button
+                      {permissions.canDelete && !userItem.deletedAt && <button
                         type="button"
                         onClick={() =>
                           openDeleteModal(userItem)
                         }
                         disabled={String(userItem.id) === String(authenticatedUser?.id)}
-                        title={String(userItem.id) === String(authenticatedUser?.id) ? 'No puedes eliminar tu propio usuario' : 'Eliminar usuario'}
+                        title={String(userItem.id) === String(authenticatedUser?.id) ? 'No puedes dar de baja tu propio usuario' : 'Dar usuario de baja'}
                         className="rounded-lg bg-destructive/10 p-2 text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Trash2 className="w-4 h-4" />
+                      </button>}
+
+                      {permissions.canDelete && userItem.deletedAt && <button
+                        type="button"
+                        onClick={() => void restoreUser(userItem)}
+                        disabled={restoringUserId === userItem.id}
+                        title="Restaurar usuario"
+                        className="rounded-lg bg-primary/10 p-2 text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <RotateCcw className="w-4 h-4" />
                       </button>}
                     </div>
                   </td>
@@ -1534,7 +1552,16 @@ export default function Users() {
                     : 'Nunca'
                 }
               />
-              <DetailItem label="Estado" value={selectedUser.status} />
+              <DetailItem label="Estado" value={getUserStatusLabel(selectedUser)} />
+              {selectedUser.deletedAt && (
+                <DetailItem
+                  label="Fecha de baja"
+                  value={new Date(selectedUser.deletedAt).toLocaleString('es-GT', {
+                    dateStyle: 'short',
+                    timeStyle: 'short',
+                  })}
+                />
+              )}
               <DetailItem
                 label="Fecha de creación"
                 value={selectedUser.creationDate || 'No registrada'}
@@ -1870,11 +1897,11 @@ export default function Users() {
             </div>
 
             <h3 className="text-foreground text-xl text-center mb-2">
-              ¿Estás seguro de eliminar este usuario?
+              ¿Deseas dar de baja a este usuario?
             </h3>
 
             <p className="text-muted-foreground text-sm text-center mb-6">
-              Se eliminará el usuario{' '}
+              Se dará de baja al usuario{' '}
               <span className="font-semibold text-foreground">
                 {deleteTarget.name}
               </span>{' '}
@@ -1882,14 +1909,15 @@ export default function Users() {
               <span className="font-semibold text-foreground">
                 {deleteTarget.email}
               </span>
-              . Esta acción no se puede deshacer.
+              . No podrá iniciar sesión, pero su información e historial se
+              conservarán y podrás restaurarlo después.
             </p>
 
             <label
               htmlFor="delete-user-confirmation"
               className="mb-2 block text-sm font-medium text-foreground"
             >
-              Escribe <span className="font-bold">ELIMINAR</span> para
+              Escribe <span className="font-bold">BAJA</span> para
               confirmar
             </label>
             <input
@@ -1897,7 +1925,7 @@ export default function Users() {
               type="text"
               value={deleteConfirmation}
               onChange={(event) => setDeleteConfirmation(event.target.value)}
-              placeholder="ELIMINAR"
+              placeholder="BAJA"
               autoComplete="off"
               spellCheck={false}
               className="mb-6 w-full rounded-lg border border-border bg-input-background px-3 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-destructive"
@@ -1907,11 +1935,11 @@ export default function Users() {
               <button
                 type="button"
                 onClick={confirmDelete}
-                disabled={deleteConfirmation.trim().toLowerCase() !== 'eliminar' || isDeleting}
+                disabled={deleteConfirmation.trim().toLowerCase() !== 'baja' || isDeleting}
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-destructive px-4 py-2 text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-destructive"
               >
                 <Trash2 className="w-4 h-4" />
-                {isDeleting ? 'Eliminando...' : 'Sí, eliminar'}
+                {isDeleting ? 'Dando de baja...' : 'Sí, dar de baja'}
               </button>
 
               <button
@@ -1936,12 +1964,12 @@ export default function Users() {
             <SuccessIcon />
 
             <h3 className="text-foreground text-xl mb-2">
-              Usuario eliminado correctamente
+              Usuario dado de baja correctamente
             </h3>
 
             <p className="text-muted-foreground text-sm mb-6">
-              El usuario fue eliminado exitosamente del módulo de
-              usuarios.
+              El usuario permanece en el módulo como registro de baja y
+              puede restaurarse cuando sea necesario.
             </p>
 
             <ModalButton

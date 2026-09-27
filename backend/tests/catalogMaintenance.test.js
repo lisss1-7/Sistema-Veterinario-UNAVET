@@ -41,7 +41,7 @@ test('crea servicios con sus campos propios y una categoría activa', async () =
   const calls = [];
   db.query = async (sql, values) => {
     calls.push({ sql, values });
-    if (sql.includes('FROM categorias_servicio')) {
+    if (sql.includes('FROM categoria_servicio')) {
       return [[{ categoria_servicio_id: 3 }]];
     }
     return [{ insertId: 12, affectedRows: 1 }];
@@ -63,7 +63,7 @@ test('crea servicios con sus campos propios y una categoría activa', async () =
   );
 
   assert.equal(res.statusCode, 201);
-  assert.match(calls[1].sql, /INSERT INTO servicios/);
+  assert.match(calls[1].sql, /INSERT INTO servicio/);
   assert.deepEqual(calls[1].values, [
     3,
     'Consulta especializada',
@@ -82,7 +82,7 @@ test('crea un rol y guarda sus permisos dentro de una transacción', async () =>
     release: () => calls.push('release'),
     query: async (sql, values) => {
       calls.push({ sql, values });
-      if (sql.startsWith('INSERT INTO roles')) {
+      if (sql.startsWith('INSERT INTO rol')) {
         return [{ insertId: 8, affectedRows: 1 }];
       }
       return [{ affectedRows: 1 }];
@@ -113,10 +113,10 @@ test('crea un rol y guarda sus permisos dentro de una transacción', async () =>
   assert.equal(res.statusCode, 201);
   assert.deepEqual(calls.slice(0, 2), [
     'begin',
-    { sql: 'INSERT INTO roles (nombre) VALUES (?)', values: ['Recepción'] },
+    { sql: 'INSERT INTO rol (nombre) VALUES (?)', values: ['Recepción'] },
   ]);
   const permissionInsert = calls.find(
-    (call) => typeof call === 'object' && call.sql.includes('INSERT INTO rol_permisos')
+    (call) => typeof call === 'object' && call.sql.includes('INSERT INTO rol_permiso')
   );
   assert.deepEqual(permissionInsert.values.slice(0, 5), [8, 1, 1, 0, 0]);
   assert.deepEqual(calls.slice(-2), ['commit', 'release']);
@@ -132,7 +132,7 @@ test('actualiza permisos aunque el nombre del rol no cambie', async () => {
     query: async (sql, values) => {
       calls.push({ sql, values });
       if (sql.startsWith('SELECT rol_id')) return [[{ rol_id: 5 }]];
-      if (sql.startsWith('UPDATE roles')) return [{ affectedRows: 0 }];
+      if (sql.startsWith('UPDATE rol')) return [{ affectedRows: 0 }];
       return [{ affectedRows: 1 }];
     },
   };

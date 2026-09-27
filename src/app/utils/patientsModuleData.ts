@@ -1,44 +1,34 @@
-import { API_URL } from '../config/api';
+import type { Patient } from './types';
+import { requestJson } from './apiClient';
 
-export type PatientsModuleData = {
-  patients: any[];
-  species: any[];
-  sexes: any[];
-  reproductiveStatuses: any[];
+export type PatientCatalogOption = {
+  nombre: string;
+  especie_id?: number;
+  raza_id?: number;
 };
 
-let patientsRequest: Promise<any[]> | null = null;
+export type PatientsModuleData = {
+  patients: Patient[];
+  species: PatientCatalogOption[];
+  sexes: PatientCatalogOption[];
+  reproductiveStatuses: PatientCatalogOption[];
+};
+
+let patientsRequest: Promise<Patient[]> | null = null;
 let patientCatalogsRequest: Promise<
   Pick<PatientsModuleData, 'species' | 'sexes' | 'reproductiveStatuses'>
 > | null = null;
 
-const getAuthHeaders = () => {
-  const token =
-    localStorage.getItem('unavet_token') || localStorage.getItem('token');
-
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token || ''}`,
-  };
-};
-
-const fetchCollection = async (endpoint: string) => {
-  const response = await fetch(`${API_URL}/${endpoint}`, {
-    method: 'GET',
-    headers: getAuthHeaders(),
+const fetchCollection = async <T>(endpoint: string): Promise<T[]> => {
+  const data = await requestJson<unknown>(endpoint, {
+    defaultError: `Error al cargar ${endpoint}`,
   });
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.message || `Error al cargar ${endpoint}`);
-  }
-
-  return Array.isArray(data) ? data : [];
+  return Array.isArray(data) ? data as T[] : [];
 };
 
 export const getPatientsList = () => {
   if (!patientsRequest) {
-    patientsRequest = fetchCollection('pacientes').finally(() => {
+    patientsRequest = fetchCollection<Patient>('pacientes').finally(() => {
       patientsRequest = null;
     });
   }
@@ -49,9 +39,9 @@ export const getPatientsList = () => {
 export const getPatientCatalogs = () => {
   if (!patientCatalogsRequest) {
     patientCatalogsRequest = Promise.all([
-      fetchCollection('catalogos/especies'),
-      fetchCollection('catalogos/sexos'),
-      fetchCollection('catalogos/estados-reproductivos'),
+      fetchCollection<PatientCatalogOption>('catalogos/especies'),
+      fetchCollection<PatientCatalogOption>('catalogos/sexos'),
+      fetchCollection<PatientCatalogOption>('catalogos/estados-reproductivos'),
     ])
       .then(([species, sexes, reproductiveStatuses]) => ({
         species,

@@ -4,8 +4,8 @@ const pool = require('../config/db');
 const run = async () => {
   const [[user]] = await pool.query(`
     SELECT u.usuario_id, u.correo, r.nombre AS rol
-    FROM usuarios u
-    INNER JOIN roles r ON r.rol_id = u.rol_id
+    FROM usuario u
+    INNER JOIN rol r ON r.rol_id = u.rol_id
     ORDER BY u.usuario_id
     LIMIT 1
   `);

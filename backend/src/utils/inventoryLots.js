@@ -1,7 +1,7 @@
 const getProductAndLots = async (connection, productId) => {
   const [products] = await connection.query(
     `SELECT producto_id, nombre, precio_venta, activo
-     FROM productos_inventario
+     FROM producto_inventario
      WHERE producto_id = ?
      LIMIT 1
      FOR UPDATE`,
@@ -22,7 +22,7 @@ const getProductAndLots = async (connection, productId) => {
        fecha_vencimiento,
        precio_compra,
        stock
-     FROM lotes_producto
+     FROM lote_producto
      WHERE producto_id = ?
      ORDER BY
        CASE WHEN stock > 0 THEN 0 ELSE 1 END,
@@ -57,7 +57,7 @@ const recordMovement = async ({
   referenceId = null,
 }) => {
   await connection.query(
-    `INSERT INTO movimientos_inventario (
+    `INSERT INTO movimiento_inventario (
        producto_id,
        producto_lote_id,
        usuario_id,
@@ -133,7 +133,7 @@ const consumeLots = async ({
 
     const consumed = Math.min(available, remaining);
     await connection.query(
-      `UPDATE lotes_producto
+      `UPDATE lote_producto
        SET stock = stock - ?
        WHERE producto_lote_id = ?`,
       [consumed, lot.producto_lote_id]
@@ -214,7 +214,7 @@ const restoreLots = async ({
       const previousStock = runningStock;
       runningStock += allocation.quantity;
       await connection.query(
-        `UPDATE lotes_producto
+        `UPDATE lote_producto
          SET stock = stock + ?
          WHERE producto_lote_id = ?`,
         [allocation.quantity, allocation.lotId]
@@ -264,7 +264,7 @@ const addToPrimaryLot = async ({
   let lot = inventory.lots[0];
   if (!lot) {
     const [result] = await connection.query(
-      `INSERT INTO lotes_producto (
+      `INSERT INTO lote_producto (
          producto_id,
          proveedor_id,
          codigo_lote,
@@ -285,7 +285,7 @@ const addToPrimaryLot = async ({
   }
 
   await connection.query(
-    `UPDATE lotes_producto
+    `UPDATE lote_producto
      SET
        stock = stock + ?,
        proveedor_id = COALESCE(?, proveedor_id),
@@ -363,7 +363,7 @@ const setTotalStock = async ({
 
   if (inventory.lots[0]) {
     await connection.query(
-      `UPDATE lotes_producto
+      `UPDATE lote_producto
        SET
          proveedor_id = ?,
          fecha_vencimiento = ?,

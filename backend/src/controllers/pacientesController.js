@@ -8,6 +8,11 @@ const {
   areValidNameParts,
   getTutorNameParts,
 } = require('../utils/personName');
+const {
+  deleteMedia,
+  prepareMediaValue,
+  toClientMediaReference,
+} = require('../utils/mediaStorage');
 
 const mapPacienteToFrontend = (row) => ({
   id: String(row.paciente_id),
@@ -19,7 +24,7 @@ const mapPacienteToFrontend = (row) => ({
   reproductiveStatus: row.estado_reproductivo,
   color: row.color,
   diet: row.alimentacion,
-  photo: row.foto_url,
+  photo: toClientMediaReference(row.foto_url),
   tutorFirstName: row.primer_nombre_tutor,
   tutorMiddleName: row.segundo_nombre_tutor || '',
   tutorFirstSurname: row.primer_apellido_tutor || '',
@@ -35,7 +40,7 @@ const mapPacienteToFrontend = (row) => ({
 
 const buscarEspeciePorNombre = async (connection, nombre) => {
   const [rows] = await connection.query(
-    'SELECT especie_id FROM especies WHERE nombre = ? AND activo = 1 LIMIT 1',
+    'SELECT especie_id FROM especie WHERE nombre = ? AND activo = 1 LIMIT 1',
     [nombre]
   );
 
@@ -50,8 +55,8 @@ const buscarReferenciaCatalogo = async (
 ) => {
   if (!name) return null;
   const allowedCatalogs = {
-    sexos: 'sexo_id',
-    estados_reproductivos: 'estado_reproductivo_id',
+    sexo: 'sexo_id',
+    estado_reproductivo: 'estado_reproductivo_id',
   };
   if (allowedCatalogs[table] !== idColumn) {
     throw new Error('Catálogo de paciente no permitido');
@@ -70,7 +75,7 @@ const obtenerOCrearRaza = async (connection, especieId, nombreRaza) => {
   const [rows] = await connection.query(
     `
     SELECT raza_id 
-    FROM razas 
+    FROM raza
     WHERE especie_id = ? AND nombre = ? 
     LIMIT 1
     `,
@@ -83,7 +88,7 @@ const obtenerOCrearRaza = async (connection, especieId, nombreRaza) => {
 
   const [result] = await connection.query(
     `
-    INSERT INTO razas (especie_id, nombre, activo)
+    INSERT INTO raza (especie_id, nombre, activo)
     VALUES (?, ?, 1)
     `,
     [especieId, nombreRaza]
@@ -106,7 +111,7 @@ const obtenerOCrearTutor = async (connection, data) => {
 
   if (tutorId) {
     const [existingTutor] = await connection.query(
-      'SELECT tutor_id FROM tutores WHERE tutor_id = ? AND activo = 1 LIMIT 1',
+      'SELECT tutor_id FROM tutor WHERE tutor_id = ? AND activo = 1 LIMIT 1',
       [tutorId]
     );
 
@@ -117,44 +122,28 @@ const obtenerOCrearTutor = async (connection, data) => {
 
   const [rows] = await connection.query(
     `
-    SELECT tutor_id 
-    FROM tutores 
+    SELECT
+      tutor_id,
+      CONCAT_WS(' ', primer_nombre, segundo_nombre,
+        primer_apellido, segundo_apellido) AS nombre_completo
+    FROM tutor
     WHERE telefono = ?
-      AND primer_nombre = ?
-      AND primer_apellido = ?
     LIMIT 1
     `,
-    [tutorPhone, tutorFirstName, tutorFirstSurname]
+    [tutorPhone]
   );
 
   if (rows.length > 0) {
-    const tutorId = rows[0].tutor_id;
-
-    await connection.query(
-      `
-      UPDATE tutores
-      SET primer_nombre = ?, segundo_nombre = ?,
-          primer_apellido = ?, segundo_apellido = ?,
-          correo = ?, direccion = ?, activo = 1
-      WHERE tutor_id = ?
-      `,
-      [
-        tutorFirstName,
-        tutorMiddleName || null,
-        tutorFirstSurname,
-        tutorSecondSurname || null,
-        tutorEmail || null,
-        tutorAddress || null,
-        tutorId,
-      ]
+    const duplicatePhoneError = new Error(
+      `El teléfono ${tutorPhone} ya pertenece al tutor ${rows[0].nombre_completo}. Seleccione "Tutor existente" para asignarlo al paciente.`
     );
-
-    return tutorId;
+    duplicatePhoneError.statusCode = 409;
+    throw duplicatePhoneError;
   }
 
   const [result] = await connection.query(
     `
-    INSERT INTO tutores (
+    INSERT INTO tutor (
       primer_nombre, segundo_nombre, primer_apellido, segundo_apellido,
       telefono, correo, direccion, activo
     )
@@ -201,12 +190,12 @@ const listarPacientes = async (req, res) => {
         t.telefono AS telefono_tutor,
         t.correo AS correo_tutor,
         t.direccion AS direccion_tutor
-      FROM pacientes p
-      INNER JOIN tutores t ON p.tutor_id = t.tutor_id
-      INNER JOIN especies e ON p.especie_id = e.especie_id
-      LEFT JOIN razas r ON p.raza_id = r.raza_id
-      INNER JOIN sexos sexo_catalogo ON p.sexo_id = sexo_catalogo.sexo_id
-      LEFT JOIN estados_reproductivos reproductivo_catalogo
+      FROM paciente p
+      INNER JOIN tutor t ON p.tutor_id = t.tutor_id
+      INNER JOIN especie e ON p.especie_id = e.especie_id
+      LEFT JOIN raza r ON p.raza_id = r.raza_id
+      INNER JOIN sexo sexo_catalogo ON p.sexo_id = sexo_catalogo.sexo_id
+      LEFT JOIN estado_reproductivo reproductivo_catalogo
         ON p.estado_reproductivo_id =
           reproductivo_catalogo.estado_reproductivo_id
       LEFT JOIN (
@@ -258,12 +247,12 @@ const obtenerPacientePorId = async (req, res) => {
         t.telefono AS telefono_tutor,
         t.correo AS correo_tutor,
         t.direccion AS direccion_tutor
-      FROM pacientes p
-      INNER JOIN tutores t ON p.tutor_id = t.tutor_id
-      INNER JOIN especies e ON p.especie_id = e.especie_id
-      LEFT JOIN razas r ON p.raza_id = r.raza_id
-      INNER JOIN sexos sexo_catalogo ON p.sexo_id = sexo_catalogo.sexo_id
-      LEFT JOIN estados_reproductivos reproductivo_catalogo
+      FROM paciente p
+      INNER JOIN tutor t ON p.tutor_id = t.tutor_id
+      INNER JOIN especie e ON p.especie_id = e.especie_id
+      LEFT JOIN raza r ON p.raza_id = r.raza_id
+      INNER JOIN sexo sexo_catalogo ON p.sexo_id = sexo_catalogo.sexo_id
+      LEFT JOIN estado_reproductivo reproductivo_catalogo
         ON p.estado_reproductivo_id =
           reproductivo_catalogo.estado_reproductivo_id
       LEFT JOIN (
@@ -295,6 +284,7 @@ const obtenerPacientePorId = async (req, res) => {
 
 const crearPaciente = async (req, res) => {
   const connection = await pool.getConnection();
+  let createdPhotoReference = null;
 
   try {
     const {
@@ -348,7 +338,7 @@ const crearPaciente = async (req, res) => {
 
     if (!isValidPetName(petName)) {
       return res.status(400).json({
-        message: 'El nombre de la mascota puede contener letras y números y debe tener entre 2 y 80 caracteres',
+        message: 'El nombre de la mascota puede contener letras y números, debe tener entre 2 y 80 caracteres y no se permiten caracteres especiales',
       });
     }
 
@@ -373,13 +363,13 @@ const crearPaciente = async (req, res) => {
     const razaId = await obtenerOCrearRaza(connection, especie.especie_id, breed);
     const sexoId = await buscarReferenciaCatalogo(
       connection,
-      'sexos',
+      'sexo',
       'sexo_id',
       sex
     );
     const estadoReproductivoId = await buscarReferenciaCatalogo(
       connection,
-      'estados_reproductivos',
+      'estado_reproductivo',
       'estado_reproductivo_id',
       reproductiveStatus
     );
@@ -402,9 +392,12 @@ const crearPaciente = async (req, res) => {
       tutorAddress,
     });
 
+    const preparedPhoto = await prepareMediaValue(photo, 'patients');
+    createdPhotoReference = preparedPhoto.createdReference;
+
     const [result] = await connection.query(
       `
-      INSERT INTO pacientes (
+      INSERT INTO paciente (
         tutor_id,
         especie_id,
         raza_id,
@@ -431,7 +424,7 @@ const crearPaciente = async (req, res) => {
         estadoReproductivoId,
         color || null,
         diet || null,
-        photo || null,
+        preparedPhoto.value,
         observations || null,
       ]
     );
@@ -444,6 +437,15 @@ const crearPaciente = async (req, res) => {
     });
   } catch (error) {
     await connection.rollback();
+    await deleteMedia(createdPhotoReference).catch((cleanupError) => {
+      console.error('No fue posible limpiar la fotografía no guardada:', cleanupError);
+    });
+
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        message: error.message,
+      });
+    }
 
     res.status(500).json({
       message: 'Error al crear paciente',
@@ -456,6 +458,7 @@ const crearPaciente = async (req, res) => {
 
 const actualizarPaciente = async (req, res) => {
   const connection = await pool.getConnection();
+  let createdPhotoReference = null;
 
   try {
     const { id } = req.params;
@@ -511,7 +514,7 @@ const actualizarPaciente = async (req, res) => {
 
     if (!isValidPetName(petName)) {
       return res.status(400).json({
-        message: 'El nombre de la mascota puede contener letras y números y debe tener entre 2 y 80 caracteres',
+        message: 'El nombre de la mascota puede contener letras y números, debe tener entre 2 y 80 caracteres y no se permiten caracteres especiales',
       });
     }
 
@@ -522,7 +525,7 @@ const actualizarPaciente = async (req, res) => {
     }
 
     const [pacientes] = await connection.query(
-      'SELECT paciente_id, tutor_id FROM pacientes WHERE paciente_id = ? AND activo = 1 LIMIT 1',
+      'SELECT paciente_id, tutor_id, foto_url FROM paciente WHERE paciente_id = ? AND activo = 1 LIMIT 1',
       [id]
     );
 
@@ -547,13 +550,13 @@ const actualizarPaciente = async (req, res) => {
     const razaId = await obtenerOCrearRaza(connection, especie.especie_id, breed);
     const sexoId = await buscarReferenciaCatalogo(
       connection,
-      'sexos',
+      'sexo',
       'sexo_id',
       sex
     );
     const estadoReproductivoId = await buscarReferenciaCatalogo(
       connection,
-      'estados_reproductivos',
+      'estado_reproductivo',
       'estado_reproductivo_id',
       reproductiveStatus
     );
@@ -565,12 +568,20 @@ const actualizarPaciente = async (req, res) => {
       });
     }
 
+    const previousPhotoReference = pacientes[0].foto_url || null;
+    const preparedPhoto = await prepareMediaValue(
+      photo,
+      'patients',
+      previousPhotoReference
+    );
+    createdPhotoReference = preparedPhoto.createdReference;
+
     const resolvedTutorId = hasSelectedTutor ? Number(tutorId) : pacientes[0].tutor_id;
 
     if (!hasSelectedTutor) {
       await connection.query(
         `
-        UPDATE tutores
+        UPDATE tutor
         SET primer_nombre = ?, segundo_nombre = ?,
             primer_apellido = ?, segundo_apellido = ?,
             telefono = ?, correo = ?, direccion = ?
@@ -591,7 +602,7 @@ const actualizarPaciente = async (req, res) => {
 
     await connection.query(
       `
-      UPDATE pacientes
+      UPDATE paciente
       SET tutor_id = ?
       WHERE paciente_id = ?
       `,
@@ -600,7 +611,7 @@ const actualizarPaciente = async (req, res) => {
 
     await connection.query(
       `
-      UPDATE pacientes
+      UPDATE paciente
       SET 
         especie_id = ?,
         raza_id = ?,
@@ -623,7 +634,7 @@ const actualizarPaciente = async (req, res) => {
         estadoReproductivoId,
         color || null,
         diet || null,
-        photo || null,
+        preparedPhoto.value,
         observations || null,
         id,
       ]
@@ -631,11 +642,26 @@ const actualizarPaciente = async (req, res) => {
 
     await connection.commit();
 
+    if (previousPhotoReference !== preparedPhoto.value) {
+      await deleteMedia(previousPhotoReference).catch((cleanupError) => {
+        console.error('No fue posible eliminar la fotografía reemplazada:', cleanupError);
+      });
+    }
+
     res.json({
       message: 'Paciente actualizado correctamente',
     });
   } catch (error) {
     await connection.rollback();
+    await deleteMedia(createdPhotoReference).catch((cleanupError) => {
+      console.error('No fue posible limpiar la fotografía no guardada:', cleanupError);
+    });
+
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        message: error.message,
+      });
+    }
 
     res.status(500).json({
       message: 'Error al actualizar paciente',
@@ -652,7 +678,7 @@ const eliminarPaciente = async (req, res) => {
 
     const [result] = await pool.query(
       `
-      UPDATE pacientes
+      UPDATE paciente
       SET activo = 0
       WHERE paciente_id = ?
       `,

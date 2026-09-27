@@ -58,6 +58,6 @@ test('el listado de citas incluye al usuario que agendó cada registro', async (
   assert.equal(res.statusCode, 200);
   assert.equal(res.body[0].createdBy, '3');
   assert.equal(res.body[0].createdByName, 'María Pérez');
-  assert.match(executedSql, /LEFT JOIN usuarios creador/);
+  assert.match(executedSql, /LEFT JOIN usuario creador/);
   assert.match(executedSql, /c\.creado_por/);
 });

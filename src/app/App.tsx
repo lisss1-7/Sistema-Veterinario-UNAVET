@@ -3,6 +3,7 @@ import { Toaster } from 'sonner';
 import { ThemeProvider, useTheme } from 'next-themes';
 import { useEffect, useRef } from 'react';
 import { AuthProvider } from './context/AuthContext';
+import RequiredFieldAlert from './components/RequiredFieldAlert';
 import { router } from './routes';
 import {
   getManualThemeOverride,
@@ -43,6 +44,7 @@ function AppContent() {
   return (
     <AuthProvider>
       <RouterProvider router={router} />
+      <RequiredFieldAlert />
       <Toaster
         theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
         position="top-center"

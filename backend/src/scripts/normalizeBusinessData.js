@@ -98,7 +98,7 @@ const run = async () => {
       SELECT 1
       FROM information_schema.TABLES
       WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = 'esquemas_vacunacion_paciente'
+        AND TABLE_NAME IN ('esquemas_vacunacion_paciente', 'esquema_vacunacion_paciente')
       LIMIT 1
     `);
     if (finalizedSchema.length > 0) {

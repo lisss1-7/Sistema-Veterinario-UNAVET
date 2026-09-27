@@ -47,9 +47,9 @@ const obtenerPerfil = async (req, res) => {
         u.ultimo_acceso,
         u.creado_en,
         r.nombre AS rol
-      FROM usuarios u
-      INNER JOIN roles r ON u.rol_id = r.rol_id
-      INNER JOIN estados_usuario estado
+      FROM usuario u
+      INNER JOIN rol r ON u.rol_id = r.rol_id
+      INNER JOIN estado_usuario estado
         ON estado.estado_usuario_id = u.estado_usuario_id
       WHERE u.usuario_id = ?
         AND u.eliminado_en IS NULL
@@ -94,7 +94,7 @@ const actualizarPerfil = async (req, res) => {
 
     const [result] = await pool.query(
       `
-      UPDATE usuarios
+      UPDATE usuario
       SET
         primer_nombre = ?,
         segundo_nombre = ?,
@@ -143,9 +143,9 @@ const actualizarPerfil = async (req, res) => {
         u.ultimo_acceso,
         u.creado_en,
         r.nombre AS rol
-      FROM usuarios u
-      INNER JOIN roles r ON u.rol_id = r.rol_id
-      INNER JOIN estados_usuario estado
+      FROM usuario u
+      INNER JOIN rol r ON u.rol_id = r.rol_id
+      INNER JOIN estado_usuario estado
         ON estado.estado_usuario_id = u.estado_usuario_id
       WHERE u.usuario_id = ?
         AND u.eliminado_en IS NULL
@@ -195,7 +195,7 @@ const cambiarPassword = async (req, res) => {
     const [rows] = await pool.query(
       `
       SELECT usuario_id, password_hash
-      FROM usuarios
+      FROM usuario
       WHERE usuario_id = ?
         AND eliminado_en IS NULL
       LIMIT 1
@@ -224,7 +224,7 @@ const cambiarPassword = async (req, res) => {
 
     await pool.query(
       `
-      UPDATE usuarios
+      UPDATE usuario
       SET password_hash = ?
       WHERE usuario_id = ? AND eliminado_en IS NULL
       `,

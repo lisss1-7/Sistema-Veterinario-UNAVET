@@ -21,16 +21,7 @@ import {
   type SystemModule,
 } from '../config/deliveryScope';
 import { API_URL } from '../config/api';
-
-const getAuthHeaders = () => {
-  const token =
-    localStorage.getItem('unavet_token') || localStorage.getItem('token');
-
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token || ''}`,
-  };
-};
+import { getAuthHeaders } from '../utils/apiClient';
 
 const moduleIconByCode: Record<string, LucideIcon> = {
   dashboard: House,
