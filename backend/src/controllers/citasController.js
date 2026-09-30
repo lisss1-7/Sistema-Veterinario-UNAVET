@@ -3,7 +3,7 @@ const { validarHorarioConfigurado } = require('../utils/scheduleUtils');
 const {
   isValidPetName,
   isValidPhone,
-  isTodayOrFuture,
+  isFutureDateTime,
 } = require('../utils/inputValidation');
 const {
   areValidNameParts,
@@ -453,6 +453,13 @@ const crearCita = async (req, res) => {
       });
     }
 
+    if (!isFutureDateTime(date, time)) {
+      return res.status(400).json({
+        code: 'PAST_DATETIME',
+        message: 'La fecha y hora deben ser posteriores a la hora actual de Guatemala',
+      });
+    }
+
     await connection.beginTransaction();
 
     if (!(await validarHorarioConfigurado({
@@ -476,12 +483,6 @@ const crearCita = async (req, res) => {
     if (!isValidPhone(tutorPhone)) {
       return res.status(400).json({
         message: 'El tel\u00e9fono debe contener \u00fanicamente entre 8 y 12 d\u00edgitos',
-      });
-    }
-
-    if (!isTodayOrFuture(date)) {
-      return res.status(400).json({
-        message: 'La fecha de la cita no puede estar en el pasado',
       });
     }
 
@@ -663,9 +664,10 @@ const actualizarCita = async (req, res) => {
       });
     }
 
-    if (!isTodayOrFuture(date)) {
+    if (!isFutureDateTime(date, time)) {
       return res.status(400).json({
-        message: 'La fecha de la cita no puede estar en el pasado',
+        code: 'PAST_DATETIME',
+        message: 'La fecha y hora deben ser posteriores a la hora actual de Guatemala',
       });
     }
 

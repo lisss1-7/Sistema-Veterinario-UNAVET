@@ -193,11 +193,11 @@ function FullDashboard() {
       </div>
 
       {/* Hero */}
-      <div className="relative z-10 mb-8 overflow-hidden rounded-2xl border border-[#5c4230] bg-gradient-to-br from-[#3b2a1e] via-[#6b4226] to-[#a9703f] p-6 shadow-md md:p-8">
+      <div className="relative z-10 mb-4 overflow-hidden rounded-2xl border border-[#5c4230] bg-gradient-to-br from-[#3b2a1e] via-[#6b4226] to-[#a9703f] p-4 shadow-md md:mb-8 md:p-8">
         <PawPrint className="pointer-events-none absolute -right-6 -top-8 h-40 w-40 rotate-12 text-[#fffaf3] opacity-[0.08]" strokeWidth={1} />
         <PawPrint className="pointer-events-none absolute -bottom-8 left-[42%] h-28 w-28 -rotate-[18deg] text-[#fffaf3] opacity-[0.06]" strokeWidth={1} />
 
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <div className="relative flex flex-col gap-3 md:gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-sm font-medium text-[#f1d8bc]">{getFormattedToday()}</p>
             <h1 className="mt-1 text-xl font-bold text-[#fffaf3] md:text-2xl">
@@ -221,7 +221,7 @@ function FullDashboard() {
         </div>
       )}
 
-      <section className="relative z-10 mb-8 rounded-2xl border border-[#ddc9b4] bg-[#fffaf5]/75 p-5 shadow-sm backdrop-blur-[2px] dark:border-[#705b4d] dark:bg-[#40332b]/80 md:p-6">
+      <section className="relative z-10 mb-4 rounded-2xl border border-[#ddc9b4] bg-[#fffaf5]/75 p-3 shadow-sm backdrop-blur-[2px] dark:border-[#705b4d] dark:bg-[#40332b]/80 md:mb-8 md:p-6">
         <div className="mb-4 flex items-end justify-between gap-4">
           <h2 className="text-xl font-semibold text-[#4a3525] dark:text-[#f7efe6]">Accesos rápidos</h2>
           <PawPrint className="h-7 w-7 text-[#c9965a]" strokeWidth={1.5} aria-hidden="true" />
@@ -240,7 +240,7 @@ function FullDashboard() {
               <Link
                 key={module.codigo}
                 to={module.ruta}
-                className={`group flex items-center gap-3 rounded-lg border p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+                className={`group flex items-center gap-3 rounded-lg border p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md md:p-4 ${
                   quickAccessStyles[index % quickAccessStyles.length]
                 }`}
               >
@@ -255,7 +255,7 @@ function FullDashboard() {
         </div>
       </section>
 
-      <div className="relative z-10 grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="relative z-10 grid grid-cols-1 gap-3 md:gap-6 lg:grid-cols-2">
         <DailyList
           title="Próximas citas del día"
           icon={CalendarDays}
@@ -278,7 +278,7 @@ function FullDashboard() {
         />
       </div>
 
-      <section className="relative z-10 mt-8 rounded-2xl border border-[#ddc9b4] bg-[#fffaf5] p-5 shadow-sm dark:border-[#705b4d] dark:bg-[#40332b]">
+      <section className="relative z-10 mt-4 rounded-2xl border border-[#ddc9b4] bg-[#fffaf5] p-3 shadow-sm dark:border-[#705b4d] dark:bg-[#40332b] md:mt-8 md:p-5">
         <div className="mb-5 flex items-center justify-between gap-3">
           <h2 className="text-xl font-semibold text-foreground dark:text-[#f7efe6]">
             Recordatorios
@@ -364,7 +364,7 @@ function DailyList({
       };
 
   return (
-    <section className={`rounded-xl border bg-[#fffaf5] p-6 shadow-sm dark:bg-[#40332b] ${accentStyles.border}`}>
+    <section className={`rounded-xl border bg-[#fffaf5] p-4 shadow-sm dark:bg-[#40332b] md:p-6 ${accentStyles.border}`}>
       <h2 className="mb-4 flex items-center gap-3 text-xl font-semibold text-foreground dark:text-[#f7efe6]">
         <span className={`rounded-md border p-2 ${accentStyles.icon}`}>
           <SectionIcon className="h-5 w-5" strokeWidth={2} />

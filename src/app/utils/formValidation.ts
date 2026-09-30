@@ -1,4 +1,28 @@
 const LETTERS_AND_SEPARATORS = /[^\p{L}\p{M}\s'-]/gu;
+const CLINIC_TIME_ZONE = 'America/Guatemala';
+const CLINIC_DATE_TIME_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: CLINIC_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+const getClinicDateTime = (now = new Date()) => {
+  const parts = Object.fromEntries(
+    CLINIC_DATE_TIME_FORMATTER
+      .formatToParts(now)
+      .filter(({ type }) => type !== 'literal')
+      .map(({ type, value }) => [type, value])
+  );
+
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}`,
+  };
+};
 
 export const sanitizeName = (value: string) => {
   const cleaned = value
@@ -46,9 +70,18 @@ export const isNonNegativeNumber = (value: unknown) =>
   value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0;
 
 export const getTodayLocal = () => {
-  const now = new Date();
-  const offset = now.getTimezoneOffset() * 60_000;
-  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+  return getClinicDateTime().date;
+};
+
+export const isClinicDateTimePastOrCurrent = (
+  date?: string,
+  time?: string,
+  now = new Date()
+) => {
+  if (!date || !time) return false;
+
+  const clinicNow = getClinicDateTime(now);
+  return `${date}T${time.slice(0, 5)}` <= `${clinicNow.date}T${clinicNow.time}`;
 };
 
 export const sanitizePetName = (value: string) =>

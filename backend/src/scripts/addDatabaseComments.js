@@ -14,6 +14,7 @@ const TABLE_COMMENTS = {
   categoria_inventario: 'Catálogo de categorías utilizadas para clasificar productos de inventario.',
   categoria_servicio: 'Catálogo de categorías utilizadas para agrupar los servicios ofrecidos.',
   cierre_venta_detalle: 'Detalle de productos y servicios incluidos en cada venta registrada.',
+  cierre_venta_dia: 'Estado de finalización de cada día del cierre de ventas.',
   cierre_venta: 'Encabezados de ventas y totales recibidos por cada medio de pago.',
   cita_clinica: 'Citas programadas para la atención clínica de pacientes veterinarios.',
   cita_grooming: 'Citas programadas para servicios de grooming y transporte asociado.',
@@ -62,6 +63,7 @@ const ENTITY_LABELS = {
   categoria_inventario: 'categoría de inventario',
   categoria_servicio: 'categoría de servicio',
   cierre_venta_detalle: 'detalle de venta',
+  cierre_venta_dia: 'cierre diario de ventas',
   cierre_venta: 'venta',
   cita_clinica: 'cita clínica',
   cita_grooming: 'cita de grooming',
@@ -153,6 +155,9 @@ const COMMON_COMMENTS = {
   expiracion: 'Fecha y hora límite de validez del token.',
   factura_nit: 'NIT utilizado para emitir la factura de la venta.',
   factura_nombre: 'Nombre o razón social utilizado para emitir la factura.',
+  finalizado: 'Indica si el día fue finalizado y ya no admite cambios.',
+  finalizado_en: 'Fecha y hora en que se finalizó el día.',
+  finalizado_por: 'Identificador del usuario que finalizó el día.',
   fecha_aplicacion: 'Fecha en que se aplicó la vacuna.',
   fecha_emision: 'Fecha en que se emitió la receta.',
   fecha_registro: 'Fecha de incorporación del paciente al sistema.',
@@ -247,6 +252,7 @@ const COMMON_COMMENTS = {
 };
 
 const CONTEXT_COMMENTS = {
+  'cierre_venta_dia.fecha': 'Fecha contable a la que corresponde el cierre diario.',
   'auditoria.descripcion': 'Descripción detallada de la acción auditada.',
   'categoria_inventario.descripcion': 'Descripción de la categoría de inventario.',
   'categoria_servicio.descripcion': 'Descripción de la categoría de servicio.',

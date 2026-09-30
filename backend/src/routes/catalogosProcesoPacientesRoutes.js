@@ -11,6 +11,17 @@ const { verificarPermiso } = require('../middleware/permissionMiddleware');
 
 const router = express.Router();
 
+const verificarAdministrador = (req, res, next) => {
+  if (String(req.user?.rol || '').trim().toLowerCase() !== 'administrador') {
+    return res.status(403).json({
+      message: 'Solo el administrador puede acceder a mantenimiento',
+    });
+  }
+  next();
+};
+
+router.use(verificarToken, verificarAdministrador);
+
 const MODULE_BY_CATALOG = Object.freeze({
   'categorias-inventario': 'inventory',
   'unidades-medida': 'inventory',
@@ -30,31 +41,26 @@ const verificarPermisoCatalogo = (accion) => (req, res, next) => {
 
 router.get(
   '/:catalogo',
-  verificarToken,
   verificarPermisoCatalogo('ver'),
   listarCatalogo
 );
 router.post(
   '/:catalogo',
-  verificarToken,
   verificarPermisoCatalogo('crear'),
   crearCatalogo
 );
 router.put(
   '/:catalogo/:id',
-  verificarToken,
   verificarPermisoCatalogo('editar'),
   actualizarCatalogo
 );
 router.patch(
   '/:catalogo/:id/estado',
-  verificarToken,
   verificarPermisoCatalogo('editar'),
   cambiarEstadoCatalogo
 );
 router.delete(
   '/:catalogo/:id',
-  verificarToken,
   verificarPermisoCatalogo('eliminar'),
   eliminarCatalogo
 );

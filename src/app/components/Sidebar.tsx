@@ -26,6 +26,8 @@ import {
 } from '../config/deliveryScope';
 import { preloadPatientsModule } from '../utils/patientsModuleData';
 import { API_URL } from '../config/api';
+import { useAuth } from '../context/AuthContext';
+import { isAdministratorRole } from '../config/roles';
 
 type SidebarProps = {
   isOpen?: boolean;
@@ -69,6 +71,7 @@ export function Sidebar({
   onToggleCollapse,
 }: SidebarProps) {
   const location = useLocation();
+  const { user } = useAuth();
   const [patientsExpanded, setPatientsExpanded] = useState(
     location.pathname.startsWith('/patients')
   );
@@ -354,9 +357,7 @@ export function Sidebar({
             </NavLink>
           );
         })}
-        {permittedModules.some((module) =>
-          ['patients', 'inventory', 'prescriptions', 'users'].includes(module.codigo)
-        ) && (
+        {isAdministratorRole(user?.role) && (
           <NavLink
             to="/maintenance"
             onClick={onNavigate}

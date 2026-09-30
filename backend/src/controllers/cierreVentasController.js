@@ -5,6 +5,43 @@ const {
   restoreLots,
 } = require('../utils/inventoryLots');
 
+const CLOSED_DAY_MESSAGE =
+  'El día seleccionado ya fue finalizado y no admite más cambios';
+
+const isValidDate = (value) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return false;
+
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+};
+
+const lockSalesDay = async (connection, date) => {
+  await connection.query(
+    `INSERT IGNORE INTO cierre_venta_dia (fecha)
+     VALUES (?)`,
+    [date]
+  );
+
+  const [days] = await connection.query(
+    `SELECT finalizado, finalizado_en, finalizado_por
+     FROM cierre_venta_dia
+     WHERE fecha = ?
+     LIMIT 1
+     FOR UPDATE`,
+    [date]
+  );
+
+  return days[0];
+};
+
+const throwIfSalesDayIsClosed = (day) => {
+  if (!day?.finalizado) return;
+
+  const error = new Error(CLOSED_DAY_MESSAGE);
+  error.statusCode = 409;
+  throw error;
+};
+
 const mapVenta = (row) => ({
   id: String(row.venta_id),
   date: row.fecha,
@@ -118,6 +155,85 @@ const listarVentas = async (req, res) => {
   }
 };
 
+const obtenerEstadoDia = async (req, res) => {
+  try {
+    const date = req.query.fecha || new Date().toISOString().slice(0, 10);
+    if (!isValidDate(date)) {
+      return res.status(400).json({ message: 'La fecha seleccionada no es válida' });
+    }
+
+    const [days] = await pool.query(
+      `SELECT
+         DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha,
+         finalizado,
+         finalizado_en,
+         finalizado_por
+       FROM cierre_venta_dia
+       WHERE fecha = ?
+       LIMIT 1`,
+      [date]
+    );
+    const day = days[0];
+
+    res.json({
+      date,
+      isClosed: Boolean(day?.finalizado),
+      closedAt: day?.finalizado_en || null,
+      closedBy: day?.finalizado_por ? String(day.finalizado_por) : null,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: 'Error al consultar el estado del cierre de ventas',
+      error: error.message,
+    });
+  }
+};
+
+const finalizarDia = async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    const { date } = req.body;
+    if (!isValidDate(date)) {
+      return res.status(400).json({ message: 'La fecha seleccionada no es válida' });
+    }
+
+    await connection.beginTransaction();
+    const day = await lockSalesDay(connection, date);
+
+    if (day?.finalizado) {
+      await connection.commit();
+      return res.json({
+        message: 'El día seleccionado ya estaba finalizado',
+        date,
+        isClosed: true,
+      });
+    }
+
+    await connection.query(
+      `UPDATE cierre_venta_dia
+       SET finalizado = 1,
+           finalizado_en = NOW(),
+           finalizado_por = ?
+       WHERE fecha = ?`,
+      [req.user?.id || null, date]
+    );
+    await connection.commit();
+
+    res.json({
+      message: 'Día finalizado correctamente',
+      date,
+      isClosed: true,
+    });
+  } catch (error) {
+    await connection.rollback();
+    res.status(error.statusCode || 500).json({
+      message: error.message || 'Error al finalizar el día',
+    });
+  } finally {
+    connection.release();
+  }
+};
+
 const crearVenta = async (req, res) => {
   const connection = await pool.getConnection();
   try {
@@ -130,7 +246,7 @@ const crearVenta = async (req, res) => {
       items,
     } = req.body;
     if (
-      !date ||
+      !isValidDate(date) ||
       !paymentMethod ||
       !Array.isArray(items) ||
       items.length === 0
@@ -142,6 +258,9 @@ const crearVenta = async (req, res) => {
     }
 
     await connection.beginTransaction();
+    const salesDay = await lockSalesDay(connection, date);
+    throwIfSalesDayIsClosed(salesDay);
+
     const [paymentRows] = await connection.query(
       `SELECT forma_pago_id
        FROM forma_pago
@@ -352,6 +471,23 @@ const eliminarVenta = async (req, res) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
+    const [saleDates] = await connection.query(
+      `SELECT DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha
+       FROM cierre_venta
+       WHERE venta_id = ?
+       LIMIT 1`,
+      [req.params.id]
+    );
+    if (saleDates.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        message: 'Venta no encontrada',
+      });
+    }
+
+    const salesDay = await lockSalesDay(connection, saleDates[0].fecha);
+    throwIfSalesDayIsClosed(salesDay);
+
     const [sales] = await connection.query(
       `SELECT venta_id
        FROM cierre_venta
@@ -410,6 +546,8 @@ const eliminarVenta = async (req, res) => {
 
 module.exports = {
   listarVentas,
+  obtenerEstadoDia,
+  finalizarDia,
   crearVenta,
   eliminarVenta,
 };

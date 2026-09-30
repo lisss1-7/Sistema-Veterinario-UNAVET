@@ -565,13 +565,13 @@ export default function AIReports() {
 
   return (
     <div className="w-full p-[0.825rem] md:p-[1.375rem] min-h-[calc(100vh-80px)] md:h-[calc(100vh-80px)] flex flex-col">
-      <div className="flex items-start sm:items-center gap-3 mb-4 md:mb-6">
+      <div className="mb-2 flex items-start gap-2 sm:mb-4 sm:items-center sm:gap-3 md:mb-6">
         <div className="w-10 h-10 md:w-11 md:h-11 rounded-2xl bg-primary flex items-center justify-center shadow-lg shrink-0">
           <Brain className="w-5 h-5 md:w-6 md:h-6 text-[#F7EFE6]" />
         </div>
 
         <div className="min-w-0">
-          <h1 className="text-foreground text-xl md:text-2xl font-bold mb-2">
+          <h1 className="mb-1 text-xl font-bold text-foreground md:mb-2 md:text-2xl">
             Asistente IA UNAVET
           </h1>
 
@@ -582,7 +582,7 @@ export default function AIReports() {
       </div>
 
       <div className="bg-card border border-border rounded-2xl shadow-lg flex-1 min-h-[70vh] md:min-h-0 flex flex-col overflow-hidden">
-        <div className="bg-gradient-to-r from-foreground via-muted-foreground to-primary px-4 md:px-5 py-4">
+        <div className="bg-gradient-to-r from-foreground via-muted-foreground to-primary px-3 py-3 sm:px-4 sm:py-4 md:px-5">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-[#F7EFE6]/15 border border-[#F7EFE6]/20 flex items-center justify-center shrink-0">
               <Bot className="w-5 h-5 text-[#F7EFE6]" />

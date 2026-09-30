@@ -5,7 +5,10 @@ const {
   buildFullName,
   getTutorNameParts,
 } = require('../utils/personName');
-const { isValidAgeSpacing } = require('../utils/inputValidation');
+const {
+  isFutureDateTime,
+  isValidAgeSpacing,
+} = require('../utils/inputValidation');
 
 const formatTime = (timeValue) => {
   if (!timeValue) return '';
@@ -433,6 +436,13 @@ const crearGrooming = async (req, res) => {
       });
     }
 
+    if (!isFutureDateTime(date, time)) {
+      return res.status(400).json({
+        code: 'PAST_DATETIME',
+        message: 'La fecha y hora deben ser posteriores a la hora actual de Guatemala',
+      });
+    }
+
     if (String(age || '').trim().length > 50) {
       return res.status(400).json({
         message: 'La edad no puede exceder 50 caracteres',
@@ -680,6 +690,13 @@ const actualizarGrooming = async (req, res) => {
     ) {
       return res.status(400).json({
         message: 'Tipo, mascota, tutor, teléfono, fecha, hora y costo son obligatorios',
+      });
+    }
+
+    if (!isFutureDateTime(date, time)) {
+      return res.status(400).json({
+        code: 'PAST_DATETIME',
+        message: 'La fecha y hora deben ser posteriores a la hora actual de Guatemala',
       });
     }
 

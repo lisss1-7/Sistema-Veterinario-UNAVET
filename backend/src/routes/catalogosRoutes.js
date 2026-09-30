@@ -2,6 +2,7 @@ const express = require('express');
 
 const {
   obtenerEspecies,
+  obtenerOpcionesAlimentacion,
   obtenerRazasPorEspecie,
   obtenerSexos,
   obtenerEstadosReproductivos,
@@ -48,6 +49,7 @@ router.use('/proceso-pacientes', catalogosProcesoPacientesRoutes);
  * PACIENTES
  */
 router.get('/especies', verificarToken, obtenerEspecies);
+router.get('/opciones-alimentacion', verificarToken, obtenerOpcionesAlimentacion);
 router.get('/razas/:especie_id', verificarToken, obtenerRazasPorEspecie);
 router.get('/sexos', verificarToken, obtenerSexos);
 router.get(

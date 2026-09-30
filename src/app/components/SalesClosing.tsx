@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   ChevronDown,
   CheckCircle,
+  Lock,
   Plus,
   ReceiptText,
   Search,
@@ -182,7 +183,17 @@ type PaymentOption = {
   nombre: string;
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+const formatDisplayDate = (value: string) => {
+  const [year, month, day] = value.split('-');
+  return year && month && day ? `${day}/${month}/${year}` : value;
+};
 const money = (value: number) =>
   new Intl.NumberFormat('es-GT', {
     style: 'currency',
@@ -195,8 +206,12 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
   const [services, setServices] = useState<ServiceOption[]>([]);
   const [paymentOptions, setPaymentOptions] = useState<PaymentOption[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingDayStatus, setLoadingDayStatus] = useState(false);
+  const [isDayClosed, setIsDayClosed] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [showFinalizeConfirm, setShowFinalizeConfirm] = useState(false);
+  const [showFinalizedSuccess, setShowFinalizedSuccess] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Sale | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [client, setClient] = useState('');
@@ -230,8 +245,34 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
     }
   };
 
+  const loadDayStatus = async () => {
+    try {
+      setLoadingDayStatus(true);
+      const response = await fetch(
+        `${API_URL}/cierre-ventas/estado?fecha=${encodeURIComponent(date)}`,
+        { headers: getAuthHeaders() }
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message);
+      setIsDayClosed(Boolean(data.isClosed));
+    } catch (error) {
+      setIsDayClosed(false);
+      setNotice({
+        title: 'No se pudo consultar el estado del día',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'No fue posible verificar si el día está finalizado.',
+        type: 'error',
+      });
+    } finally {
+      setLoadingDayStatus(false);
+    }
+  };
+
   useEffect(() => {
-    void loadSales();
+    setIsDayClosed(false);
+    void Promise.all([loadSales(), loadDayStatus()]);
   }, [date]);
 
   useEffect(() => {
@@ -430,6 +471,7 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
       resetForm();
       setShowSuccess(true);
     } catch (error) {
+      await loadDayStatus();
       setNotice({
         title: 'No se pudo registrar la venta',
         message:
@@ -454,12 +496,43 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
       await Promise.all([loadSales(), onInventoryChanged()]);
       setDeleteTarget(null);
     } catch (error) {
+      await loadDayStatus();
       setNotice({
         title: 'No se pudo eliminar la venta',
         message:
           error instanceof Error
             ? error.message
             : 'Ocurrió un error inesperado al eliminar la venta.',
+        type: 'error',
+      });
+    }
+  };
+
+  const finalizeDay = async () => {
+    try {
+      const response = await fetch(`${API_URL}/cierre-ventas/finalizar`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ date }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message);
+
+      setIsDayClosed(true);
+      setShowFinalizeConfirm(false);
+      setShowForm(false);
+      setDeleteTarget(null);
+      resetForm();
+      setShowFinalizedSuccess(true);
+    } catch (error) {
+      await loadDayStatus();
+      setShowFinalizeConfirm(false);
+      setNotice({
+        title: 'No se pudo finalizar el día',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Ocurrió un error inesperado al finalizar el día.',
         type: 'error',
       });
     }
@@ -476,7 +549,7 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
 
   return (
     <div>
-      <div className="flex flex-col md:flex-row md:items-end gap-4 mb-6">
+      <div className="mb-3 flex flex-col gap-3 md:mb-6 md:flex-row md:items-end md:gap-4">
         <div>
           <h2 className="text-foreground text-xl">Cierre de ventas</h2>
         </div>
@@ -493,15 +566,37 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
           <button
             type="button"
             onClick={() => setShowForm(true)}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary text-white rounded-lg"
+            disabled={loadingDayStatus || isDayClosed}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg"
           >
             <Plus className="w-4 h-4" />
             Registrar venta
           </button>
         </div>
+        <button
+          type="button"
+          onClick={() => setShowFinalizeConfirm(true)}
+          disabled={loadingDayStatus || isDayClosed}
+          className="flex w-full md:w-auto md:ml-auto items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg"
+        >
+          <Lock className="w-4 h-4" />
+          {isDayClosed ? 'Día finalizado' : 'Finalizar día'}
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+      {isDayClosed && (
+        <div className="flex items-start gap-3 mb-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
+          <Lock className="w-5 h-5 mt-0.5 shrink-0" />
+          <div>
+            <p className="font-semibold">Día finalizado</p>
+            <p className="text-sm">
+              Este cierre está en modo de solo lectura. Ya no se pueden registrar ni eliminar ventas.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:mb-6 sm:grid-cols-3 sm:gap-4 [&>div:last-child]:col-span-2 sm:[&>div:last-child]:col-span-1">
         <SummaryCard label="Ventas registradas" value={String(sales.length)} />
         <SummaryCard label="Total del día" value={money(totals.total)} />
         <SummaryCard
@@ -514,7 +609,58 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
         />
       </div>
 
-      <div className="overflow-x-auto bg-card border border-border rounded-xl shadow-lg">
+      <div className="space-y-2 md:hidden">
+        {sales.map((sale) => (
+          <article key={sale.id} className="rounded-xl border border-border bg-card p-3 shadow-sm">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h3 className="font-semibold text-foreground">{sale.client || 'Consumidor final'}</h3>
+                <p className="text-sm text-muted-foreground">{description(sale)}</p>
+              </div>
+              <p className="shrink-0 font-bold text-primary">{money(sale.total)}</p>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {sale.payments.filter((payment) => payment.amount > 0).map((payment) => (
+                <span key={payment.id} className="rounded-lg bg-muted px-2 py-1 text-xs text-foreground">
+                  {payment.name}: {money(payment.amount)}
+                </span>
+              ))}
+            </div>
+            {(sale.invoiceNit || sale.invoiceName) && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Factura: {sale.invoiceNit || 'Sin NIT'} · {sale.invoiceName || 'Sin nombre'}
+              </p>
+            )}
+            <div className="mt-2 flex justify-end">
+              <button
+                type="button"
+                title="Eliminar venta"
+                aria-label={`Eliminar venta de ${sale.client || 'Consumidor final'}`}
+                onClick={() => setDeleteTarget(sale)}
+                disabled={isDayClosed}
+                className="rounded-lg bg-red-100 p-2 text-red-600 hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          </article>
+        ))}
+        {!loading && sales.length === 0 && (
+          <p className="rounded-xl border border-dashed border-border bg-card p-4 text-center text-sm text-muted-foreground">
+            No hay ventas registradas para esta fecha.
+          </p>
+        )}
+        <div className="rounded-xl border border-border bg-muted p-3 text-sm text-foreground">
+          <p className="font-bold">Total: {money(totals.total)}</p>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+            {paymentOptions.map((payment) => (
+              <span key={payment.id}>{payment.nombre}: {money(totals.byMethod[payment.codigo] || 0)}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-xl border border-border bg-card shadow-lg md:block">
         <table className="w-full min-w-[1250px]">
           <thead className="bg-muted text-foreground text-sm">
             <tr>
@@ -552,7 +698,8 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
                     type="button"
                     title="Eliminar venta"
                     onClick={() => setDeleteTarget(sale)}
-                    className="p-2 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg"
+                    disabled={isDayClosed}
+                    className="p-2 bg-red-100 hover:bg-red-200 disabled:opacity-40 disabled:cursor-not-allowed text-red-600 rounded-lg"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -582,13 +729,15 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
         </table>
       </div>
 
-      {showForm && (
+      {showForm && !isDayClosed && (
         <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-3xl w-full max-h-[92vh] overflow-y-auto p-5 md:p-6">
             <div className="flex justify-between gap-4 mb-5">
               <div>
                 <h3 className="text-foreground text-xl">Registrar venta</h3>
-                <p className="text-muted-foreground text-sm">Cierre del {date}</p>
+                <p className="text-muted-foreground text-sm">
+                  Cierre del {formatDisplayDate(date)}
+                </p>
               </div>
               <button
                 type="button"
@@ -696,7 +845,7 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
         </div>
       )}
 
-      {deleteTarget && (
+      {deleteTarget && !isDayClosed && (
         <div className="modal-backdrop fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="bg-card rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center">
             <AlertTriangle className="w-12 h-12 text-red-600 mx-auto mb-3" />
@@ -721,6 +870,53 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
               El cierre de ventas se actualizó correctamente. El inventario solo cambia cuando la venta incluye productos.
             </p>
             <button type="button" onClick={() => setShowSuccess(false)} className="w-full px-4 py-2 bg-primary text-white rounded-lg">Aceptar</button>
+          </div>
+        </div>
+      )}
+
+      {showFinalizeConfirm && !isDayClosed && (
+        <div className="modal-backdrop fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-md w-full p-6 text-center">
+            <Lock className="w-12 h-12 text-red-600 mx-auto mb-3" />
+            <h3 className="text-foreground text-xl mb-2">¿Finalizar el día?</h3>
+            <p className="text-muted-foreground text-sm mb-5">
+              Después de finalizar el {formatDisplayDate(date)} ya no será posible registrar ni eliminar ventas de esa fecha.
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowFinalizeConfirm(false)}
+                className="flex-1 px-4 py-2 bg-muted text-foreground rounded-lg"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={finalizeDay}
+                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg"
+              >
+                Sí, finalizar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFinalizedSuccess && (
+        <div className="modal-backdrop fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center">
+            <CheckCircle className="w-14 h-14 text-green-700 mx-auto mb-3" />
+            <h3 className="text-foreground text-xl mb-2">Día finalizado</h3>
+            <p className="text-muted-foreground text-sm mb-5">
+              El cierre del {formatDisplayDate(date)} quedó bloqueado correctamente.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowFinalizedSuccess(false)}
+              className="w-full px-4 py-2 bg-primary text-white rounded-lg"
+            >
+              Aceptar
+            </button>
           </div>
         </div>
       )}

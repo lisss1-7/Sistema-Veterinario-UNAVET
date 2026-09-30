@@ -126,6 +126,7 @@ export default function Users() {
   const [showSortFieldMenu, setShowSortFieldMenu] = useState(false);
   const [showSortDirectionMenu, setShowSortDirectionMenu] = useState(false);
   const [showPageSizeMenu, setShowPageSizeMenu] = useState(false);
+  const [showMobileReports, setShowMobileReports] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedUser, setSelectedUser] =
     useState<SystemUser | null>(null);
@@ -888,68 +889,28 @@ export default function Users() {
 
   return (
     <div className="min-w-0 w-full p-[0.825rem] md:p-[1.375rem]">
-      <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-          <div>
-            <h1 className="text-foreground text-xl md:text-2xl font-bold mb-2">
-              Gestión de Usuarios
-            </h1>
-          </div>
-
-          {permissions.canCreate && <button
-            type="button"
-            onClick={() => openModal()}
-            disabled={loadingRoles || roleOptions.length === 0}
-            className="flex items-center justify-center gap-2 px-4 py-2 text-lg bg-primary hover:bg-primary disabled:opacity-60 disabled:cursor-not-allowed text-[#F7EFE6] rounded-lg transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            {loadingRoles ? 'Cargando roles...' : 'Nuevo usuario'}
-          </button>}
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="mb-1 text-xl font-bold text-foreground md:text-2xl">
+            Gestión de Usuarios
+          </h1>
+          <p className="hidden text-sm text-muted-foreground sm:block">
+            Administra el acceso y los perfiles del equipo.
+          </p>
         </div>
 
-        <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-2 xl:flex xl:flex-wrap">
-          <button
-            type="button"
-            onClick={() => void previewUsersPdf('active')}
-            disabled={activeUsers.length === 0}
-            className="flex items-center justify-center gap-2 rounded-lg border border-primary/25 bg-primary/10 px-4 py-2 text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Eye className="w-4 h-4" />
-            Vista activos
-          </button>
-          <button
-            type="button"
-            onClick={() => void generateUsersPdf('active')}
-            disabled={activeUsers.length === 0}
-            className="flex items-center justify-center gap-2 rounded-lg border border-primary/25 bg-primary/10 px-4 py-2 text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <FileDown className="w-4 h-4" />
-            PDF activos
-          </button>
-
-          <button
-            type="button"
-            onClick={() => void previewUsersPdf('inactive')}
-            disabled={inactiveUsers.length === 0}
-            className="flex items-center justify-center gap-2 rounded-lg border border-border bg-muted px-4 py-2 text-foreground transition-colors hover:bg-border disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Eye className="w-4 h-4" />
-            Vista de baja
-          </button>
-          <button
-            type="button"
-            onClick={() => void generateUsersPdf('inactive')}
-            disabled={inactiveUsers.length === 0}
-            className="flex items-center justify-center gap-2 rounded-lg border border-border bg-muted px-4 py-2 text-foreground transition-colors hover:bg-border disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <FileDown className="w-4 h-4" />
-            PDF de baja
-          </button>
-
-        </div>
+        {permissions.canCreate && <button
+          type="button"
+          onClick={() => openModal()}
+          disabled={loadingRoles || roleOptions.length === 0}
+          className="flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-base font-semibold text-[#F7EFE6] shadow-lg shadow-primary/20 transition-all hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <Plus className="h-4 w-4" />
+          {loadingRoles ? 'Cargando roles...' : 'Nuevo usuario'}
+        </button>}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 [&>article:last-child]:col-span-2 sm:[&>article:last-child]:col-span-1">
         <SummaryCard
           label="Usuarios registrados"
           value={users.length}
@@ -970,9 +931,65 @@ export default function Users() {
         />
       </div>
 
-      <div className="bg-card rounded-xl p-4 md:p-6 shadow-lg mb-6 border border-border">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
-          <div className="sm:col-span-2 xl:col-span-2">
+      <div className="mb-3 flex flex-col gap-2 rounded-xl border border-border/60 bg-gradient-to-r from-muted/60 via-card to-muted/50 p-2 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <button
+            type="button"
+            aria-expanded={showMobileReports}
+            aria-controls="user-report-actions"
+            onClick={() => setShowMobileReports((current) => !current)}
+            className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-sm font-bold text-foreground sm:hidden"
+          >
+            Reportes de usuarios
+            <ChevronDown className={`h-4 w-4 transition-transform ${showMobileReports ? 'rotate-180' : ''}`} />
+          </button>
+          <h2 className="hidden whitespace-nowrap px-2 text-sm font-bold text-foreground sm:block">Reportes de usuarios</h2>
+        </div>
+        <div id="user-report-actions" className={`${showMobileReports ? 'grid' : 'hidden'} w-full grid-cols-2 gap-1.5 sm:grid sm:w-auto sm:grid-cols-4`}>
+          <button
+            type="button"
+            onClick={() => void previewUsersPdf('active')}
+            disabled={activeUsers.length === 0}
+            className="flex items-center justify-center gap-2 rounded-lg border border-primary/20 bg-card px-3 py-1.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Eye className="w-4 h-4" />
+            Vista activos
+          </button>
+          <button
+            type="button"
+            onClick={() => void generateUsersPdf('active')}
+            disabled={activeUsers.length === 0}
+            className="flex items-center justify-center gap-2 rounded-lg border border-primary/20 bg-card px-3 py-1.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <FileDown className="w-4 h-4" />
+            PDF activos
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void previewUsersPdf('inactive')}
+            disabled={inactiveUsers.length === 0}
+            className="flex items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Eye className="w-4 h-4" />
+            Vista de baja
+          </button>
+          <button
+            type="button"
+            onClick={() => void generateUsersPdf('inactive')}
+            disabled={inactiveUsers.length === 0}
+            className="flex items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <FileDown className="w-4 h-4" />
+            PDF de baja
+          </button>
+
+        </div>
+      </div>
+
+      <div className="mb-3 rounded-2xl border border-border/60 bg-gradient-to-br from-card to-muted/20 p-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-3 xl:grid-cols-7">
+          <div className="col-span-2 lg:col-span-2 xl:col-span-2">
             <label className="block text-foreground mb-2 text-sm">
               Buscar
             </label>
@@ -987,7 +1004,7 @@ export default function Users() {
                   setSearchTerm(event.target.value)
                 }
                 placeholder="Buscar por nombre o correo"
-                className="w-full pl-10 pr-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+                className="w-full rounded-xl border border-border bg-secondary/80 py-2.5 pl-10 pr-4 text-foreground shadow-sm transition-all placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
           </div>
@@ -1224,18 +1241,18 @@ export default function Users() {
         </div>
       </div>
 
-      <div className="space-y-4 xl:hidden">
+      <div className="space-y-2 lg:hidden">
         {paginatedUsers.map((userItem) => (
           <article
             key={userItem.id}
-            className="rounded-2xl border border-border bg-card p-4 shadow-lg shadow-primary/10"
+            className="rounded-2xl border border-border/70 bg-card p-3 shadow-[0_8px_20px_rgba(15,23,42,0.05)]"
           >
             <div className="mb-4 flex flex-col items-start gap-3 min-[420px]:flex-row min-[420px]:justify-between">
               <div className="min-w-0">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   {userItem.role}
                 </p>
-                <h3 className="break-words text-lg font-semibold text-foreground">
+                <h3 className="break-words text-lg font-bold text-foreground">
                   {userItem.name}
                 </h3>
                 <p className="text-sm text-muted-foreground break-all">{userItem.email}</p>
@@ -1262,7 +1279,7 @@ export default function Users() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="grid grid-cols-2 gap-3 rounded-xl bg-muted/40 p-3 text-sm">
               <div className="col-span-2">
                 <p className="text-muted-foreground">Teléfono</p>
                 <p className="text-foreground font-medium">{userItem.phone}</p>
@@ -1325,20 +1342,30 @@ export default function Users() {
         )}
       </div>
 
-      <div className="hidden overflow-hidden rounded-2xl border border-border bg-card shadow-lg xl:block">
+      <section className="hidden overflow-hidden rounded-[22px] border border-border/60 bg-card shadow-[0_12px_28px_rgba(15,23,42,0.06)] lg:block">
+        <div className="flex items-center justify-between gap-2 border-b border-border bg-gradient-to-r from-muted/60 via-card to-muted/50 px-4 py-2">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-primary p-2 text-[#F7EFE6] shadow-lg shadow-primary/20">
+              <UsersRound className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-foreground">Directorio de usuarios <span className="font-normal text-muted-foreground">· {filteredUsers.length} resultados</span></h2>
+            </div>
+          </div>
+        </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[850px]">
+          <table className="w-full min-w-[850px] text-sm">
             <thead className="bg-primary text-[#F7EFE6]">
               <tr>
-                <th className="px-6 py-3 text-left">Nombre</th>
-                <th className="px-6 py-3 text-left">Correo</th>
-                <th className="px-6 py-3 text-left">Rol</th>
-                <th className="px-6 py-3 text-left">Teléfono</th>
-                <th className="px-6 py-3 text-left">Estado</th>
-                <th className="px-6 py-3 text-left">
+                <th className="px-4 py-2 text-left">Nombre</th>
+                <th className="px-4 py-2 text-left">Correo</th>
+                <th className="px-4 py-2 text-left">Rol</th>
+                <th className="px-4 py-2 text-left">Teléfono</th>
+                <th className="px-4 py-2 text-left">Estado</th>
+                <th className="px-4 py-2 text-left">
                   Fecha de creación
                 </th>
-                <th className="px-6 py-3 text-left">Acciones</th>
+                <th className="px-4 py-2 text-left">Acciones</th>
               </tr>
             </thead>
 
@@ -1346,25 +1373,25 @@ export default function Users() {
               {paginatedUsers.map((userItem) => (
                 <tr
                   key={userItem.id}
-                  className="hover:bg-muted"
+                  className="transition-colors hover:bg-muted/60"
                 >
-                  <td className="px-6 py-4 text-foreground">
-                    {userItem.name}
+                  <td className="px-4 py-2 text-foreground">
+                    <span className="font-semibold">{userItem.name}</span>
                   </td>
 
-                  <td className="px-6 py-4 text-foreground">
+                  <td className="px-4 py-2 text-foreground">
                     {userItem.email}
                   </td>
 
-                  <td className="px-6 py-4 text-foreground">
+                  <td className="px-4 py-2 text-foreground">
                     {userItem.role}
                   </td>
 
-                  <td className="px-6 py-4 text-foreground">
+                  <td className="px-4 py-2 text-foreground">
                     {userItem.phone}
                   </td>
 
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-2">
                     {permissions.canEdit ? (
                       <button
                         type="button"
@@ -1386,16 +1413,16 @@ export default function Users() {
                     )}
                   </td>
 
-                  <td className="px-6 py-4 text-foreground">
+                  <td className="px-4 py-2 text-foreground">
                     {formatDateForDisplay(userItem.creationDate)}
                   </td>
 
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => setSelectedUser(userItem)}
-                        className="p-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors"
+                        className="rounded-lg bg-primary p-1.5 text-[#F7EFE6] transition-colors hover:bg-primary/90"
                         title="Ver ficha del usuario"
                         aria-label={`Ver ficha de ${userItem.name}`}
                       >
@@ -1407,7 +1434,7 @@ export default function Users() {
                         onClick={() => openModal(userItem)}
                         disabled={String(userItem.id) === String(authenticatedUser?.id)}
                         title={String(userItem.id) === String(authenticatedUser?.id) ? 'No puedes modificar tu propio usuario' : 'Editar usuario'}
-                        className="p-2 bg-secondary hover:bg-border text-primary rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="rounded-lg bg-secondary p-1.5 text-primary transition-colors hover:bg-border disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <Edit className="w-4 h-4" />
                       </button>}
@@ -1419,7 +1446,7 @@ export default function Users() {
                         }
                         disabled={String(userItem.id) === String(authenticatedUser?.id)}
                         title={String(userItem.id) === String(authenticatedUser?.id) ? 'No puedes dar de baja tu propio usuario' : 'Dar usuario de baja'}
-                        className="rounded-lg bg-destructive/10 p-2 text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="rounded-lg bg-destructive/10 p-1.5 text-destructive transition-colors hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>}
@@ -1429,7 +1456,7 @@ export default function Users() {
                         onClick={() => void restoreUser(userItem)}
                         disabled={restoringUserId === userItem.id}
                         title="Restaurar usuario"
-                        className="rounded-lg bg-primary/10 p-2 text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded-lg bg-primary/10 p-1.5 text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <RotateCcw className="w-4 h-4" />
                       </button>}
@@ -1451,7 +1478,7 @@ export default function Users() {
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
       {filteredUsers.length > 0 && (
         <div className="mt-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
@@ -1595,16 +1622,16 @@ export default function Users() {
 
       {showModal && (
         <div className="modal-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-2 sm:items-center sm:p-4">
-          <div className="my-auto max-h-[calc(100dvh-1rem)] w-full max-w-2xl overflow-y-auto rounded-xl border border-border bg-card p-4 shadow-2xl sm:max-h-[90vh] sm:rounded-2xl md:p-6">
-            <div className="flex items-start justify-between gap-4 mb-4">
+          <div className="my-auto max-h-[calc(100dvh-1rem)] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-border/80 bg-card p-4 shadow-[0_30px_80px_rgba(15,23,42,0.12)] sm:max-h-[90vh] md:p-6">
+            <div className="mb-5 flex items-start justify-between gap-4 rounded-2xl border border-border/70 bg-background/60 p-4">
               <div>
-                <h2 className="text-foreground text-xl">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary/80">Usuarios</p>
+                <h2 className="text-xl font-black tracking-tight text-foreground md:text-2xl">
                   {editingUser
                     ? 'Editar usuario'
                     : 'Nuevo usuario'}
                 </h2>
-
-
+                <p className="mt-1 text-sm text-muted-foreground">Datos de acceso y perfil del equipo.</p>
               </div>
 
               <button
@@ -1739,7 +1766,7 @@ export default function Users() {
                 </div>
               </div>
 
-              <div className="bg-muted border border-border rounded-xl p-4">
+              <div className="rounded-2xl border border-border/70 bg-muted/40 p-4">
                 <h3 className="text-foreground font-medium mb-1">
                   Acceso del usuario
                 </h3>
@@ -1795,7 +1822,7 @@ export default function Users() {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full sm:w-auto px-4 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-full rounded-xl bg-primary px-4 py-2.5 font-semibold text-[#F7EFE6] shadow-lg shadow-primary/20 transition-all hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                 >
                   {isSubmitting ? 'Guardando...' : editingUser ? 'Actualizar' : 'Crear'}
                 </button>
@@ -1803,7 +1830,7 @@ export default function Users() {
                 <button
                   type="button"
                   onClick={handleCloseAttempt}
-                  className="w-full sm:w-auto px-4 py-2 bg-muted hover:bg-border text-foreground rounded-lg transition-colors"
+                  className="w-full rounded-xl bg-muted px-4 py-2.5 font-semibold text-foreground transition-colors hover:bg-border sm:w-auto"
                 >
                   Cancelar
                 </button>
@@ -2062,16 +2089,16 @@ function SummaryCard({
 
   return (
     <article
-      className={`rounded-2xl border p-4 shadow-md flex items-center gap-4 transition-colors ${styles[tone].card}`}
+      className={`flex items-center gap-2 rounded-xl border px-3 py-2 shadow-sm transition-colors ${styles[tone].card}`}
     >
       <div
-        className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${styles[tone].icon}`}
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg [&>svg]:h-5 [&>svg]:w-5 ${styles[tone].icon}`}
       >
         {icon}
       </div>
       <div>
         <p className="text-sm text-muted-foreground">{label}</p>
-        <p className="text-foreground text-2xl font-bold">{value}</p>
+        <p className="text-lg font-bold leading-tight text-foreground">{value}</p>
       </div>
     </article>
   );
@@ -2123,7 +2150,7 @@ function FormInput({
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+        className="w-full rounded-xl border border-border bg-secondary/80 px-4 py-2.5 text-foreground shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
         required={required}
         minLength={minLength}
         maxLength={maxLength}
@@ -2163,7 +2190,7 @@ function PasswordInput({
           onChange={(event) =>
             onChange(event.target.value)
           }
-          className="w-full px-4 py-2 pr-10 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+          className="w-full rounded-xl border border-border bg-secondary/80 py-2.5 pl-4 pr-10 text-foreground shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
           required={required}
           minLength={required || value ? 8 : undefined}
           maxLength={128}

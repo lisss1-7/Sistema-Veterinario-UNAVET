@@ -16,6 +16,12 @@ const CATALOGOS = {
     hasActive: true,
   },
 
+  opcionesAlimentacion: {
+    tabla: 'opcion_alimentacion',
+    idColumn: 'opcion_alimentacion_id',
+    hasActive: true,
+  },
+
   sexos: {
     tabla: 'sexo',
     idColumn: 'sexo_id',
@@ -205,6 +211,9 @@ exports.obtenerEspecies = (req, res) =>
     res,
     CATALOGOS.especies
   );
+
+exports.obtenerOpcionesAlimentacion = (req, res) =>
+  obtenerCatalogo(req, res, CATALOGOS.opcionesAlimentacion);
 
 /**
  * RAZAS POR ESPECIE

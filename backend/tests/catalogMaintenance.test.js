@@ -37,6 +37,25 @@ const createResponse = () => ({
   },
 });
 
+test('mantenimiento exige el rol Administrador antes de sus rutas', () => {
+  const router = require('../src/routes/catalogosProcesoPacientesRoutes');
+  const tokenIndex = router.stack.findIndex((layer) => layer.name === 'verificarToken');
+  const adminIndex = router.stack.findIndex((layer) => layer.name === 'verificarAdministrador');
+  const firstRouteIndex = router.stack.findIndex((layer) => layer.route);
+
+  assert.ok(tokenIndex >= 0 && tokenIndex < adminIndex && adminIndex < firstRouteIndex);
+
+  const guard = router.stack[adminIndex].handle;
+  const forbiddenResponse = createResponse();
+  let nextCalled = false;
+  guard({ user: { rol: 'Recepción' } }, forbiddenResponse, () => { nextCalled = true; });
+  assert.equal(forbiddenResponse.statusCode, 403);
+  assert.equal(nextCalled, false);
+
+  guard({ user: { rol: 'Administrador' } }, createResponse(), () => { nextCalled = true; });
+  assert.equal(nextCalled, true);
+});
+
 test('crea servicios con sus campos propios y una categoría activa', async () => {
   const calls = [];
   db.query = async (sql, values) => {

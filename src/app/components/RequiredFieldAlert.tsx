@@ -7,6 +7,7 @@ const NEXT_FIELD_SELECTOR = [
   'select:not([disabled])',
   'textarea:not([disabled])',
   'button[role="combobox"]:not([disabled])',
+  'button[data-required-field="true"]:not([disabled])',
   'button[type="submit"]:not([disabled])',
 ].join(',');
 

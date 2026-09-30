@@ -356,6 +356,14 @@ grooming, vacunas, tratamientos, modos de entrega y los demás catálogos. Los
 arreglos que permanecen en React corresponden únicamente a presentación, como
 iconos, pestañas y colores.
 
+Para crear el catálogo de opciones de alimentación de pacientes en una base
+existente, ejecute una vez (el comando también puede repetirse):
+
+```bash
+cd backend
+npm run migrate:diet-options
+```
+
 Las migraciones históricas de normalización trabajan sobre el esquema antiguo
 con nombres plurales. Solo se ejecutan cuando se parte de ese esquema:
 
@@ -365,7 +373,7 @@ npm run migrate:normalize
 npm run migrate:person-names
 ```
 
-Las 57 tablas del esquema actual usan nombres singulares (`paciente`, `tutor`,
+Las 58 tablas del esquema actual usan nombres singulares (`paciente`, `tutor`,
 `usuario`, etc.). Para convertir una base ya normalizada que todavía use nombres
 plurales, detenga el backend, audite el esquema, respalde la base y las fotos, y
 después ejecute la migración:
@@ -384,6 +392,14 @@ si el esquema no coincide con el esperado, el comando se detiene sin modificarlo
 No ejecute nuevamente las migraciones históricas de normalización sobre un
 esquema que ya tiene nombres singulares. El comando de borrado lógico de
 usuarios se ejecuta, si hace falta, después de renombrar las tablas.
+
+El bloqueo permanente del cierre de ventas por fecha requiere la tabla de
+control diario. Para agregarla de forma idempotente a una base existente:
+
+```bash
+cd backend
+npm run migrate:sales-day-closing
+```
 
 Para comprobar que no quedaron registros operativos sin sus llaves de catálogo:
 

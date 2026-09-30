@@ -1191,15 +1191,15 @@ export default function PatientDetail() {
     <div className="w-full p-[0.825rem] md:p-[1.375rem]">
       <Link
         to="/patients"
-        className="mb-6 inline-flex items-center gap-2.5 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-lg font-bold text-primary shadow-sm transition-colors hover:bg-primary hover:text-[#F7EFE6]"
+        className="mb-3 inline-flex items-center gap-2.5 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-base font-bold text-primary shadow-sm transition-colors hover:bg-primary hover:text-[#F7EFE6] sm:mb-6 sm:text-lg"
       >
         <ArrowLeft className="h-6 w-6" strokeWidth={2.5} />
         Volver a pacientes
       </Link>
 
-      <div className="bg-card rounded-2xl p-5 md:p-6 shadow-lg mb-6 border border-border">
-        <div className="flex flex-col md:flex-row gap-5 md:items-center">
-          <div className="w-32 h-32 rounded-2xl overflow-hidden bg-secondary border-4 border-border shadow-md flex items-center justify-center">
+      <div className="mb-3 rounded-2xl border border-border bg-card p-3 shadow-lg sm:mb-6 sm:p-5 md:p-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-5">
+          <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border-4 border-border bg-secondary shadow-md sm:h-32 sm:w-32">
             {patient.photo ? (
               <img
                 src={resolveMediaUrl(patient.photo)}
@@ -1212,8 +1212,8 @@ export default function PatientDetail() {
           </div>
 
           <div className="flex-1">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-              <h1 className="text-foreground text-2xl md:text-3xl font-bold mb-2 break-words">
+            <div className="mb-2 flex flex-col gap-2 sm:mb-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+              <h1 className="break-words text-xl font-bold text-foreground sm:text-2xl md:text-3xl">
                 {patient.petName}
               </h1>
 
@@ -1226,7 +1226,7 @@ export default function PatientDetail() {
               </Link>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div className="grid grid-cols-2 gap-2 text-sm sm:gap-4 md:grid-cols-4">
               <div>
                 <span className="text-muted-foreground">Especie:</span>
                 <p className="text-foreground font-medium">{patient.species || 'N/A'}</p>
@@ -1264,7 +1264,7 @@ export default function PatientDetail() {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-6 py-3 whitespace-nowrap ${
+              className={`whitespace-nowrap px-4 py-2.5 sm:px-6 sm:py-3 ${
                 activeTab === tab
                   ? 'bg-primary text-[#F7EFE6]'
                   : 'text-foreground hover:bg-muted'
@@ -1275,7 +1275,7 @@ export default function PatientDetail() {
           ))}
         </div>
 
-        <div className="p-4 md:p-6">
+        <div className="p-3 sm:p-4 md:p-6">
           {activeTab === 'general' && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

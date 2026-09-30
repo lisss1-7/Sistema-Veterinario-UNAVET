@@ -1,6 +1,17 @@
 const NAME_PATTERN = /^[\p{L}\p{M}]+(?:[\s'-][\p{L}\p{M}]+)*$/u;
 const PHONE_PATTERN = /^\d{8,12}$/;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
+const CLINIC_TIME_ZONE = 'America/Guatemala';
+const CLINIC_DATE_TIME_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: CLINIC_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
 
 const isValidName = (value) =>
   typeof value === 'string' &&
@@ -28,12 +39,35 @@ const isValidIsoDate = (value) => {
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 };
 
-const getTodayLocal = () => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+const getClinicDateTime = (now = new Date()) => {
+  if (!(now instanceof Date) || Number.isNaN(now.getTime())) return null;
+
+  const parts = Object.fromEntries(
+    CLINIC_DATE_TIME_FORMATTER
+      .formatToParts(now)
+      .filter(({ type }) => type !== 'literal')
+      .map(({ type, value }) => [type, value])
+  );
+
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}`,
+  };
+};
+
+const getTodayLocal = (now = new Date()) => getClinicDateTime(now)?.date || '';
+
+const isFutureDateTime = (date, time, now = new Date()) => {
+  if (!isValidIsoDate(date) || typeof time !== 'string' || !TIME_PATTERN.test(time)) {
+    return false;
+  }
+
+  const clinicNow = getClinicDateTime(now);
+  if (!clinicNow) return false;
+
+  const selectedDateTime = `${date}T${time.slice(0, 5)}`;
+  const currentDateTime = `${clinicNow.date}T${clinicNow.time}`;
+  return selectedDateTime > currentDateTime;
 };
 
 module.exports = {
@@ -42,6 +76,9 @@ module.exports = {
   isValidPhone,
   isValidAgeSpacing,
   isValidIsoDate,
-  isTodayOrFuture: (value) => isValidIsoDate(value) && value >= getTodayLocal(),
-  isTodayOrPast: (value) => isValidIsoDate(value) && value <= getTodayLocal(),
+  isFutureDateTime,
+  isTodayOrFuture: (value, now = new Date()) =>
+    isValidIsoDate(value) && value >= getTodayLocal(now),
+  isTodayOrPast: (value, now = new Date()) =>
+    isValidIsoDate(value) && value <= getTodayLocal(now),
 };

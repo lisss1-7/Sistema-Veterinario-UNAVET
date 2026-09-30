@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router';
+import * as Popover from '@radix-ui/react-popover';
 import {
   Search,
   Plus,
@@ -82,6 +83,9 @@ type PatientSortOrder =
 
 const PAGE_SIZE_OPTIONS = [8, 12, 24];
 
+const formatDiet = (selected: string[], other: string) =>
+  [...selected, other.trim()].filter(Boolean).join(', ');
+
 const normalizePhone = (value?: string) =>
   String(value || '').replace(/\D/g, '');
 
@@ -102,9 +106,13 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
   const [breedOptions, setBreedOptions] = useState<CatalogItem[]>([]);
   const [sexOptions, setSexOptions] = useState<CatalogItem[]>([]);
   const [reproductiveStatusOptions, setReproductiveStatusOptions] = useState<CatalogItem[]>([]);
+  const [dietOptions, setDietOptions] = useState<CatalogItem[]>([]);
 
   const [selectedBreedOption, setSelectedBreedOption] = useState('');
   const [customBreed, setCustomBreed] = useState('');
+  const [selectedDietNames, setSelectedDietNames] = useState<string[]>([]);
+  const [customDiet, setCustomDiet] = useState('');
+  const [isCustomDiet, setIsCustomDiet] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSpecies, setFilterSpecies] = useState('');
@@ -160,11 +168,13 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
       setSpeciesOptions(data.species);
       setSexOptions(data.sexes);
       setReproductiveStatusOptions(data.reproductiveStatuses);
+      setDietOptions(data.dietOptions);
     } catch (error) {
       console.error('Error al cargar catálogos:', error);
       setSpeciesOptions([]);
       setSexOptions([]);
       setReproductiveStatusOptions([]);
+      setDietOptions([]);
     }
   };
 
@@ -452,6 +462,34 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
     });
   };
 
+  const toggleDietOption = (name: string) => {
+    const nextSelected = selectedDietNames.includes(name)
+      ? selectedDietNames.filter((selected) => selected !== name)
+      : [...selectedDietNames, name];
+    setSelectedDietNames(nextSelected);
+    setFormData((current) => ({
+      ...current,
+      diet: formatDiet(nextSelected, isCustomDiet ? customDiet : ''),
+    }));
+  };
+
+  const toggleOtherDiet = (checked: boolean) => {
+    setIsCustomDiet(checked);
+    if (!checked) setCustomDiet('');
+    setFormData((current) => ({
+      ...current,
+      diet: formatDiet(selectedDietNames, checked ? customDiet : ''),
+    }));
+  };
+
+  const handleCustomDietChange = (value: string) => {
+    setCustomDiet(value);
+    setFormData((current) => ({
+      ...current,
+      diet: formatDiet(selectedDietNames, value),
+    }));
+  };
+
   const getTutorLabel = (tutor: any) =>
     `${tutor.nombre_completo || `${tutor.primer_nombre || ''} ${tutor.primer_apellido || ''}`.trim()} · ${tutor.telefono || 'Sin teléfono'}`;
 
@@ -622,6 +660,30 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
       return;
     }
 
+    if (isCustomDiet && !customDiet.trim()) {
+      setFormError({
+        title: 'Falta la alimentación',
+        message: 'Debe especificar qué come el paciente.',
+      });
+      return;
+    }
+
+    if (!selectedDietNames.length && !customDiet.trim()) {
+      setFormError({
+        title: 'Falta la alimentación',
+        message: 'Debe seleccionar al menos una opción de alimentación.',
+      });
+      return;
+    }
+
+    if (formatDiet(selectedDietNames, customDiet).length > 255) {
+      setFormError({
+        title: 'Alimentación demasiado larga',
+        message: 'La alimentación no puede superar 255 caracteres.',
+      });
+      return;
+    }
+
     if (!String(formData.age || '').trim()) {
       setFormError({
         title: 'Falta la edad',
@@ -654,6 +716,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
           selectedBreedOption === 'Otra'
             ? customBreed.trim()
             : formData.breed,
+        diet: formatDiet(selectedDietNames, customDiet),
       };
 
       // Validación previa: si la foto sigue siendo enorme, no intentes enviarla (evita el error "not valid json" por payload truncado en algunos teléfonos)
@@ -725,6 +788,9 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
     setFormData({});
     setSelectedBreedOption('');
     setCustomBreed('');
+    setSelectedDietNames([]);
+    setCustomDiet('');
+    setIsCustomDiet(false);
     setBreedOptions([]);
     setTutorMode('new');
     setSelectedExistingTutorId('');
@@ -896,10 +962,31 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
     const tutors = await loadExistingTutors();
 
     if (patient) {
+      let availableDiets = dietOptions;
+      if (!availableDiets.length) {
+        try {
+          availableDiets = await requestJson<CatalogItem[]>('catalogos/opciones-alimentacion', {
+            defaultError: 'Error al cargar opciones de alimentación',
+          });
+          setDietOptions(availableDiets);
+        } catch (error) {
+          console.error('Error al cargar opciones de alimentación:', error);
+        }
+      }
+
+      const dietParts = String(patient.diet || '').split(',').map((part) => part.trim()).filter(Boolean);
+      const selectedNames = availableDiets
+        .map((option) => option.nombre)
+        .filter((name) => dietParts.includes(name));
+      const otherDiet = dietParts.filter((part) => !selectedNames.includes(part)).join(', ');
+
       setEditingPatient(patient);
       setFormData(patient);
       setSelectedBreedOption(patient.breed || '');
       setCustomBreed('');
+      setSelectedDietNames(selectedNames);
+      setCustomDiet(otherDiet);
+      setIsCustomDiet(Boolean(otherDiet));
 
       const matchingTutor = tutors.find((tutor) => {
         const tutorPhone = normalizePhone(tutor.telefono);
@@ -944,7 +1031,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
 
   return (
     <div className="w-full p-[0.825rem] md:p-[1.375rem]">
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
+      <div className="mb-3 flex flex-col gap-2 sm:mb-6 sm:flex-row sm:items-center sm:gap-4">
         <div>
           <h1 className="text-foreground text-xl md:text-2xl font-bold mb-2">
             {isRegistrationPage
@@ -958,7 +1045,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
           <button
             type="button"
             onClick={() => openModal()}
-            className="flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-lg text-[#F7EFE6] shadow-lg transition-all duration-300 hover:bg-primary/90 hover:shadow-xl"
+            className="flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-base text-[#F7EFE6] shadow-lg transition-all duration-300 hover:bg-primary/90 hover:shadow-xl sm:text-lg"
           >
             <Plus className="h-4 w-4" strokeWidth={2.5} />
             Agregar paciente
@@ -967,7 +1054,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
       </div>
 
       {!isRegistrationPage && (
-        <div className="mb-6 flex w-full max-w-md rounded-xl border border-border bg-card p-1 shadow-sm">
+        <div className="mb-3 flex w-full max-w-md rounded-xl border border-border bg-card p-1 shadow-sm sm:mb-6">
           <button
             type="button"
             onClick={() => setActiveSection('patients')}
@@ -999,9 +1086,9 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
       )}
 
       {!isRegistrationPage && activeSection === 'patients' && <>
-      <div className="bg-card rounded-xl p-4 md:p-6 shadow-lg mb-6 border border-border">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-          <div className="md:col-span-2">
+      <div className="mb-3 rounded-xl border border-border bg-card p-3 shadow-lg sm:mb-6 md:p-6">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-2 md:gap-4 xl:grid-cols-4">
+          <div className="col-span-2 md:col-span-2">
             <label className="block text-foreground mb-2 text-sm">
               Buscar
             </label>
@@ -1129,13 +1216,13 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
         </div>
       ) : sortedPatients.length > 0 ? (
         <>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-6 xl:grid-cols-3 2xl:grid-cols-4">
           {paginatedPatients.map((patient) => (
             <div
               key={patient.id}
               className="bg-card border border-border rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 group"
             >
-              <div className="relative h-56 bg-secondary overflow-hidden">
+              <div className="relative h-40 overflow-hidden bg-secondary sm:h-56">
                 {patient.photo ? (
                   <img
                     src={resolveMediaUrl(patient.photo)}
@@ -1158,7 +1245,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                 </div>
               </div>
 
-              <div className="p-5">
+              <div className="p-4 sm:p-5">
                 <div className="mb-4">
                   <h3 className="text-foreground text-xl font-semibold">
                     {patient.petName || 'Sin nombre'}
@@ -1285,8 +1372,8 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
       </>}
 
       {!isRegistrationPage && activeSection === 'tutors' && (
-        <section className="space-y-6">
-          <div className="rounded-xl border border-border bg-card p-4 shadow-lg md:p-6">
+        <section className="space-y-3 sm:space-y-6">
+          <div className="rounded-xl border border-border bg-card p-3 shadow-lg md:p-6">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
               <div>
                 <label className="mb-2 block text-sm text-foreground">
@@ -1834,15 +1921,72 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                     Alimentación (qué come)
                   </label>
 
-                  <input
-                    type="text"
-                    value={formData.diet || ''}
-                    onChange={(e) =>
-                      setFormData({ ...formData, diet: e.target.value })
-                    }
-                    className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
-                    required
-                  />
+                  <Popover.Root>
+                    <Popover.Trigger asChild>
+                      <button
+                        type="button"
+                        aria-label="Seleccionar opciones de alimentación"
+                        data-required-field="true"
+                        data-field-value={isCustomDiet ? 'Otro' : formData.diet || ''}
+                        className="themed-select-trigger flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-border bg-secondary px-4 py-2 text-left text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        <span className="truncate">
+                          {formData.diet || 'Seleccionar alimentos'}
+                        </span>
+                        <ChevronDown className="h-4 w-4 shrink-0" />
+                      </button>
+                    </Popover.Trigger>
+                    <Popover.Portal>
+                      <Popover.Content
+                        align="start"
+                        sideOffset={4}
+                        collisionPadding={8}
+                        className="z-[100] overflow-y-auto rounded-lg border border-border bg-popover p-2 text-popover-foreground shadow-xl"
+                        style={{
+                          width: 'var(--radix-popover-trigger-width)',
+                          maxHeight: 'min(18rem, var(--radix-popover-content-available-height))',
+                        }}
+                      >
+                        {dietOptions.map((option) => (
+                          <label key={option.opcion_alimentacion_id} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-secondary">
+                            <input
+                              type="checkbox"
+                              checked={selectedDietNames.includes(option.nombre)}
+                              onChange={() => toggleDietOption(option.nombre)}
+                              className="h-4 w-4 shrink-0 accent-primary"
+                            />
+                            {option.nombre}
+                          </label>
+                        ))}
+                        <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-secondary">
+                          <input
+                            type="checkbox"
+                            checked={isCustomDiet}
+                            onChange={(event) => toggleOtherDiet(event.target.checked)}
+                            className="h-4 w-4 shrink-0 accent-primary"
+                          />
+                          Otro
+                        </label>
+                      </Popover.Content>
+                    </Popover.Portal>
+                  </Popover.Root>
+
+                  {isCustomDiet && (
+                    <div className="mt-3">
+                      <label className="block text-foreground mb-2 text-sm">
+                        Especifique otra alimentación
+                      </label>
+                      <input
+                        type="text"
+                        value={customDiet}
+                        onChange={(e) => handleCustomDietChange(e.target.value)}
+                        placeholder="Ingrese qué come el paciente"
+                        maxLength={255}
+                        className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+                        required
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {tutorMode !== 'existing' && (

@@ -13,10 +13,14 @@ import {
   AlertTriangle,
   Package,
   CheckCircle,
+  CalendarDays,
+  ClipboardCheck,
   X,
 } from 'lucide-react';
 
 import type { InventoryProduct } from '../utils/types';
+import SalesClosing from '../components/SalesClosing';
+import InventoryAudit from '../components/InventoryAudit';
 import ThemedSelect from '../components/ThemedSelect';
 import { useModulePermissions } from '../hooks/useModulePermissions';
 import InformationCard from '../components/InformationCard';
@@ -39,9 +43,33 @@ type CatalogItem = {
   activo?: number;
 };
 
+const getCurrentGuatemalaDate = () => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Guatemala',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+};
+
+const formatAuditMonth = (value: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return '';
+  return new Intl.DateTimeFormat('es-GT', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(`${value}T12:00:00Z`));
+};
+
 export default function Inventory() {
   const { permissions } = useModulePermissions('inventory');
   const [inventory, setInventory] = useState<InventoryProduct[]>([]);
+  const [activeSection, setActiveSection] =
+    useState<'inventory' | 'sales' | 'audit'>('inventory');
+  const [showAuditDateModal, setShowAuditDateModal] = useState(false);
+  const [auditDate, setAuditDate] = useState(getCurrentGuatemalaDate);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
@@ -405,52 +433,126 @@ export default function Inventory() {
     setFormData({});
   };
 
+  const openAuditDateModal = () => {
+    setAuditDate(getCurrentGuatemalaDate());
+    setShowAuditDateModal(true);
+  };
+
+  const startAudit = () => {
+    if (!auditDate) return;
+    setShowAuditDateModal(false);
+    setActiveSection('audit');
+  };
+
   return (
     <div className="w-full p-[0.825rem] md:p-[1.375rem]">
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-foreground text-xl md:text-2xl font-bold mb-2">
+          <h1 className="mb-1 text-xl font-bold text-foreground md:text-2xl">
             Inventario
           </h1>
+          <p className="hidden text-sm text-muted-foreground sm:block">
+            Consulta productos, existencias y movimientos de la clínica.
+          </p>
         </div>
 
-        {permissions.canCreate && <button
-          type="button"
-          onClick={() => openModal()}
-          disabled={loadingCatalogs}
-          className="flex items-center justify-center gap-2 px-4 py-2 text-lg bg-primary hover:bg-primary disabled:opacity-60 disabled:cursor-not-allowed text-[#F7EFE6] rounded-lg transition-colors"
-        >
-          <Plus className="w-4 h-4" />
+        {activeSection === 'inventory' && (
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={openAuditDateModal}
+              className="flex items-center justify-center gap-2 rounded-xl border border-primary/25 bg-card px-4 py-2.5 text-base font-semibold text-primary shadow-sm transition-colors hover:bg-primary/10"
+            >
+              <ClipboardCheck className="w-4 h-4" />
+              Auditoría
+            </button>
 
-          {loadingCatalogs
-            ? 'Cargando catálogos...'
-            : 'Nuevo producto'}
-        </button>}
+            {permissions.canCreate && (
+              <button
+                type="button"
+                onClick={() => openModal()}
+                disabled={loadingCatalogs}
+                className="flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-base font-semibold text-[#F7EFE6] shadow-lg shadow-primary/20 transition-all hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Plus className="w-4 h-4" />
+
+                {loadingCatalogs
+                  ? 'Cargando catálogos...'
+                  : 'Nuevo producto'}
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      {activeSection !== 'audit' && <div className="mb-3 flex w-full gap-1 rounded-xl border border-border bg-card p-1 shadow-sm sm:w-fit">
+        <button
+          type="button"
+          onClick={() => setActiveSection('inventory')}
+          className={`flex min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-2 py-2 text-sm font-medium transition-colors sm:gap-2 sm:px-4 ${
+            activeSection === 'inventory'
+              ? 'bg-primary text-[#F7EFE6]'
+              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+          }`}
+        >
+          <Package className="h-4 w-4" />
+          Productos y existencias
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSection('sales')}
+          className={`flex min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-2 py-2 text-sm font-medium transition-colors sm:gap-2 sm:px-4 ${
+            activeSection === 'sales'
+              ? 'bg-primary text-[#F7EFE6]'
+              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+          }`}
+        >
+          <CalendarDays className="h-4 w-4" />
+          Cierre de ventas
+        </button>
+      </div>}
+
+      {activeSection === 'audit' ? (
+        <InventoryAudit
+          products={inventory}
+          auditDate={auditDate}
+          canFinalize={permissions.canEdit}
+          onBack={() => setActiveSection('inventory')}
+          onCompleted={loadInventory}
+        />
+      ) : activeSection === 'sales' ? (
+        <SalesClosing
+          inventory={inventory}
+          onInventoryChanged={loadInventory}
+        />
+      ) : (
+        <>
+      <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-3 [&>article:last-child]:col-span-2 md:[&>article:last-child]:col-span-1">
         <InformationCard
           label="Total de productos"
           value={inventory.length}
           icon={<Package className="h-6 w-6" />}
           tone="primary"
+          compact
         />
         <InformationCard
           label="Stock bajo"
           value={lowStockProducts.length}
           icon={<AlertTriangle className="h-6 w-6" />}
           tone="accent"
+          compact
         />
         <InformationCard
           label="Agotados"
           value={outOfStockProducts.length}
           icon={<AlertTriangle className="h-6 w-6" />}
           tone="destructive"
+          compact
         />
       </div>
 
-      <div className="bg-card rounded-xl p-4 md:p-6 shadow-lg mb-6 border border-border">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="mb-3 rounded-2xl border border-border/60 bg-gradient-to-br from-card to-muted/20 p-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
           <div className="md:col-span-2">
             <label className="block text-foreground mb-2 text-sm">
               Buscar
@@ -466,7 +568,7 @@ export default function Inventory() {
                   setSearchTerm(event.target.value)
                 }
                 placeholder="Buscar producto"
-                className="w-full pl-10 pr-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+                className="w-full rounded-xl border border-border bg-secondary/80 py-2.5 pl-10 pr-4 text-foreground shadow-sm transition-all placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
           </div>
@@ -481,7 +583,7 @@ export default function Inventory() {
               onChange={(event) =>
                 setFilterCategory(event.target.value)
               }
-              className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+              className="w-full rounded-xl border border-border bg-secondary/80 px-4 py-2.5 text-foreground shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
               <option value="">Todas</option>
 
@@ -498,7 +600,7 @@ export default function Inventory() {
         </div>
       </div>
 
-      <div className="lg:hidden space-y-4">
+      <div className="space-y-2 lg:hidden">
         {filteredInventory.map((product) => {
           const currentStock = Number(product.currentStock || 0);
           const minimumStock = Number(product.minStock || 0);
@@ -508,14 +610,14 @@ export default function Inventory() {
           return (
             <article
               key={product.id}
-              className="rounded-2xl border border-border bg-card p-4 shadow-lg shadow-primary/10"
+              className="rounded-2xl border border-border/70 bg-card p-3 shadow-[0_8px_20px_rgba(15,23,42,0.05)]"
             >
               <div className="flex items-start justify-between gap-3 mb-4">
                 <div>
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                     {product.category}
                   </p>
-                  <h3 className="text-foreground text-lg font-semibold">
+                  <h3 className="text-foreground text-lg font-bold">
                     {product.name}
                   </h3>
                   <p className="text-sm text-muted-foreground">{product.presentation}</p>
@@ -532,7 +634,7 @@ export default function Inventory() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="grid grid-cols-2 gap-3 rounded-xl bg-muted/40 p-3 text-sm">
                 <div>
                   <p className="text-muted-foreground">Stock</p>
                   <p
@@ -612,44 +714,52 @@ export default function Inventory() {
         )}
       </div>
 
-      <div className="hidden lg:block bg-card rounded-2xl shadow-lg overflow-hidden border border-border">
+      <section className="hidden overflow-hidden rounded-[22px] border border-border/60 bg-card shadow-[0_12px_28px_rgba(15,23,42,0.06)] lg:block">
+        <div className="flex items-center gap-3 border-b border-border bg-gradient-to-r from-muted/60 via-card to-muted/50 px-4 py-2">
+          <div className="rounded-lg bg-primary p-2 text-[#F7EFE6] shadow-lg shadow-primary/20">
+            <Package className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Productos y existencias <span className="font-normal text-muted-foreground">· {filteredInventory.length} resultados</span></h2>
+          </div>
+        </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1100px]">
+          <table className="w-full min-w-[1100px] text-sm">
             <thead className="bg-primary text-[#F7EFE6]">
               <tr>
-                <th className="px-6 py-3 text-left">
+                <th className="px-4 py-2 text-left">
                   Producto
                 </th>
 
-                <th className="px-6 py-3 text-left">
+                <th className="px-4 py-2 text-left">
                   Categoría
                 </th>
 
-                <th className="px-6 py-3 text-left">
+                <th className="px-4 py-2 text-left">
                   Presentación
                 </th>
 
-                <th className="px-6 py-3 text-left">
+                <th className="px-4 py-2 text-left">
                   Stock
                 </th>
 
-                <th className="px-6 py-3 text-left">
+                <th className="px-4 py-2 text-left">
                   Stock Mín.
                 </th>
 
-                <th className="px-6 py-3 text-left">
+                <th className="px-4 py-2 text-left">
                   Precio (Q)
                 </th>
 
-                <th className="px-6 py-3 text-left">
+                <th className="px-4 py-2 text-left">
                   Vencimiento
                 </th>
 
-                <th className="px-6 py-3 text-left">
+                <th className="px-4 py-2 text-left">
                   Estado
                 </th>
 
-                <th className="px-6 py-3 text-left">
+                <th className="px-4 py-2 text-left">
                   Acciones
                 </th>
               </tr>
@@ -673,21 +783,21 @@ export default function Inventory() {
                 return (
                   <tr
                     key={product.id}
-                    className="hover:bg-muted"
+                    className="transition-colors hover:bg-muted/60"
                   >
-                    <td className="px-6 py-4 text-foreground font-medium">
+                    <td className="px-4 py-2 text-foreground font-medium">
                       {product.name}
                     </td>
 
-                    <td className="px-6 py-4 text-foreground">
+                    <td className="px-4 py-2 text-foreground">
                       {product.category}
                     </td>
 
-                    <td className="px-6 py-4 text-foreground">
+                    <td className="px-4 py-2 text-foreground">
                       {product.presentation}
                     </td>
 
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-2">
                       <div className="flex items-center gap-2">
                         <span
                           className={
@@ -707,19 +817,19 @@ export default function Inventory() {
                       </div>
                     </td>
 
-                    <td className="px-6 py-4 text-foreground">
+                    <td className="px-4 py-2 text-foreground">
                       {product.minStock}
                     </td>
 
-                    <td className="px-6 py-4 text-foreground">
+                    <td className="px-4 py-2 text-foreground">
                       {Number(product.price || 0).toFixed(2)}
                     </td>
 
-                    <td className="px-6 py-4 text-foreground">
+                    <td className="px-4 py-2 text-foreground">
                       {product.expirationDate}
                     </td>
 
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-2">
                       <span
                         className={`px-3 py-1 rounded-full text-sm ${
                           isActiveStatus(product.status)
@@ -731,7 +841,7 @@ export default function Inventory() {
                       </span>
                     </td>
 
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-2">
                       <div className="flex items-center gap-2">
                         {permissions.canEdit && <button
                           type="button"
@@ -759,7 +869,7 @@ export default function Inventory() {
                         {permissions.canEdit && <button
                           type="button"
                           onClick={() => openModal(product)}
-                          className="p-2 bg-secondary hover:bg-border text-primary rounded-lg transition-colors"
+                          className="rounded-lg bg-secondary p-1.5 text-primary transition-colors hover:bg-border"
                           title="Editar"
                         >
                           <Edit className="w-4 h-4" />
@@ -770,7 +880,7 @@ export default function Inventory() {
                           onClick={() =>
                             openDeleteModal(product)
                           }
-                          className="p-2 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg transition-colors"
+                          className="rounded-lg bg-red-100 p-1.5 text-red-600 transition-colors hover:bg-red-200"
                           title="Eliminar"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -794,14 +904,15 @@ export default function Inventory() {
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
       {showModal && (
         <div className="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-50">
-          <div className="patient-form-shell bg-card border border-border rounded-2xl p-4 md:p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
-            <div className="flex items-start justify-between gap-4 mb-4">
+          <div className="patient-form-shell max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-border/80 bg-card p-4 shadow-[0_30px_80px_rgba(15,23,42,0.12)] md:p-6">
+            <div className="mb-5 flex items-start justify-between gap-4 rounded-2xl border border-border/70 bg-background/60 p-4">
               <div>
-                <h2 className="text-foreground text-xl">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary/80">Inventario</p>
+                <h2 className="text-xl font-black tracking-tight text-foreground md:text-2xl">
                   {editingProduct
                     ? 'Editar producto'
                     : 'Nuevo producto'}
@@ -1022,7 +1133,7 @@ export default function Inventory() {
               <div className="flex flex-col sm:flex-row sm:justify-start gap-4 pt-4">
                 <button
                   type="submit"
-                  className="w-full sm:w-auto px-4 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors"
+                  className="w-full rounded-xl bg-primary px-4 py-2.5 font-semibold text-[#F7EFE6] shadow-lg shadow-primary/20 transition-all hover:-translate-y-0.5 hover:brightness-110 sm:w-auto"
                 >
                   {editingProduct
                     ? 'Actualizar'
@@ -1032,7 +1143,7 @@ export default function Inventory() {
                 <button
                   type="button"
                   onClick={closeFormModal}
-                  className="w-full sm:w-auto px-4 py-2 bg-muted hover:bg-border text-foreground rounded-lg transition-colors"
+                  className="w-full rounded-xl bg-muted px-4 py-2.5 font-semibold text-foreground transition-colors hover:bg-border sm:w-auto"
                 >
                   Cancelar
                 </button>
@@ -1178,6 +1289,70 @@ export default function Inventory() {
           </ModalCard>
         </div>
       )}
+        </>
+      )}
+
+      {showAuditDateModal && (
+        <div className="modal-backdrop fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-primary/10 p-3 text-primary">
+                  <CalendarDays className="h-6 w-6" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-foreground">Fecha de auditoría</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Selecciona la fecha a la que corresponde el conteo físico.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAuditDateModal(false)}
+                className="rounded-lg bg-muted p-2 text-foreground transition-colors hover:bg-border"
+                aria-label="Cerrar"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <label className="mb-2 block text-sm font-medium text-foreground">
+              Fecha del conteo
+            </label>
+            <input
+              type="date"
+              value={auditDate}
+              max={getCurrentGuatemalaDate()}
+              onChange={(event) => setAuditDate(event.target.value)}
+              className="w-full rounded-lg border border-border bg-secondary px-4 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+
+            <p className="mt-5 rounded-xl bg-muted p-4 text-center text-foreground">
+              ¿Quiere realizar la auditoría del mes de{' '}
+              <span className="font-bold">{formatAuditMonth(auditDate)}</span>?
+            </p>
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={startAudit}
+                disabled={!auditDate}
+                className="flex-1 rounded-lg bg-primary px-4 py-2 text-[#F7EFE6] transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Sí, iniciar auditoría
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAuditDateModal(false)}
+                className="flex-1 rounded-lg bg-muted px-4 py-2 text-foreground transition-colors hover:bg-border"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1213,7 +1388,7 @@ function FormInput({
         onChange={(event) =>
           onChange(event.target.value)
         }
-        className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+        className="w-full rounded-xl border border-border bg-secondary/80 px-4 py-2.5 text-foreground shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
         required={required}
       />
     </div>

@@ -41,6 +41,10 @@ textarea,
 }
 
 @media (max-width: 639px) {
+  :root {
+    --font-size: 17.5px;
+  }
+
   input,
   select,
   textarea,

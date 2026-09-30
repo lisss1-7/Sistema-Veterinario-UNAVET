@@ -320,11 +320,13 @@ const setTotalStock = async ({
   connection,
   productId,
   targetStock,
-  supplierId,
-  expirationDate,
-  purchasePrice,
+  supplierId = null,
+  expirationDate = null,
+  purchasePrice = null,
   userId,
   reason,
+  referenceType = 'Manual',
+  referenceId = null,
 }) => {
   const normalizedTarget = Number(targetStock);
   if (!Number.isInteger(normalizedTarget) || normalizedTarget < 0) {
@@ -346,6 +348,8 @@ const setTotalStock = async ({
       purchasePrice,
       userId,
       reason,
+      referenceType,
+      referenceId,
     });
   }
   if (difference < 0) {
@@ -355,8 +359,8 @@ const setTotalStock = async ({
       quantity: Math.abs(difference),
       userId,
       reason,
-      referenceType: 'Manual',
-      referenceId: null,
+      referenceType,
+      referenceId,
     });
     return result.newStock;
   }

@@ -1,6 +1,7 @@
 import { createBrowserRouter } from 'react-router';
 import type { ComponentType } from 'react';
 import Layout from './components/Layout';
+import AdministratorRoute from './components/AdministratorRoute';
 import { isModuleContentEnabled } from './config/deliveryScope';
 
 const page = (loader: () => Promise<{ default: ComponentType }>) =>
@@ -29,7 +30,11 @@ export const router = createBrowserRouter([
     children: [
       { index: true, lazy: page(() => import('./pages/Dashboard')) },
       { path: 'patients', lazy: page(() => import('./pages/Patients')) },
-      { path: 'maintenance', lazy: page(() => import('./pages/PatientCatalogs')) },
+      {
+        path: 'maintenance',
+        Component: AdministratorRoute,
+        children: [{ index: true, lazy: page(() => import('./pages/PatientCatalogs')) }],
+      },
       { path: 'patients/:id', lazy: page(() => import('./pages/PatientDetail')) },
       {
         path: 'appointments',

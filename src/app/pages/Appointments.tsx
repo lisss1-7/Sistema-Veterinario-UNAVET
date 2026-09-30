@@ -19,6 +19,7 @@ import SearchablePatientSelect from '../components/SearchablePatientSelect';
 import ThemedSelect from '../components/ThemedSelect';
 import {
   getTodayLocal,
+  isClinicDateTimePastOrCurrent,
   isValidName,
   isValidPhone,
   sanitizeName,
@@ -110,12 +111,18 @@ export default function Appointments() {
  
   const [appointmentStatusOptions, setAppointmentStatusOptions] = useState<string[]>([]);
   const [timeSlots, setTimeSlots] = useState<string[]>([]);
+  const [clockNow, setClockNow] = useState(() => Date.now());
 
 
   useEffect(() => {
     loadAppointments();
     loadPatients();
     loadCatalogs();
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClockNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -294,6 +301,9 @@ export default function Appointments() {
     );
   };
 
+  const isTimePastOrCurrent = (time: string) =>
+    isClinicDateTimePastOrCurrent(formData.date, time, new Date(clockNow));
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
@@ -331,6 +341,14 @@ export default function Appointments() {
       setFormError({
         title: 'Fecha inválida',
         message: 'La fecha de la cita no puede estar en el pasado.',
+      });
+      return;
+    }
+
+    if (isClinicDateTimePastOrCurrent(formData.date, formData.time)) {
+      setFormError({
+        title: 'Horario vencido',
+        message: 'Selecciona una fecha y hora posteriores a la hora actual de Guatemala.',
       });
       return;
     }
@@ -501,7 +519,7 @@ export default function Appointments() {
 
   return (
     <div className="w-full p-[0.825rem] md:p-[1.375rem]">
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center">
+      <div className="mb-3 flex flex-col gap-2 sm:mb-6 sm:flex-row sm:items-center sm:gap-4">
         <div>
           <h1 className="text-foreground text-xl md:text-2xl font-bold mb-2">
             Citas clínicas
@@ -516,9 +534,9 @@ export default function Appointments() {
           Nueva cita
         </button>}
       </div>
-      <div className="mb-4 rounded-2xl border border-border/60 bg-gradient-to-br from-card to-muted/20 p-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)] md:p-4">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-          <div className="md:col-span-2">
+      <div className="mb-3 rounded-2xl border border-border/60 bg-gradient-to-br from-card to-muted/20 p-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)] md:mb-4 md:p-4">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-4">
+          <div className="col-span-2 md:col-span-2">
             <label className="block text-foreground mb-2 text-sm">
               Buscar
             </label>
@@ -609,13 +627,13 @@ export default function Appointments() {
           </div>
         </div>
 
-        <div className="space-y-3 p-3 lg:hidden">
+        <div className="space-y-2 p-2 sm:p-3 lg:hidden">
           {monthAppointments.map((appointment) => (
             <button
               key={appointment.id}
               type="button"
               onClick={() => setSelectedAppointment(appointment)}
-              className="w-full rounded-2xl border border-border bg-card p-4 text-left shadow-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="w-full rounded-2xl border border-border bg-card p-3 text-left shadow-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:p-4"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -637,7 +655,7 @@ export default function Appointments() {
                   {appointment.status}
                 </span>
               </div>
-              <p className="mt-3 line-clamp-2 text-sm text-foreground">
+              <p className="mt-2 line-clamp-2 text-sm text-foreground sm:mt-3">
                 {appointment.reason || 'Sin motivo especificado'}
               </p>
             </button>
@@ -992,11 +1010,16 @@ export default function Appointments() {
                     </option>
 
                     {timeSlots.map((time) => {
-                      const unavailable = isTimeUnavailable(time);
+                      const pastOrCurrent = isTimePastOrCurrent(time);
+                      const unavailable = pastOrCurrent || isTimeUnavailable(time);
 
                       return (
                         <option key={time} value={time} disabled={unavailable}>
-                          {unavailable ? `${time} - No disponible` : time}
+                          {pastOrCurrent
+                            ? `${time} - Horario pasado`
+                            : unavailable
+                              ? `${time} - No disponible`
+                              : time}
                         </option>
                       );
                     })}

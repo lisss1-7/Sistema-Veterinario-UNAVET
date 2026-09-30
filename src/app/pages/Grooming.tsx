@@ -28,6 +28,7 @@ import { useModulePermissions } from '../hooks/useModulePermissions';
 import { formatDateForDisplay } from '../utils/dateFormat';
 import {
   getTodayLocal,
+  isClinicDateTimePastOrCurrent,
   isValidName,
   isValidPhone,
   isValidAgeSpacing,
@@ -122,6 +123,7 @@ export default function Grooming() {
   const [selectedBreedOption, setSelectedBreedOption] = useState('');
   const [customBreed, setCustomBreed] = useState('');
   const [currentTimeSlots, setCurrentTimeSlots] = useState<string[]>([]);
+  const [clockNow, setClockNow] = useState(() => Date.now());
   const [transportCapacity, setTransportCapacity] = useState(0);
   const [stats, setStats] = useState({
     inClinic: 0,
@@ -144,6 +146,11 @@ export default function Grooming() {
     loadGrooming();
     loadPatients();
     loadCatalogs();
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClockNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -450,6 +457,9 @@ export default function Grooming() {
     );
   };
 
+  const isTimePastOrCurrent = (time: string) =>
+    isClinicDateTimePastOrCurrent(formData.date, time, new Date(clockNow));
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
@@ -477,6 +487,20 @@ export default function Grooming() {
       setFormError({
         title: 'Fecha inválida',
         message: 'La fecha de la cita no puede estar en el pasado.',
+      });
+      return;
+    }
+    if (!formData.time) {
+      setFormError({
+        title: 'Falta la hora',
+        message: 'Debes seleccionar una hora antes de guardar la cita de grooming.',
+      });
+      return;
+    }
+    if (isClinicDateTimePastOrCurrent(formData.date, formData.time)) {
+      setFormError({
+        title: 'Horario vencido',
+        message: 'Selecciona una fecha y hora posteriores a la hora actual de Guatemala.',
       });
       return;
     }
@@ -715,7 +739,7 @@ export default function Grooming() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-[0.6875rem] mb-[0.825rem]">
+      <div className="mb-[0.825rem] grid grid-cols-2 gap-2 sm:gap-[0.6875rem] xl:grid-cols-4">
         <InformationCard
           compact
           label="Grooming en clínica hoy"
@@ -747,8 +771,8 @@ export default function Grooming() {
       </div>
 
       <div className="bg-card rounded-xl p-[0.825rem] shadow-sm mb-[0.825rem] border border-border">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-[0.825rem]">
-          <div className="md:col-span-2">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-5 md:gap-[0.825rem]">
+          <div className="col-span-2 md:col-span-2">
             <label className="block text-foreground mb-1 text-[0.825rem]">
               Buscar
             </label>
@@ -881,13 +905,13 @@ export default function Grooming() {
         </section>
       ) : (
         <>
-      <div className="lg:hidden space-y-4">
+      <div className="space-y-2 lg:hidden">
         {filteredGrooming.map((groom) => (
           <article
             key={groom.id}
-            className="rounded-2xl border border-border bg-card p-4 shadow-lg shadow-primary/10"
+            className="rounded-2xl border border-border bg-card p-3 shadow-lg shadow-primary/10 sm:p-4"
           >
-            <div className="flex items-start justify-between gap-3 mb-4">
+            <div className="mb-2 flex items-start justify-between gap-3 sm:mb-4">
               <div>
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   {formatDateForDisplay(groom.date)} • {groom.time}
@@ -920,7 +944,7 @@ export default function Grooming() {
               </div>
             </div>
 
-            <div className="mt-4">
+            <div className="mt-2 sm:mt-4">
               <ThemedSelect
                 value={groom.status}
                 disabled={!permissions.canEdit}
@@ -937,7 +961,7 @@ export default function Grooming() {
               </ThemedSelect>
             </div>
 
-            <div className="mt-4 flex items-center gap-2">
+            <div className="mt-2 flex items-center gap-2 sm:mt-4">
               <button
                 type="button"
                 onClick={() => setSelectedGrooming(groom)}
@@ -1381,7 +1405,7 @@ export default function Grooming() {
                   type="date"
                   value={formData.date || ''}
                   onChange={(value) =>
-                    setFormData({ ...formData, date: value })
+                    setFormData({ ...formData, date: value, time: '' })
                   }
                   required
                   min={getTodayLocal()}
@@ -1403,11 +1427,16 @@ export default function Grooming() {
                     <option value="">Seleccionar hora</option>
 
                     {currentTimeSlots.map((time) => {
-                      const unavailable = isTimeUnavailable(time);
+                      const pastOrCurrent = isTimePastOrCurrent(time);
+                      const unavailable = pastOrCurrent || isTimeUnavailable(time);
 
                       return (
                         <option key={time} value={time} disabled={unavailable}>
-                          {unavailable ? `${time} - No disponible` : time}
+                          {pastOrCurrent
+                            ? `${time} - Horario pasado`
+                            : unavailable
+                              ? `${time} - No disponible`
+                              : time}
                         </option>
                       );
                     })}

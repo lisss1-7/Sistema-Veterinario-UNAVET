@@ -158,6 +158,83 @@ const normalizeNumbers = (body) => {
   return { stock, minimum, price };
 };
 
+const normalizeAuditItems = (items) => {
+  if (!Array.isArray(items) || items.length === 0) return null;
+
+  const normalized = [];
+  const productIds = new Set();
+
+  for (const item of items) {
+    const productId = Number(item?.productId);
+    const systemStock = Number(item?.systemStock);
+    const physicalStock = Number(item?.physicalStock);
+    const notes = String(item?.notes || '').trim();
+
+    if (
+      !Number.isInteger(productId) ||
+      productId <= 0 ||
+      productIds.has(productId) ||
+      !Number.isInteger(systemStock) ||
+      systemStock < 0 ||
+      !Number.isInteger(physicalStock) ||
+      physicalStock < 0 ||
+      notes.length > 500
+    ) {
+      return null;
+    }
+
+    productIds.add(productId);
+    normalized.push({ productId, systemStock, physicalStock, notes });
+  }
+
+  return normalized.sort((first, second) => first.productId - second.productId);
+};
+
+const toMysqlDateTime = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const now = Date.now();
+  if (
+    date.getTime() > now + 5 * 60 * 1000 ||
+    now - date.getTime() > 7 * 24 * 60 * 60 * 1000
+  ) {
+    return null;
+  }
+
+  return new Date(Math.min(date.getTime(), now))
+    .toISOString()
+    .slice(0, 19)
+    .replace('T', ' ');
+};
+
+const getGuatemalaDate = () => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Guatemala',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+};
+
+const normalizeAuditDate = (value) => {
+  const normalized = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return null;
+
+  const date = new Date(`${normalized}T12:00:00.000Z`);
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.toISOString().slice(0, 10) !== normalized ||
+    normalized > getGuatemalaDate()
+  ) {
+    return null;
+  }
+
+  return normalized;
+};
+
 const listarProductos = async (req, res) => {
   try {
     const [rows] = await pool.query(
@@ -435,6 +512,226 @@ const ajustarStock = async (req, res) => {
   }
 };
 
+const finalizarAuditoria = async (req, res) => {
+  const connection = await pool.getConnection();
+
+  try {
+    const items = normalizeAuditItems(req.body?.items);
+    const startedAt = toMysqlDateTime(req.body?.startedAt);
+    const auditDate = normalizeAuditDate(req.body?.auditDate);
+
+    if (!items || !startedAt || !auditDate) {
+      return res.status(400).json({
+        message:
+          'La auditoría debe incluir una fecha válida y el conteo físico de cada producto activo',
+      });
+    }
+
+    await connection.beginTransaction();
+
+    const [products] = await connection.query(
+      `SELECT
+         producto.producto_id,
+         producto.nombre,
+         categoria.nombre AS categoria,
+         unidad.nombre AS unidad_medida
+       FROM producto_inventario producto
+       INNER JOIN categoria_inventario categoria
+         ON categoria.categoria_id = producto.categoria_id
+       INNER JOIN unidad_medida unidad
+         ON unidad.unidad_medida_id = producto.unidad_medida_id
+       WHERE producto.activo = 1
+       ORDER BY producto.producto_id
+       FOR UPDATE`
+    );
+
+    if (products.length === 0) {
+      const error = new Error('No hay productos activos para auditar');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const currentIds = products.map((product) => Number(product.producto_id));
+    const submittedIds = items.map((item) => item.productId);
+    if (
+      currentIds.length !== submittedIds.length ||
+      currentIds.some((productId, index) => productId !== submittedIds[index])
+    ) {
+      const error = new Error(
+        'El inventario cambió desde que inició el conteo. Reinicie la auditoría para incluir todos los productos activos.'
+      );
+      error.statusCode = 409;
+      throw error;
+    }
+
+    const [lots] = await connection.query(
+      `SELECT producto_lote_id, producto_id, stock
+       FROM lote_producto
+       WHERE producto_id IN (?)
+       ORDER BY producto_id, producto_lote_id
+       FOR UPDATE`,
+      [currentIds]
+    );
+
+    const stockByProduct = lots.reduce((result, lot) => {
+      const productId = Number(lot.producto_id);
+      result.set(productId, (result.get(productId) || 0) + Number(lot.stock || 0));
+      return result;
+    }, new Map());
+
+    const staleItem = items.find(
+      (item) => item.systemStock !== (stockByProduct.get(item.productId) || 0)
+    );
+    if (staleItem) {
+      const product = products.find(
+        (candidate) => Number(candidate.producto_id) === staleItem.productId
+      );
+      const error = new Error(
+        `El stock de ${product?.nombre || 'un producto'} cambió durante el conteo. Reinicie la auditoría antes de finalizar.`
+      );
+      error.statusCode = 409;
+      throw error;
+    }
+
+    const differences = items.filter(
+      (item) => item.physicalStock !== item.systemStock
+    ).length;
+    const [auditResult] = await connection.query(
+      `INSERT INTO auditoria_inventario (
+         codigo,
+         usuario_id,
+         fecha_auditoria,
+         iniciado_en,
+         finalizado_en,
+         total_productos,
+         productos_con_diferencia
+       )
+       VALUES (NULL, ?, ?, ?, UTC_TIMESTAMP(), ?, ?)`,
+      [req.user?.id || null, auditDate, startedAt, items.length, differences]
+    );
+
+    const auditId = Number(auditResult.insertId);
+    const auditCode = `AUD-${auditDate.slice(0, 4)}-${String(auditId).padStart(6, '0')}`;
+    await connection.query(
+      `UPDATE auditoria_inventario
+       SET codigo = ?
+       WHERE auditoria_inventario_id = ?`,
+      [auditCode, auditId]
+    );
+
+    const productsById = new Map(
+      products.map((product) => [Number(product.producto_id), product])
+    );
+    const reportItems = [];
+
+    for (const item of items) {
+      const product = productsById.get(item.productId);
+      const difference = item.physicalStock - item.systemStock;
+
+      await connection.query(
+        `INSERT INTO auditoria_inventario_detalle (
+           auditoria_inventario_id,
+           producto_id,
+           producto_nombre,
+           categoria_nombre,
+           unidad_medida,
+           stock_sistema,
+           conteo_fisico,
+           diferencia,
+           notas
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          auditId,
+          item.productId,
+          product.nombre,
+          product.categoria,
+          product.unidad_medida,
+          item.systemStock,
+          item.physicalStock,
+          difference,
+          item.notes || null,
+        ]
+      );
+
+      if (difference !== 0) {
+        await setTotalStock({
+          connection,
+          productId: item.productId,
+          targetStock: item.physicalStock,
+          userId: req.user?.id,
+          reason: `Ajuste por auditoría de inventario ${auditCode}`,
+          referenceType: 'Corrección',
+          referenceId: auditId,
+        });
+      }
+
+      reportItems.push({
+        productId: String(item.productId),
+        name: product.nombre,
+        category: product.categoria,
+        unit: product.unidad_medida,
+        systemStock: item.systemStock,
+        physicalStock: item.physicalStock,
+        difference,
+        notes: item.notes,
+      });
+    }
+
+    const [users] = await connection.query(
+      `SELECT
+         TRIM(CONCAT_WS(' ', primer_nombre, segundo_nombre, primer_apellido, segundo_apellido)) AS nombre,
+         correo
+       FROM usuario
+       WHERE usuario_id = ?
+       LIMIT 1`,
+      [req.user?.id || null]
+    );
+
+    await connection.query(
+      `INSERT INTO auditoria (
+         usuario_id,
+         accion,
+         entidad,
+         entidad_id,
+         descripcion,
+         ip
+       )
+       VALUES (?, 'FINALIZAR_AUDITORIA', 'auditoria_inventario', ?, ?, ?)`,
+      [
+        req.user?.id || null,
+        auditId,
+        `Auditoría ${auditCode} del ${auditDate} finalizada con ${differences} producto(s) con diferencia`,
+        req.ip || null,
+      ]
+    );
+
+    await connection.commit();
+
+    res.status(201).json({
+      message: 'Auditoría finalizada y existencias conciliadas correctamente',
+      audit: {
+        id: String(auditId),
+        code: auditCode,
+        auditDate,
+        startedAt: new Date(`${startedAt.replace(' ', 'T')}Z`).toISOString(),
+        completedAt: new Date().toISOString(),
+        auditor: users[0]?.nombre || users[0]?.correo || 'Usuario del sistema',
+        totalProducts: items.length,
+        discrepancies: differences,
+        items: reportItems,
+      },
+    });
+  } catch (error) {
+    await connection.rollback();
+    res.status(error.statusCode || 500).json({
+      message: error.message || 'Error al finalizar la auditoría de inventario',
+    });
+  } finally {
+    connection.release();
+  }
+};
+
 const eliminarProducto = async (req, res) => {
   try {
     const [result] = await pool.query(
@@ -466,5 +763,6 @@ module.exports = {
   crearProducto,
   actualizarProducto,
   ajustarStock,
+  finalizarAuditoria,
   eliminarProducto,
 };

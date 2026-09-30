@@ -289,7 +289,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
   return (
     <div
-      className="app-header relative z-50 isolate flex items-center justify-between gap-1.5 border-b border-white/10 px-2 py-3 min-[380px]:gap-2 min-[380px]:px-3 sm:px-4 md:gap-3 md:px-8 md:py-4"
+      className="app-header relative z-50 isolate flex items-center justify-between gap-1.5 border-b border-white/10 px-2 py-2 min-[380px]:gap-2 min-[380px]:px-3 sm:px-4 sm:py-3 md:gap-3 md:px-8 md:py-4"
       style={{
         background: 'var(--sidebar)',
       }}

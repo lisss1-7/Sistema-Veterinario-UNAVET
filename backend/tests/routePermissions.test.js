@@ -20,6 +20,7 @@ const expectedPermissions = {
   ],
   inventario: [
     ['get', '/', 'inventory', 'ver'],
+    ['post', '/auditorias/finalizar', 'inventory', 'editar'],
     ['get', '/:id', 'inventory', 'ver'],
     ['post', '/', 'inventory', 'crear'],
     ['put', '/:id', 'inventory', 'editar'],
@@ -38,6 +39,8 @@ const expectedPermissions = {
   aiReports: [['post', '/chat', 'aiReports', 'crear']],
   cierreVentas: [
     ['get', '/', 'inventory', 'ver'],
+    ['get', '/estado', 'inventory', 'ver'],
+    ['post', '/finalizar', 'inventory', 'crear'],
     ['post', '/', 'inventory', 'crear'],
     ['delete', '/:id', 'inventory', 'eliminar'],
   ],

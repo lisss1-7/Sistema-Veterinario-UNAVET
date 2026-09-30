@@ -805,7 +805,7 @@ export default function Prescriptions() {
 
   return (
     <div className="w-full p-[0.825rem] md:p-[1.375rem]">
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
+      <div className="mb-3 flex flex-col gap-2 sm:mb-6 sm:flex-row sm:items-center sm:gap-4">
         <h1 className="text-foreground text-xl md:text-2xl font-bold mb-2">
           Recetas Médicas
         </h1>
@@ -813,14 +813,14 @@ export default function Prescriptions() {
         {permissions.canCreate && <button
           onClick={openCreateModal}
           disabled={loadingCatalogs}
-          className="flex items-center gap-2 px-4 py-2 text-lg bg-primary hover:bg-primary disabled:opacity-60 disabled:cursor-not-allowed text-[#F7EFE6] rounded-lg transition-colors"
+          className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-base text-[#F7EFE6] transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 sm:text-lg"
         >
           <Plus className="w-4 h-4" />
           Nueva receta
         </button>}
       </div>
 
-      <div className="bg-card rounded-lg p-6 shadow-lg mb-6">
+      <div className="mb-3 rounded-lg bg-card p-3 shadow-lg sm:mb-6 sm:p-6">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
 
@@ -834,16 +834,16 @@ export default function Prescriptions() {
         </div>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-2 sm:space-y-4">
         {filteredPrescriptions.map((prescription) => {
           const patient = patients.find((p) => p.id === prescription.patientId);
 
           return (
             <div
               key={prescription.id}
-              className="bg-card rounded-lg p-6 shadow-lg"
+              className="rounded-lg bg-card p-4 shadow-lg sm:p-6"
             >
-              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-4">
+              <div className="mb-3 flex flex-col gap-3 sm:mb-4 sm:gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <h3 className="text-foreground text-lg font-medium">
                     {patient?.petName || 'N/A'}
@@ -865,7 +865,7 @@ export default function Prescriptions() {
                   </p>
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-2">
+                <div className="grid grid-cols-2 gap-2 [&>button:last-child]:col-span-2 sm:flex sm:flex-row">
                   {permissions.canEdit && <button
                     type="button"
                     onClick={() => openEditModal(prescription)}

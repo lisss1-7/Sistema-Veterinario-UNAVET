@@ -330,6 +330,12 @@ const crearPaciente = async (req, res) => {
       });
     }
 
+    if (String(diet || '').length > 255) {
+      return res.status(400).json({
+        message: 'La alimentación no puede exceder 255 caracteres',
+      });
+    }
+
     if (!isValidAgeSpacing(age)) {
       return res.status(400).json({
         message: 'La edad debe separar el número de la unidad, por ejemplo: 2 años',
@@ -503,6 +509,12 @@ const actualizarPaciente = async (req, res) => {
     if (String(age).trim().length > 50) {
       return res.status(400).json({
         message: 'La edad no puede exceder 50 caracteres',
+      });
+    }
+
+    if (String(diet || '').length > 255) {
+      return res.status(400).json({
+        message: 'La alimentación no puede exceder 255 caracteres',
       });
     }
 

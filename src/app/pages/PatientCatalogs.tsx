@@ -774,7 +774,7 @@ export default function PatientCatalogs() {
 
   return (
     <div className="w-full p-[0.825rem] md:p-[1.375rem]">
-      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="mb-4 flex flex-col gap-3 sm:mb-8 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="mb-2 flex items-center gap-3">
             <div className="rounded-lg border border-primary/20 bg-primary/10 p-2.5 text-primary">
@@ -790,7 +790,7 @@ export default function PatientCatalogs() {
         </div>
       </div>
 
-      <div className="mb-8 flex flex-wrap gap-2 border-b border-border pb-4" role="tablist">
+      <div className="mb-4 flex flex-wrap gap-2 border-b border-border pb-2 sm:mb-8 sm:pb-4" role="tablist">
         {CATALOG_GROUPS.filter(
           (group) => modulePermissions[group.moduleCode]?.canView
         ).map((group) => {
@@ -826,7 +826,7 @@ export default function PatientCatalogs() {
 
       <div
         className={`grid grid-cols-1 transition-all sm:grid-cols-2 xl:grid-cols-4 ${
-          selectedCatalog ? 'mb-4 gap-2' : 'mb-8 gap-4'
+          selectedCatalog ? 'mb-3 gap-2 sm:mb-4' : 'mb-4 gap-3 sm:mb-8 sm:gap-4'
         }`}
         role="group"
         aria-label={`Catálogos de ${currentGroup.label}`}
@@ -844,27 +844,27 @@ export default function PatientCatalogs() {
               disabled={saving}
               title={selectedCatalog ? item.description : undefined}
               className={`group flex min-w-0 rounded-2xl border text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50 ${
-                selectedCatalog ? 'flex-row items-center gap-3 p-3' : 'flex-col p-5'
+                selectedCatalog ? 'flex-row items-center gap-3 p-3' : 'flex-col p-3 sm:p-5'
               } ${
                 selected
                   ? 'border-primary bg-primary/5 ring-1 ring-primary'
                   : 'border-border bg-card hover:border-primary/50 hover:bg-primary/5'
               }`}
             >
-              <span className={`flex items-center justify-between ${selectedCatalog ? 'shrink-0 gap-1' : 'mb-5 w-full'}`}>
-                <span className={`flex items-center justify-center rounded-xl ${selectedCatalog ? 'h-9 w-9' : 'h-12 w-12'} ${selected ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary'}`}>
+              <span className={`flex items-center justify-between ${selectedCatalog ? 'shrink-0 gap-1' : 'mb-2 w-full sm:mb-5'}`}>
+                <span className={`flex items-center justify-center rounded-xl ${selectedCatalog ? 'h-9 w-9' : 'h-10 w-10 sm:h-12 sm:w-12'} ${selected ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary'}`}>
                   <Icon className={selectedCatalog ? 'h-4 w-4' : 'h-6 w-6'} strokeWidth={1.7} aria-hidden="true" />
                 </span>
                 {selected
                   ? <Check className={selectedCatalog ? 'h-4 w-4 text-primary' : 'h-5 w-5 text-primary'} aria-hidden="true" />
                   : !selectedCatalog && <ArrowUpRight className="h-5 w-5 text-muted-foreground group-hover:text-primary" aria-hidden="true" />}
               </span>
-              <span className={`${selectedCatalog ? 'text-sm' : 'mb-2 text-lg'} min-w-0 font-semibold text-foreground`}>
+              <span className={`${selectedCatalog ? 'text-sm' : 'mb-1 text-base sm:mb-2 sm:text-lg'} min-w-0 font-semibold text-foreground`}>
                 {item.label}
               </span>
               {!selectedCatalog && (
                 <>
-                  <span className="mb-5 flex-1 text-sm leading-relaxed text-muted-foreground">{item.description}</span>
+                  <span className="mb-2 flex-1 text-sm leading-relaxed text-muted-foreground sm:mb-5">{item.description}</span>
                   <span className="text-sm font-medium text-primary">{selected ? 'Catálogo seleccionado' : 'Administrar opciones'}</span>
                 </>
               )}
@@ -876,7 +876,7 @@ export default function PatientCatalogs() {
       <section id="catalog-content" aria-label={selectedCatalog ? catalog.label : 'Opciones del catálogo'} aria-busy={Boolean(selectedCatalog && loading)}>
       {selectedCatalog ? (
         <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-          <div className="flex flex-col gap-4 border-b border-border p-5 sm:flex-row sm:items-center sm:justify-between md:px-6">
+          <div className="flex flex-col gap-3 border-b border-border p-3 sm:flex-row sm:items-center sm:justify-between sm:p-5 md:px-6">
             <div className="flex items-center gap-3">
               <CatalogIcon className="h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
               <div>
@@ -899,7 +899,7 @@ export default function PatientCatalogs() {
             )}
           </div>
 
-        <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-[minmax(0,1fr)_220px] md:px-6">
+        <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-[minmax(0,1fr)_220px] sm:gap-4 sm:p-5 md:px-6">
           <div>
             <label htmlFor="catalog-search" className="mb-2 block text-sm font-medium text-foreground">
               Buscar
