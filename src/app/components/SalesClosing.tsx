@@ -15,6 +15,7 @@ import type { InventoryProduct } from '../utils/types';
 import ThemedSelect from './ThemedSelect';
 import { API_URL } from '../config/api';
 import { getAuthHeaders } from '../utils/apiClient';
+import type { ModulePermissions } from '../hooks/useModulePermissions';
 
 type SaleItem = {
   type: 'Producto' | 'Servicio';
@@ -43,6 +44,7 @@ type Sale = {
 
 type Props = {
   inventory: InventoryProduct[];
+  permissions: ModulePermissions;
   onInventoryChanged: () => Promise<void>;
 };
 
@@ -200,7 +202,7 @@ const money = (value: number) =>
     currency: 'GTQ',
   }).format(Number(value || 0));
 
-export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
+export default function SalesClosing({ inventory, permissions, onInventoryChanged }: Props) {
   const [date, setDate] = useState(today());
   const [sales, setSales] = useState<Sale[]>([]);
   const [services, setServices] = useState<ServiceOption[]>([]);
@@ -437,6 +439,7 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
 
   const saveSale = async (event: FormEvent) => {
     event.preventDefault();
+    if (!permissions.canCreate) return;
     if (items.length === 0) {
       setNotice({
         title: 'Agrega una descripción',
@@ -484,7 +487,7 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
   };
 
   const deleteSale = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || !permissions.canDelete) return;
     try {
       const response = await fetch(
         `${API_URL}/cierre-ventas/${deleteTarget.id}`,
@@ -509,6 +512,7 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
   };
 
   const finalizeDay = async () => {
+    if (!permissions.canEdit) return;
     try {
       const response = await fetch(`${API_URL}/cierre-ventas/finalizar`, {
         method: 'POST',
@@ -563,7 +567,7 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
               className="px-4 py-2 bg-secondary border border-border rounded-lg text-foreground"
             />
           </div>
-          <button
+          {permissions.canCreate && <button
             type="button"
             onClick={() => setShowForm(true)}
             disabled={loadingDayStatus || isDayClosed}
@@ -571,9 +575,9 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
           >
             <Plus className="w-4 h-4" />
             Registrar venta
-          </button>
+          </button>}
         </div>
-        <button
+        {permissions.canEdit && <button
           type="button"
           onClick={() => setShowFinalizeConfirm(true)}
           disabled={loadingDayStatus || isDayClosed}
@@ -581,7 +585,7 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
         >
           <Lock className="w-4 h-4" />
           {isDayClosed ? 'Día finalizado' : 'Finalizar día'}
-        </button>
+        </button>}
       </div>
 
       {isDayClosed && (
@@ -631,7 +635,7 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
                 Factura: {sale.invoiceNit || 'Sin NIT'} · {sale.invoiceName || 'Sin nombre'}
               </p>
             )}
-            <div className="mt-2 flex justify-end">
+            {permissions.canDelete && <div className="mt-2 flex justify-end">
               <button
                 type="button"
                 title="Eliminar venta"
@@ -642,7 +646,7 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
               >
                 <Trash2 className="h-4 w-4" />
               </button>
-            </div>
+            </div>}
           </article>
         ))}
         {!loading && sales.length === 0 && (
@@ -673,7 +677,7 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
               ))}
               <th className="px-4 py-3 text-left">Factura NIT</th>
               <th className="px-4 py-3 text-left">Nombre</th>
-              <th className="px-4 py-3 text-center">Acciones</th>
+              {permissions.canDelete && <th className="px-4 py-3 text-center">Acciones</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -693,7 +697,7 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
                 ))}
                 <td className="px-4 py-3">{sale.invoiceNit || '—'}</td>
                 <td className="px-4 py-3">{sale.invoiceName || '—'}</td>
-                <td className="px-4 py-3 text-center">
+                {permissions.canDelete && <td className="px-4 py-3 text-center">
                   <button
                     type="button"
                     title="Eliminar venta"
@@ -703,12 +707,12 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
-                </td>
+                </td>}
               </tr>
             ))}
             {!loading && sales.length === 0 && (
               <tr>
-                <td colSpan={paymentOptions.length + 5} className="px-6 py-10 text-center text-muted-foreground">
+                <td colSpan={paymentOptions.length + (permissions.canDelete ? 5 : 4)} className="px-6 py-10 text-center text-muted-foreground">
                   No hay ventas registradas para esta fecha.
                 </td>
               </tr>
@@ -723,13 +727,13 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
                   value={totals.byMethod[payment.codigo] || 0}
                 />
               ))}
-              <td className="px-4 py-3" colSpan={3}>Total: {money(totals.total)}</td>
+              <td className="px-4 py-3" colSpan={permissions.canDelete ? 3 : 2}>Total: {money(totals.total)}</td>
             </tr>
           </tfoot>
         </table>
       </div>
 
-      {showForm && !isDayClosed && (
+      {showForm && permissions.canCreate && !isDayClosed && (
         <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-3xl w-full max-h-[92vh] overflow-y-auto p-5 md:p-6">
             <div className="flex justify-between gap-4 mb-5">
@@ -845,7 +849,7 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
         </div>
       )}
 
-      {deleteTarget && !isDayClosed && (
+      {deleteTarget && permissions.canDelete && !isDayClosed && (
         <div className="modal-backdrop fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="bg-card rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center">
             <AlertTriangle className="w-12 h-12 text-red-600 mx-auto mb-3" />
@@ -874,7 +878,7 @@ export default function SalesClosing({ inventory, onInventoryChanged }: Props) {
         </div>
       )}
 
-      {showFinalizeConfirm && !isDayClosed && (
+      {showFinalizeConfirm && permissions.canEdit && !isDayClosed && (
         <div className="modal-backdrop fixed inset-0 z-[80] flex items-center justify-center p-4">
           <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-md w-full p-6 text-center">
             <Lock className="w-12 h-12 text-red-600 mx-auto mb-3" />

@@ -13,7 +13,7 @@ const router = express.Router();
 
 router.get('/', verificarToken, verificarPermiso('inventory', 'ver'), listarVentas);
 router.get('/estado', verificarToken, verificarPermiso('inventory', 'ver'), obtenerEstadoDia);
-router.post('/finalizar', verificarToken, verificarPermiso('inventory', 'crear'), finalizarDia);
+router.post('/finalizar', verificarToken, verificarPermiso('inventory', 'editar'), finalizarDia);
 router.post('/', verificarToken, verificarPermiso('inventory', 'crear'), crearVenta);
 router.delete('/:id', verificarToken, verificarPermiso('inventory', 'eliminar'), eliminarVenta);
 

@@ -32,7 +32,7 @@ export default function Layout() {
           type="button"
           aria-label="Cerrar menú"
           onClick={() => setIsSidebarOpen(false)}
-          className="fixed inset-0 z-30 bg-foreground/45 backdrop-blur-sm lg:hidden"
+          className="fixed inset-y-0 right-0 left-[min(15.3rem,82vw)] z-30 bg-foreground/45 backdrop-blur-sm lg:hidden"
         />
       )}
 

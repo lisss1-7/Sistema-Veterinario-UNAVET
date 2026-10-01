@@ -116,7 +116,7 @@ export function Sidebar({
   const navClass = (active: boolean) =>
     `group relative flex items-center gap-[0.6375rem] rounded-lg px-[0.85rem] py-[0.6375rem] text-[0.8925rem] transition-colors ${active
       ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-      : 'text-sidebar-foreground/70 hover:bg-white/10 hover:text-sidebar-foreground'
+      : 'text-sidebar-foreground hover:bg-white/10'
     }`;
 
   const subNavClass = (active: boolean) =>
@@ -130,6 +130,8 @@ export function Sidebar({
       ? 'border-[#C9962F]/45 bg-[#C9962F]/20 text-[#E3B95F]'
       : 'border-white/10 bg-white/[0.06] text-sidebar-foreground/75 group-hover:border-white/20 group-hover:bg-white/10 group-hover:text-sidebar-foreground'
     }`;
+
+  const navLabelClass = `${isCollapsed ? 'hidden' : 'flex-1'} text-[0.8925rem] font-medium max-lg:text-sidebar-foreground`;
 
   return (
     <aside
@@ -313,7 +315,7 @@ export function Sidebar({
                 <span className={iconChipClass(patientsActive)}>
                   <ModuleIcon className="h-[1.0625rem] w-[1.0625rem]" strokeWidth={2} />
                 </span>
-                <span className={`${isCollapsed ? 'hidden' : 'flex-1'} font-medium`}>
+                <span className={navLabelClass}>
                   {module.nombre}
                 </span>
                 {patientsActive && (
@@ -342,7 +344,7 @@ export function Sidebar({
                   <span className={iconChipClass(isActive)}>
                     <ModuleIcon className="h-[1.0625rem] w-[1.0625rem]" strokeWidth={2} />
                   </span>
-                  <span className={`${isCollapsed ? 'hidden' : 'flex-1'} font-medium`}>
+                  <span className={navLabelClass}>
                     {module.nombre}
                   </span>
                   {isActive && (
@@ -371,7 +373,7 @@ export function Sidebar({
                 <span className={iconChipClass(isActive)}>
                   <Settings className="h-[1.0625rem] w-[1.0625rem]" strokeWidth={2} />
                 </span>
-                <span className={`${isCollapsed ? 'hidden' : 'flex-1'} font-medium`}>
+                <span className={navLabelClass}>
                   Mantenimiento
                 </span>
               </>

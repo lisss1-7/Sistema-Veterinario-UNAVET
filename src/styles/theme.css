@@ -700,6 +700,18 @@
 /* Compatibilidad visual para pantallas antiguas que todavía usan utilidades
    semánticas históricas como red, green o blue. */
 @layer utilities {
+  .dark .bg-muted-foreground {
+    background-color: var(--secondary) !important;
+  }
+
+  .dark .hover\:bg-muted-foreground:hover {
+    background-color: var(--primary) !important;
+  }
+
+  .dark .hover\:bg-border:hover {
+    background-color: #594534 !important;
+  }
+
   .bg-red-50,
   .bg-red-100,
   .bg-red-200 {
@@ -731,7 +743,7 @@
   .bg-red-600,
   .bg-red-700,
   .bg-red-800 {
-    background-color: var(--destructive) !important;
+    background-color: var(--destructive-solid) !important;
   }
 
   .text-red-600,
@@ -784,7 +796,7 @@
   .hover\:bg-red-600:hover,
   .hover\:bg-red-700:hover,
   .hover\:bg-red-800:hover {
-    background-color: color-mix(in srgb, var(--destructive) 85%, var(--foreground)) !important;
+    background-color: color-mix(in srgb, var(--destructive-solid) 85%, var(--foreground)) !important;
   }
 
   .hover\:bg-green-200:hover,
@@ -801,12 +813,12 @@
   .from-red-500,
   .from-red-600,
   .hover\:from-red-600:hover {
-    --tw-gradient-from: var(--destructive) !important;
+    --tw-gradient-from: var(--destructive-solid) !important;
   }
 
   .to-red-600,
   .to-red-700,
   .hover\:to-red-700:hover {
-    --tw-gradient-to: color-mix(in srgb, var(--destructive) 78%, var(--foreground)) !important;
+    --tw-gradient-to: color-mix(in srgb, var(--destructive-solid) 78%, var(--foreground)) !important;
   }
 }

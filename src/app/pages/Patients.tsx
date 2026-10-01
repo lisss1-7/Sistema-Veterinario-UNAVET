@@ -1239,7 +1239,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                 )}
 
                 <div className="absolute top-3 left-3">
-                  <span className="px-3 py-1 rounded-full bg-foreground/80 backdrop-blur-sm text-[#F7EFE6] text-xs">
+                  <span className="px-3 py-1 rounded-full bg-[#2d1f14]/80 backdrop-blur-sm text-[#F7EFE6] text-xs">
                     {patient.species || 'Sin especie'}
                   </span>
                 </div>
@@ -1287,7 +1287,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                     type="button"
                     onClick={() => openModal(patient)}
                     aria-label={`Editar a ${patient.petName || 'este paciente'}`}
-                    className="flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-primary/20 bg-border px-2 py-2 text-xs font-semibold text-primary transition-colors hover:bg-secondary sm:gap-2 sm:text-sm"
+                    className="flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-primary/20 bg-border px-2 py-2 text-xs font-semibold text-primary transition-colors hover:bg-secondary dark:bg-secondary dark:hover:bg-[#594534] sm:gap-2 sm:text-sm"
                   >
                     <Edit className="h-4 w-4 shrink-0" />
                     Editar

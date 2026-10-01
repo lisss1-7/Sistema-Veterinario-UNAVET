@@ -523,6 +523,7 @@ export default function Inventory() {
       ) : activeSection === 'sales' ? (
         <SalesClosing
           inventory={inventory}
+          permissions={permissions}
           onInventoryChanged={loadInventory}
         />
       ) : (

@@ -40,7 +40,7 @@ const expectedPermissions = {
   cierreVentas: [
     ['get', '/', 'inventory', 'ver'],
     ['get', '/estado', 'inventory', 'ver'],
-    ['post', '/finalizar', 'inventory', 'crear'],
+    ['post', '/finalizar', 'inventory', 'editar'],
     ['post', '/', 'inventory', 'crear'],
     ['delete', '/:id', 'inventory', 'eliminar'],
   ],

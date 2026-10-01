@@ -520,7 +520,7 @@ export default function InventoryAudit({
                 disabled={isFinishing}
                 className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                   confirmationType === 'reset'
-                    ? 'bg-yellow-600 hover:bg-yellow-700'
+                    ? 'bg-yellow-600 hover:bg-yellow-700 dark:bg-[#755112] dark:hover:bg-[#8a6018]'
                     : 'bg-primary hover:bg-primary/90'
                 }`}
               >

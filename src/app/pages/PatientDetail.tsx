@@ -80,6 +80,7 @@ const MODAL_CARD_CLASS =
 
 export default function PatientDetail() {
   const { permissions } = useModulePermissions('patients');
+  const { permissions: prescriptionPermissions } = useModulePermissions('prescriptions');
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
 
@@ -1176,7 +1177,7 @@ export default function PatientDetail() {
       <div className="w-full p-[0.825rem] md:p-[1.375rem]">
         <Link
           to="/patients"
-          className="mb-6 inline-flex items-center gap-2.5 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-lg font-bold text-primary shadow-sm transition-colors hover:bg-primary hover:text-[#F7EFE6]"
+          className="mb-6 inline-flex items-center gap-2.5 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-lg font-bold text-primary shadow-sm transition-colors hover:bg-primary hover:text-[#F7EFE6] dark:hover:bg-secondary"
         >
           <ArrowLeft className="h-6 w-6" strokeWidth={2.5} />
           Volver a pacientes
@@ -1191,7 +1192,7 @@ export default function PatientDetail() {
     <div className="w-full p-[0.825rem] md:p-[1.375rem]">
       <Link
         to="/patients"
-        className="mb-3 inline-flex items-center gap-2.5 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-base font-bold text-primary shadow-sm transition-colors hover:bg-primary hover:text-[#F7EFE6] sm:mb-6 sm:text-lg"
+        className="mb-3 inline-flex items-center gap-2.5 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-base font-bold text-primary shadow-sm transition-colors hover:bg-primary hover:text-[#F7EFE6] dark:hover:bg-secondary sm:mb-6 sm:text-lg"
       >
         <ArrowLeft className="h-6 w-6" strokeWidth={2.5} />
         Volver a pacientes
@@ -1217,13 +1218,13 @@ export default function PatientDetail() {
                 {patient.petName}
               </h1>
 
-              <Link
+              {prescriptionPermissions.canCreate && <Link
                 to={`/prescriptions?patientId=${encodeURIComponent(id || '')}`}
                 className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors whitespace-nowrap"
               >
                 <FileText className="w-4 h-4" />
                 Generar receta
-              </Link>
+              </Link>}
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-sm sm:gap-4 md:grid-cols-4">

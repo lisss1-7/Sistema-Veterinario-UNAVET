@@ -2,6 +2,7 @@ import { createBrowserRouter } from 'react-router';
 import type { ComponentType } from 'react';
 import Layout from './components/Layout';
 import AdministratorRoute from './components/AdministratorRoute';
+import PrescriptionsAccessRoute from './components/PrescriptionsAccessRoute';
 import { isModuleContentEnabled } from './config/deliveryScope';
 
 const page = (loader: () => Promise<{ default: ComponentType }>) =>
@@ -50,7 +51,10 @@ export const router = createBrowserRouter([
       },
       {
         path: 'prescriptions',
-        lazy: optionalPage('prescriptions', () => import('./pages/Prescriptions')),
+        Component: PrescriptionsAccessRoute,
+        children: [
+          { index: true, lazy: optionalPage('prescriptions', () => import('./pages/Prescriptions')) },
+        ],
       },
       {
         path: 'ai-reports',

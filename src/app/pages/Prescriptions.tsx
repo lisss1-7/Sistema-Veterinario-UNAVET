@@ -230,6 +230,7 @@ export default function Prescriptions() {
 
     if (
       !patientId ||
+      !permissions.canCreate ||
       patients.length === 0 ||
       loadingCatalogs ||
       openedPatientFromUrl.current === patientId
@@ -255,7 +256,7 @@ export default function Prescriptions() {
         deliveryModeOptions[0] as PrescriptionMedication['deliveryMode'],
     });
     setShowModal(true);
-  }, [searchParams, patients, loadingCatalogs, deliveryModeOptions]);
+  }, [searchParams, patients, loadingCatalogs, deliveryModeOptions, permissions.canCreate]);
 
   const handleProductSelect = (productId: string) => {
     const product = inventory.find((p) => p.id === productId);
