@@ -196,12 +196,21 @@ const generarReporteIA = async (req, res) => {
     }
 
     const reportTitle = REPORT_TITLES[reportType];
-    const safeMetrics = buildSafeMetricContext(reportType, metrics);
+    const requestScope = (Array.isArray(metrics.requestScope) ? metrics.requestScope : [])
+      .filter((value) => typeof value === 'string')
+      .slice(0, 12)
+      .map((value) => value.replace(/[\r\n]/g, ' ').slice(0, 150));
+    const safeMetrics = {
+      ...buildSafeMetricContext(reportType, metrics),
+      ...(requestScope.length ? { alcanceSolicitado: requestScope } : {}),
+    };
     const fallbackContent = buildFallbackReport(
       reportType,
       metrics,
       cleanPrompt
-    );
+    ).replace('1) Resumen\n', requestScope.length
+      ? `1) Resumen\nAlcance del reporte: ${requestScope.join('; ')}.\n\n`
+      : '1) Resumen\n');
     const messages = [
       { role: 'system', content: buildSystemPrompt() },
       {

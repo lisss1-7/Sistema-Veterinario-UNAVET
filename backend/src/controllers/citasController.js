@@ -50,6 +50,7 @@ const obtenerTutorPorPaciente = async (connection, pacienteId) => {
       p.paciente_id,
       p.tutor_id,
       p.nombre AS nombre_mascota,
+      p.fallecido_en,
       r.nombre AS raza,
       t.primer_nombre AS primer_nombre_tutor,
       t.segundo_nombre AS segundo_nombre_tutor,
@@ -162,17 +163,20 @@ const obtenerEstadoCita = async (connection, name) => {
 };
 
 const validarHorarioDisponible = async (connection, date, time, citaId = null) => {
-  const params = [date, time];
+  const normalizedDate = String(date).slice(0, 10);
+  const normalizedTime = String(time).slice(0, 5);
+  const params = [normalizedDate, normalizedTime];
 
   let query = `
     SELECT cita_id
     FROM cita_clinica
-    WHERE fecha = ?
-      AND hora = ?
-      AND estado_cita_id NOT IN (
-        SELECT estado_cita_id
-        FROM estado_cita
-        WHERE es_cancelado = 1
+    WHERE DATE_FORMAT(fecha, '%Y-%m-%d') = ?
+      AND TIME_FORMAT(hora, '%H:%i') = ?
+      AND NOT EXISTS (
+        SELECT 1
+        FROM estado_cita estado_no_disponible
+        WHERE estado_no_disponible.estado_cita_id = cita_clinica.estado_cita_id
+          AND estado_no_disponible.es_cancelado = 1
       )
   `;
 
@@ -513,6 +517,13 @@ const crearCita = async (req, res) => {
           message: 'Paciente vinculado no encontrado',
         });
       }
+      if (paciente.fallecido_en) {
+        await connection.rollback();
+
+        return res.status(409).json({
+          message: 'No se pueden crear citas para un paciente fallecido',
+        });
+      }
 
       tutorId = paciente.tutor_id;
       nombreMascota = petName || paciente.nombre_mascota;
@@ -730,6 +741,13 @@ const actualizarCita = async (req, res) => {
 
         return res.status(404).json({
           message: 'Paciente vinculado no encontrado',
+        });
+      }
+      if (paciente.fallecido_en) {
+        await connection.rollback();
+
+        return res.status(409).json({
+          message: 'No se pueden editar citas de un paciente fallecido',
         });
       }
 

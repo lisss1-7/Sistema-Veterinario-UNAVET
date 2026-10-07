@@ -19,7 +19,6 @@ import {
 } from 'lucide-react';
 
 import type { InventoryProduct } from '../utils/types';
-import SalesClosing from '../components/SalesClosing';
 import InventoryAudit from '../components/InventoryAudit';
 import ThemedSelect from '../components/ThemedSelect';
 import { useModulePermissions } from '../hooks/useModulePermissions';
@@ -67,7 +66,7 @@ export default function Inventory() {
   const { permissions } = useModulePermissions('inventory');
   const [inventory, setInventory] = useState<InventoryProduct[]>([]);
   const [activeSection, setActiveSection] =
-    useState<'inventory' | 'sales' | 'audit'>('inventory');
+    useState<'inventory' | 'audit'>('inventory');
   const [showAuditDateModal, setShowAuditDateModal] = useState(false);
   const [auditDate, setAuditDate] = useState(getCurrentGuatemalaDate);
 
@@ -485,33 +484,6 @@ export default function Inventory() {
         )}
       </div>
 
-      {activeSection !== 'audit' && <div className="mb-3 flex w-full gap-1 rounded-xl border border-border bg-card p-1 shadow-sm sm:w-fit">
-        <button
-          type="button"
-          onClick={() => setActiveSection('inventory')}
-          className={`flex min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-2 py-2 text-sm font-medium transition-colors sm:gap-2 sm:px-4 ${
-            activeSection === 'inventory'
-              ? 'bg-primary text-[#F7EFE6]'
-              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-          }`}
-        >
-          <Package className="h-4 w-4" />
-          Productos y existencias
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveSection('sales')}
-          className={`flex min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-2 py-2 text-sm font-medium transition-colors sm:gap-2 sm:px-4 ${
-            activeSection === 'sales'
-              ? 'bg-primary text-[#F7EFE6]'
-              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-          }`}
-        >
-          <CalendarDays className="h-4 w-4" />
-          Cierre de ventas
-        </button>
-      </div>}
-
       {activeSection === 'audit' ? (
         <InventoryAudit
           products={inventory}
@@ -519,12 +491,6 @@ export default function Inventory() {
           canFinalize={permissions.canEdit}
           onBack={() => setActiveSection('inventory')}
           onCompleted={loadInventory}
-        />
-      ) : activeSection === 'sales' ? (
-        <SalesClosing
-          inventory={inventory}
-          permissions={permissions}
-          onInventoryChanged={loadInventory}
         />
       ) : (
         <>

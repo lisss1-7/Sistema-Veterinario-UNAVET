@@ -1,0 +1,24 @@
+services:
+  app:
+    build:
+      context: .
+    image: unavet:local
+    env_file:
+      - ./deploy/.env.cloud
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      SERVE_FRONTEND: 'true'
+      MEDIA_STORAGE_PATH: /app/backend/storage/media
+    ports:
+      - '${APP_BIND_ADDRESS:-127.0.0.1}:${APP_HTTP_PORT:-8080}:3001'
+    volumes:
+      - unavet-media:/app/backend/storage/media
+      - unavet-backups:/app/backend/backups
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 15s
+
+volumes:
+  unavet-media:
+  unavet-backups:

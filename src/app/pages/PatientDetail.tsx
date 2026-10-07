@@ -1,5 +1,6 @@
 import { useState, useEffect, type FormEvent, type ReactNode } from 'react';
 import { useParams, Link, useLocation } from 'react-router';
+import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import {
   ArrowLeft,
   Plus,
@@ -21,14 +22,15 @@ import type {
   Vaccination,
   TreatmentService,
 } from '../utils/types';
-import { getTodayLocal, isNonNegativeNumber } from '../utils/formValidation';
+import { getTodayLocal } from '../utils/formValidation';
 import { drawUnavetPdfHeader, getUnavetLogoBase64 } from '../utils/pdfBranding';
 import { formatDateForDisplay } from '../utils/dateFormat';
 import ThemedSelect from '../components/ThemedSelect';
 import PdfPreviewModal from '../components/PdfPreviewModal';
+import PatientDeceasedModal from '../components/PatientDeceasedModal';
 import { useModulePermissions } from '../hooks/useModulePermissions';
 import { requestJson } from '../utils/apiClient';
-import { compressImageFile } from '../utils/imageCompression';
+import { isPdfAttachment, loadPdfAttachment, readTreatmentAttachment } from '../utils/treatmentAttachment';
 import { loadMediaAsDataUrl, resolveMediaUrl } from '../utils/media';
 
 type PatientWithPhoto = Patient & {
@@ -85,6 +87,7 @@ export default function PatientDetail() {
   const location = useLocation();
 
   const [patient, setPatient] = useState<PatientWithPhoto | null>(null);
+  const [showDeceasedModal, setShowDeceasedModal] = useState(false);
   const [activeTab, setActiveTab] = useState('general');
 
   const [clinicalRecords, setClinicalRecords] = useState<ClinicalRecordExtended[]>([]);
@@ -100,6 +103,10 @@ export default function PatientDetail() {
 
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [vaccinationError, setVaccinationError] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showDeleteSuccessModal, setShowDeleteSuccessModal] = useState(false);
@@ -288,6 +295,7 @@ export default function PatientDetail() {
   };
 
   const closeFormModal = () => {
+    setVaccinationError(null);
     setShowModal(null);
     setFormData({});
     setEditingClinicalRecord(null);
@@ -302,13 +310,13 @@ export default function PatientDetail() {
     if (!file) return;
 
     try {
-      const attachmentPhoto = await compressImageFile(file);
+      const attachmentPhoto = await readTreatmentAttachment(file);
       setFormData({
         ...formData,
         attachmentPhoto,
       });
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'No fue posible procesar la imagen');
+      alert(error instanceof Error ? error.message : 'No fue posible procesar el archivo adjunto');
     }
   };
 
@@ -362,23 +370,46 @@ export default function PatientDetail() {
 
   const handleVaccinationSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    setVaccinationError(null);
 
     if (!id) return;
 
     const totalDoses = Number(formData.totalDoses);
     const appliedDoses = Number(formData.appliedDoses);
     const interval = Number(formData.interval);
-    if (
-      !Number.isInteger(totalDoses) || totalDoses < 1 ||
-      !Number.isInteger(appliedDoses) || appliedDoses < 1 ||
-      appliedDoses > totalDoses ||
-      !isNonNegativeNumber(interval)
-    ) {
-      alert('Revise las dosis: el total debe ser mayor a cero y las aplicadas no pueden superar el total.');
+    if (!Number.isInteger(totalDoses) || totalDoses < 1) {
+      setVaccinationError({
+        title: 'Revisa el total de dosis',
+        message: 'El total de dosis debe ser un número entero mayor que cero.',
+      });
+      return;
+    }
+    if (!Number.isInteger(appliedDoses) || appliedDoses < 1) {
+      setVaccinationError({
+        title: 'Revisa las dosis aplicadas',
+        message: 'Las dosis aplicadas deben ser un número entero mayor que cero.',
+      });
+      return;
+    }
+    if (appliedDoses > totalDoses) {
+      setVaccinationError({
+        title: 'Revisa las dosis',
+        message: `Las dosis aplicadas (${appliedDoses}) no pueden superar el total de dosis (${totalDoses}). Revisa ambos campos.`,
+      });
+      return;
+    }
+    if (!Number.isInteger(interval) || interval < 1) {
+      setVaccinationError({
+        title: 'Revisa el intervalo',
+        message: 'El intervalo debe ser un número entero mayor que cero.',
+      });
       return;
     }
     if (!formData.applicationDate || formData.applicationDate > getTodayLocal()) {
-      alert('La fecha de aplicación no puede estar en el futuro.');
+      setVaccinationError({
+        title: 'Revisa la fecha de aplicación',
+        message: 'La fecha de aplicación no puede estar en el futuro.',
+      });
       return;
     }
 
@@ -398,7 +429,10 @@ export default function PatientDetail() {
       setShowSuccessModal(true);
     } catch (error) {
       console.error('Error al registrar vacuna:', error);
-      alert('No se pudo registrar la vacuna. Revisa el backend o la consola.');
+      setVaccinationError({
+        title: 'No se pudo registrar la vacuna',
+        message: error instanceof Error ? error.message : 'No se pudo registrar la vacuna. Intenta nuevamente.',
+      });
     }
   };
 
@@ -850,19 +884,24 @@ export default function PatientDetail() {
       }
 
       doc.setFont('helvetica', 'bold');
-      doc.text('Fotografía adjunta', 16, y);
+      doc.text(isPdfAttachment(treat.attachmentPhoto) ? 'Documento PDF adjunto' : 'Fotografía adjunta', 16, y);
       y += 7;
 
-      try {
-        const attachmentPhoto = await loadMediaAsDataUrl(treat.attachmentPhoto);
-        doc.addImage(attachmentPhoto, 'JPEG', 16, y, 80, 60);
-      } catch {
+      if (isPdfAttachment(treat.attachmentPhoto)) {
+        doc.setFont('helvetica', 'normal');
+        doc.text(doc.splitTextToSize('El PDF adjunto se puede consultar y descargar desde el expediente del paciente.', 178), 16, y);
+      } else {
         try {
           const attachmentPhoto = await loadMediaAsDataUrl(treat.attachmentPhoto);
-          doc.addImage(attachmentPhoto, 'PNG', 16, y, 80, 60);
+          doc.addImage(attachmentPhoto, 'JPEG', 16, y, 80, 60);
         } catch {
-          doc.setFont('helvetica', 'normal');
-          doc.text('No fue posible cargar la fotografía adjunta.', 16, y);
+          try {
+            const attachmentPhoto = await loadMediaAsDataUrl(treat.attachmentPhoto);
+            doc.addImage(attachmentPhoto, 'PNG', 16, y, 80, 60);
+          } catch {
+            doc.setFont('helvetica', 'normal');
+            doc.text('No fue posible cargar la fotografía adjunta.', 16, y);
+          }
         }
       }
     }
@@ -883,7 +922,7 @@ export default function PatientDetail() {
     let currentRecordLabel = '';
     const attachmentPhotos = await Promise.all(
       treatments.map((treatment) =>
-        treatment.attachmentPhoto
+        treatment.attachmentPhoto && !isPdfAttachment(treatment.attachmentPhoto)
           ? loadMediaAsDataUrl(treatment.attachmentPhoto).catch(() => '')
           : Promise.resolve('')
       )
@@ -1025,6 +1064,10 @@ export default function PatientDetail() {
         treat.observations || 'Sin observaciones registradas.'
       );
 
+      if (isPdfAttachment(treat.attachmentPhoto)) {
+        addTextField('Documento PDF adjunto', 'Disponible para consulta y descarga en el expediente del paciente.');
+      }
+
       if (attachmentPhotos[index]) {
         ensureSpace(70);
 
@@ -1085,6 +1128,34 @@ export default function PatientDetail() {
     if (pdfPreview?.url) URL.revokeObjectURL(pdfPreview.url);
     setPdfPreview(null);
   };
+
+  const previewAttachmentPdf = async (value: string) => {
+    try {
+      const blob = await loadPdfAttachment(value);
+      if (pdfPreview?.url) URL.revokeObjectURL(pdfPreview.url);
+      setPdfPreview({
+        url: URL.createObjectURL(blob),
+        title: 'Documento PDF adjunto',
+        filename: formatPdfName('Adjunto', patient?.petName),
+      });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'No fue posible abrir el archivo PDF');
+    }
+  };
+
+  const renderAttachment = (value: string, imageClassName: string) =>
+    isPdfAttachment(value) ? (
+      <button
+        type="button"
+        onClick={() => void previewAttachmentPdf(value)}
+        className={`${imageClassName} flex flex-col items-center justify-center gap-1 bg-secondary px-2 text-sm text-primary transition-colors hover:bg-border`}
+      >
+        <FileText className="h-6 w-6 shrink-0" />
+        Ver PDF adjunto
+      </button>
+    ) : (
+      <img src={resolveMediaUrl(value)} alt="Fotografía adjunta" className={imageClassName} />
+    );
 
   const downloadPdfPreview = () => {
     if (!pdfPreview) return;
@@ -1205,7 +1276,7 @@ export default function PatientDetail() {
               <img
                 src={resolveMediaUrl(patient.photo)}
                 alt={`Foto de ${patient.petName}`}
-                className="w-full h-full object-cover"
+                className={`w-full h-full object-cover${patient.isDeceased ? ' grayscale' : ''}`}
               />
             ) : (
               <Camera className="h-12 w-12 text-muted-foreground" strokeWidth={1.6} />
@@ -1216,6 +1287,11 @@ export default function PatientDetail() {
             <div className="mb-2 flex flex-col gap-2 sm:mb-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
               <h1 className="break-words text-xl font-bold text-foreground sm:text-2xl md:text-3xl">
                 {patient.petName}
+                {patient.isDeceased && (
+                  <span className="ml-2 inline-flex rounded-full bg-destructive/10 px-3 py-1 align-middle text-xs font-medium text-destructive">
+                    Fallecido
+                  </span>
+                )}
               </h1>
 
               {prescriptionPermissions.canCreate && <Link
@@ -1226,6 +1302,17 @@ export default function PatientDetail() {
                 Generar receta
               </Link>}
             </div>
+
+            {permissions.canEdit && !patient.isDeceased && (
+              <button
+                type="button"
+                onClick={() => setShowDeceasedModal(true)}
+                className="mb-3 inline-flex items-center gap-2 rounded-lg bg-destructive/10 px-4 py-2 text-sm text-destructive transition-colors hover:bg-destructive/20"
+              >
+                <AlertTriangle className="h-4 w-4" />
+                Cambiar a fallecido
+              </button>
+            )}
 
             <div className="grid grid-cols-2 gap-2 text-sm sm:gap-4 md:grid-cols-4">
               <div>
@@ -1293,6 +1380,9 @@ export default function PatientDetail() {
                 <InfoItem label="Color" value={patient.color} />
                 <InfoItem label="Alimentación" value={patient.diet || 'No registrada'} />
                 <InfoItem label="Última visita" value={patient.lastVisit} />
+                {patient.isDeceased && (
+                  <InfoItem label="Fallecimiento registrado" value={formatDateForDisplay(patient.deceasedAt?.slice(0, 10) || '')} />
+                )}
               </div>
 
               <InfoItem
@@ -1308,7 +1398,7 @@ export default function PatientDetail() {
                 title="Historial clínico"
                 buttonText="Nuevo registro"
                 onAdd={openNewClinicalModal}
-                canAdd={permissions.canCreate}
+                canAdd={permissions.canCreate && !patient.isDeceased}
                 extraButton={
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -1347,6 +1437,11 @@ export default function PatientDetail() {
                               Desde cita
                             </span>
                           )}
+                          {record.sourceType === 'grooming' && (
+                            <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-1 text-xs text-primary">
+                              Desde grooming
+                            </span>
+                          )}
 
                           <span
                             className={`px-2 py-1 rounded-full text-xs ${
@@ -1356,8 +1451,8 @@ export default function PatientDetail() {
                             }`}
                           >
                             {record.clinicalStatus === 'Completado'
-                              ? 'Evaluación completada'
-                              : 'Pendiente de evaluación'}
+                              ? record.sourceType === 'grooming' ? 'Servicio completado' : 'Evaluación completada'
+                              : record.sourceType === 'grooming' ? 'Servicio pendiente' : 'Pendiente de evaluación'}
                           </span>
                         </div>
 
@@ -1465,7 +1560,7 @@ export default function PatientDetail() {
               <SectionHeader
                 title="Vacunación"
                 buttonText="Registrar vacuna"
-                canAdd={permissions.canCreate}
+                canAdd={permissions.canCreate && !patient.isDeceased}
                 onAdd={() => {
                   setFormData({
                     applicationDate: getTodayLocal(),
@@ -1594,7 +1689,7 @@ export default function PatientDetail() {
               <SectionHeader
                 title="Tratamientos y servicios"
                 buttonText="Nuevo registro"
-                canAdd={permissions.canCreate}
+                canAdd={permissions.canCreate && !patient.isDeceased}
                 onAdd={() => {
                   setFormData({});
                   setShowModal('treatment');
@@ -1697,11 +1792,7 @@ export default function PatientDetail() {
                     </p>
 
                     {treat.attachmentPhoto && (
-                      <img
-                        src={resolveMediaUrl(treat.attachmentPhoto)}
-                        alt="Fotografía adjunta"
-                        className="mt-3 w-32 h-24 object-cover rounded-lg border border-border"
-                      />
+                      renderAttachment(treat.attachmentPhoto, 'mt-3 w-32 h-24 object-cover rounded-lg border border-border')
                     )}
                   </div>
                 ))}
@@ -1714,6 +1805,17 @@ export default function PatientDetail() {
           )}
         </div>
       </div>
+
+      {showDeceasedModal && (
+        <PatientDeceasedModal
+          patient={patient}
+          onClose={() => setShowDeceasedModal(false)}
+          onConfirmed={(status) => {
+            setPatient((current) => current ? { ...current, ...status } : current);
+            setShowDeceasedModal(false);
+          }}
+        />
+      )}
 
       {showModal === 'clinical' && (
         <div className={MODAL_BACKDROP_CLASS}>
@@ -2144,16 +2246,12 @@ export default function PatientDetail() {
               {formData.type && (
                 <div className="patient-form-section rounded-xl border p-4">
                   <label className="block text-foreground mb-3 text-sm font-medium">
-                    Fotografía adjunta, opcional
+                    Archivo adjunto, opcional
                   </label>
 
                   <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                     {formData.attachmentPhoto ? (
-                      <img
-                        src={resolveMediaUrl(formData.attachmentPhoto)}
-                        alt="Fotografía adjunta"
-                        className="w-32 h-24 rounded-xl object-cover border-4 border-border"
-                      />
+                      renderAttachment(formData.attachmentPhoto, 'w-32 h-24 rounded-xl object-cover border-4 border-border')
                     ) : (
                       <div className="w-32 h-24 rounded-xl bg-secondary border-4 border-border flex items-center justify-center">
                         <Camera className="w-9 h-9 text-primary" />
@@ -2162,8 +2260,8 @@ export default function PatientDetail() {
 
                     <div className="flex-1">
                       <p className="text-muted-foreground text-sm mb-3">
-                        Puedes tomar una fotografía o subir una imagen del resultado,
-                        laboratorio o evidencia del servicio.
+                        Puedes tomar una fotografía o subir una imagen o PDF del resultado,
+                        laboratorio o evidencia del servicio. PDF de hasta 5 MB.
                       </p>
 
                       <div className="flex flex-col sm:flex-row gap-2">
@@ -2175,23 +2273,25 @@ export default function PatientDetail() {
                             type="file"
                             accept="image/*"
                             capture="environment"
-                            onChange={(e) =>
-                              handleAttachmentPhoto(e.target.files?.[0])
-                            }
+                            onChange={(e) => {
+                              void handleAttachmentPhoto(e.target.files?.[0]);
+                              e.currentTarget.value = '';
+                            }}
                             className="hidden"
                           />
                         </label>
 
                         <label className="patient-form-secondary flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm transition-colors">
                           <Upload className="w-4 h-4" />
-                          Subir imagen
+                          Subir imagen o PDF
 
                           <input
                             type="file"
-                            accept="image/*"
-                            onChange={(e) =>
-                              handleAttachmentPhoto(e.target.files?.[0])
-                            }
+                            accept="image/*,application/pdf,.pdf"
+                            onChange={(e) => {
+                              void handleAttachmentPhoto(e.target.files?.[0]);
+                              e.currentTarget.value = '';
+                            }}
                             className="hidden"
                           />
                         </label>
@@ -2224,6 +2324,38 @@ export default function PatientDetail() {
           </div>
         </div>
       )}
+
+      <AlertDialog.Root
+        open={vaccinationError !== null}
+        onOpenChange={(open) => {
+          if (!open) setVaccinationError(null);
+        }}
+      >
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="modal-backdrop fixed inset-0 z-[90]" />
+          <AlertDialog.Content className="fixed left-1/2 top-1/2 z-[91] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-card p-6 text-center shadow-2xl focus:outline-none">
+            <div className="mb-4 flex justify-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-amber-500/15">
+                <AlertTriangle className="h-10 w-10 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+              </div>
+            </div>
+            <AlertDialog.Title className="mb-2 text-xl font-semibold text-foreground">
+              {vaccinationError?.title}
+            </AlertDialog.Title>
+            <AlertDialog.Description className="mb-6 text-sm leading-6 text-muted-foreground">
+              {vaccinationError?.message}
+            </AlertDialog.Description>
+            <AlertDialog.Cancel asChild>
+              <button
+                type="button"
+                className="w-full rounded-lg bg-primary px-4 py-2 font-semibold text-[#F7EFE6] transition-colors hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-card"
+              >
+                Entendido
+              </button>
+            </AlertDialog.Cancel>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
 
       {showSuccessModal && (
         <div className="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[60]">
@@ -2320,12 +2452,8 @@ export default function PatientDetail() {
                 <InfoItem label="Observaciones" value={(viewTarget.item as TreatmentServiceExtended).observations} />
                 {(viewTarget.item as TreatmentServiceExtended).attachmentPhoto && (
                   <div>
-                    <p className="text-muted-foreground text-sm mb-2">Fotografía adjunta</p>
-                    <img
-                      src={resolveMediaUrl((viewTarget.item as TreatmentServiceExtended).attachmentPhoto)}
-                      alt="Adjunto del registro"
-                      className="max-h-64 rounded-xl border border-border object-cover"
-                    />
+                    <p className="text-muted-foreground text-sm mb-2">Archivo adjunto</p>
+                    {renderAttachment((viewTarget.item as TreatmentServiceExtended).attachmentPhoto || '', 'max-h-64 rounded-xl border border-border object-cover')}
                   </div>
                 )}
               </div>

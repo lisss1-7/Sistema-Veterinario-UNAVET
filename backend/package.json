@@ -28,6 +28,7 @@
     "migrate:sales-day-closing": "node src/scripts/addSalesDayClosing.js",
     "migrate:inventory-audit": "node src/scripts/addInventoryAudit.js",
     "migrate:diet-options": "node src/scripts/addDietOptions.js",
+    "migrate:patient-deceased": "node src/scripts/addPatientDeceasedDate.js",
     "verify:normalization": "node src/scripts/verifyNormalization.js",
     "verify:email": "node src/scripts/verifyEmail.js",
     "test:email": "node src/scripts/sendTestEmail.js",

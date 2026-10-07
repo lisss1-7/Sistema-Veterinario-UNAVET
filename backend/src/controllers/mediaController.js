@@ -34,7 +34,9 @@ const servirImagen = async (req, res) => {
       'Cache-Control': 'private, max-age=300',
       'Content-Length': String(stat.size),
       'Content-Type': media.contentType,
-      'Content-Disposition': 'inline',
+      'Content-Disposition': media.contentType === 'application/pdf'
+        ? `attachment; filename="${filename}"`
+        : 'inline',
       'X-Content-Type-Options': 'nosniff',
     });
 

@@ -20,6 +20,8 @@ export interface Patient {
   lastVisit: string;
   photo?: string;
   observations: string;
+  isDeceased?: boolean;
+  deceasedAt?: string | null;
 }
 
 export interface ClinicalRecord {

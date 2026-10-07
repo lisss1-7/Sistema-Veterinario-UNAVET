@@ -9,9 +9,14 @@ const MIME_CONFIG = Object.freeze({
   'image/jpeg': { extension: '.jpg', signature: 'jpeg' },
   'image/png': { extension: '.png', signature: 'png' },
   'image/webp': { extension: '.webp', signature: 'webp' },
+  'application/pdf': { extension: '.pdf', signature: 'pdf' },
 });
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
 const DEFAULT_URL_TTL_SECONDS = 60 * 60;
+
+const isAllowedMediaFilename = (bucket, filename) =>
+  /^[0-9a-f-]{36}\.(?:jpg|png|webp|pdf)$/.test(filename || '') &&
+  (!filename.endsWith('.pdf') || bucket === 'treatments');
 
 const getPositiveInteger = (value, fallback) => {
   const parsed = Number(value);
@@ -43,6 +48,12 @@ const assertBucket = (bucket) => {
 };
 
 const hasExpectedSignature = (buffer, signature) => {
+  if (signature === 'pdf') {
+    return (
+      /^%PDF-[12]\.\d/.test(buffer.subarray(0, 8).toString('ascii')) &&
+      buffer.subarray(-1024).includes(Buffer.from('%%EOF'))
+    );
+  }
   if (signature === 'jpeg') {
     return (
       buffer.length >= 3 &&
@@ -72,7 +83,7 @@ const hasExpectedSignature = (buffer, signature) => {
 const parseDataUrl = (value) => {
   if (typeof value !== 'string') return null;
   const match = value.match(
-    /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/
+    /^data:(image\/(?:jpeg|png|webp)|application\/pdf);base64,([A-Za-z0-9+/]+={0,2})$/
   );
   if (!match) return null;
 
@@ -81,11 +92,13 @@ const parseDataUrl = (value) => {
   const buffer = Buffer.from(match[2], 'base64');
 
   if (!buffer.length || !hasExpectedSignature(buffer, config.signature)) {
-    throw createMediaError('El contenido de la imagen no es válido');
+    throw createMediaError(mimeType === 'application/pdf'
+      ? 'El contenido del archivo PDF no es válido'
+      : 'El contenido de la imagen no es válido');
   }
   if (buffer.length > getMaxBytes()) {
     throw createMediaError(
-      `La imagen excede el límite de ${Math.ceil(getMaxBytes() / 1024 / 1024)} MB`
+      `El archivo adjunto excede el límite de ${Math.ceil(getMaxBytes() / 1024 / 1024)} MB`
     );
   }
 
@@ -104,7 +117,7 @@ const parseManagedReference = (value) => {
   const [bucket, filename] = parts;
   if (
     !ALLOWED_BUCKETS.has(bucket) ||
-    !/^[0-9a-f-]{36}\.(?:jpg|png|webp)$/.test(filename)
+    !isAllowedMediaFilename(bucket, filename)
   ) {
     return null;
   }
@@ -120,9 +133,9 @@ const extractManagedReference = (value) => {
   try {
     const parsed = new URL(value, 'http://unavet.local');
     const match = parsed.pathname.match(
-      /^\/(?:api\/)?media\/(patients|treatments)\/([0-9a-f-]{36}\.(?:jpg|png|webp))$/
+      /^\/(?:api\/)?media\/(patients|treatments)\/([0-9a-f-]{36}\.(?:jpg|png|webp|pdf))$/
     );
-    return match ? `${MEDIA_PREFIX}${match[1]}/${match[2]}` : null;
+    return match ? parseManagedReference(`${MEDIA_PREFIX}${match[1]}/${match[2]}`)?.reference || null : null;
   } catch {
     return null;
   }
@@ -132,7 +145,12 @@ const saveDataUrl = async (value, bucket) => {
   assertBucket(bucket);
   const parsed = parseDataUrl(value);
   if (!parsed) {
-    throw createMediaError('La fotografía debe ser una imagen JPEG, PNG o WebP válida');
+    throw createMediaError(bucket === 'treatments'
+      ? 'El adjunto debe ser una imagen JPEG, PNG, WebP o un PDF válido'
+      : 'La fotografía debe ser una imagen JPEG, PNG o WebP válida');
+  }
+  if (parsed.extension === '.pdf' && bucket !== 'treatments') {
+    throw createMediaError('Los archivos PDF solo se admiten en servicios y tratamientos');
   }
 
   const filename = `${crypto.randomUUID()}${parsed.extension}`;
@@ -198,7 +216,7 @@ const toClientMediaReference = (value) => {
 
 const verifySignedMediaRequest = ({ bucket, filename, expires, signature }) => {
   assertBucket(bucket);
-  if (!/^[0-9a-f-]{36}\.(?:jpg|png|webp)$/.test(filename || '')) return false;
+  if (!isAllowedMediaFilename(bucket, filename)) return false;
 
   const parsedExpiry = Number(expires);
   if (!Number.isSafeInteger(parsedExpiry) || parsedExpiry < Math.floor(Date.now() / 1000)) {
@@ -215,7 +233,7 @@ const verifySignedMediaRequest = ({ bucket, filename, expires, signature }) => {
 
 const getMediaFile = (bucket, filename) => {
   assertBucket(bucket);
-  if (!/^[0-9a-f-]{36}\.(?:jpg|png|webp)$/.test(filename || '')) return null;
+  if (!isAllowedMediaFilename(bucket, filename)) return null;
 
   const filePath = path.join(getStorageRoot(), bucket, filename);
   const extension = path.extname(filename).toLowerCase();
@@ -223,6 +241,7 @@ const getMediaFile = (bucket, filename) => {
     '.jpg': 'image/jpeg',
     '.png': 'image/png',
     '.webp': 'image/webp',
+    '.pdf': 'application/pdf',
   };
   return { filePath, contentType: contentTypes[extension] };
 };

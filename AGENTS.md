@@ -9,8 +9,6 @@ This repo is a veterinary clinic management app with:
 - Database: MySQL, configured through `backend/.env`
 - Auth: JWT-based API protection
 
-For setup and module status, see [README.md](README.md).
-
 ## Working commands
 
 Run these from the repo root unless noted otherwise:
@@ -66,7 +64,6 @@ Run these from the repo root unless noted otherwise:
 
 ## Documentation and references
 
-- [README.md](README.md) for setup, environment variables, and project status
 - [backend/package.json](backend/package.json) for backend scripts
 - [package.json](package.json) for frontend scripts
 ## Strict modification rules

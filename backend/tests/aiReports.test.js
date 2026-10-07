@@ -7,6 +7,7 @@ const {
   REPORT_TITLES,
   buildFallbackReport,
   buildSafeMetricContext,
+  buildUserPrompt,
   normalizeProviderReport,
   stripReasoningAndFormatting,
   summarizeSafeFocus,
@@ -292,4 +293,55 @@ test('el controlador no convierte métricas incompletas en ceros', async () => {
 
   assert.equal(statusCode, 400);
   assert.match(payload.message, /datos necesarios.*incompletos/i);
+});
+
+test('la IA recibe la solicitud escrita completa y el alcance filtrado', () => {
+  const prompt = 'Explícame las citas pendientes de octubre y qué seguimiento requieren';
+  const metrics = { ...buildSafeMetricContext('appointments', appointmentMetrics), alcanceSolicitado: ['Fecha: 2026-10-01 a 2026-10-31', 'Estado: Pendiente'] };
+  const content = buildUserPrompt(prompt, 'appointments', REPORT_TITLES.appointments, metrics);
+  assert.ok(content.includes(JSON.stringify(prompt)));
+  assert.match(content, /YA están filtradas/);
+  assert.match(content, /2026-10-01 a 2026-10-31/);
+  assert.doesNotMatch(content, /corte actual de todos/);
+});
+
+test('el contexto incluye las métricas necesarias para solicitudes personalizadas', () => {
+  const patients = buildSafeMetricContext('patients', { totalPatients: 2, patientsByReproductiveStatus: { Esterilizado: 2 }, registrationsByDate: { '2026-10-01': 2 } });
+  assert.deepEqual(patients.pacientesPorEstadoReproductivo, { Esterilizado: 2 });
+  const prescriptions = buildSafeMetricContext('prescriptions', { medicationsByName: { Amoxicilina: 2 } });
+  assert.deepEqual(prescriptions.medicamentosPorNombre, { Amoxicilina: 2 });
+  const general = buildSafeMetricContext('general', { modules: { appointments: appointmentMetrics } });
+  assert.equal(general.detallePorModulo[REPORT_TITLES.appointments].citasRegistradas, 6);
+});
+
+test('el respaldo conserva el alcance solicitado aunque no haya coincidencias', async () => {
+  let payload;
+  await generarReporteIA({ body: {
+    prompt: 'Citas canceladas de este mes', reportType: 'appointments',
+    metrics: { totalAppointments: 0, appointmentsByStatus: {}, requestScope: ['Fecha: 2026-10-01 a 2026-10-31', 'Estado solicitado: canceladas'] },
+  } }, { json(value) { payload = value; }, status() { return this; } });
+  assert.equal(payload.providerUsed, 'datos-del-sistema');
+  assert.match(payload.content, /Alcance del reporte: Fecha: 2026-10-01 a 2026-10-31/);
+  assert.match(payload.content, /No hay citas/);
+});
+
+test('los vencimientos con periodo explícito no se sustituyen por los próximos 30 días', () => {
+  const metrics = { ...inventoryMetrics, expiringWithin30Days: [], requestedExpirations: [{ name: 'Producto C', expirationDate: '2026-12-05', currentStock: 2 }] };
+  const content = buildFallbackReport('inventory', metrics, 'Productos que vencen en diciembre');
+  assert.match(content, /vencimiento en el periodo solicitado: Producto C/);
+  assert.doesNotMatch(content, /30 días/);
+  const safeMetrics = buildSafeMetricContext('inventory', metrics);
+  assert.equal(safeMetrics.vencimientosDelPeriodoSolicitado[0].fecha, '2026-12-05');
+});
+
+test('acepta fechas sin ceros iniciales y cantidades equivalentes sin permitir cifras inventadas', () => {
+  const metrics = { ...buildSafeMetricContext('appointments', appointmentMetrics), alcanceSolicitado: ['Fecha: 2026-10-01 a 2026-10-31'], monto: 1234.5 };
+  const report = [
+    '1) Resumen', 'Hay 6 citas entre el 1 y el 31 de octubre de 2026.',
+    '2) Datos relevantes', '- El monto registrado es Q1,234.50.',
+    '3) Alertas', '- Hay 2 citas pendientes.',
+    '4) Acciones sugeridas', '1. Confirmar las citas pendientes.',
+  ].join('\n');
+  assert.ok(normalizeProviderReport(report, metrics, 'appointments'));
+  assert.equal(normalizeProviderReport(report.replace('Q1,234.50', 'Q9,876.50'), metrics, 'appointments'), '');
 });

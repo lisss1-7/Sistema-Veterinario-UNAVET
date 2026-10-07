@@ -1,0 +1,22 @@
+# Solo los archivos necesarios entran al contexto de compilación.
+**
+!package.json
+!package-lock.json
+!vite.config.ts
+!index.html
+!src/
+!src/**
+!public/
+!public/**
+!backend/
+!backend/package.json
+!backend/package-lock.json
+!backend/src/
+!backend/src/**
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/*.crt
+**/*.sql
+**/*.log

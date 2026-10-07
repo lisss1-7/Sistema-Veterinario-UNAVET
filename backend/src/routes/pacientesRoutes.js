@@ -4,6 +4,7 @@ const {
   obtenerPacientePorId,
   crearPaciente,
   actualizarPaciente,
+  marcarPacienteFallecido,
   eliminarPaciente,
 } = require('../controllers/pacientesController');
 
@@ -16,6 +17,7 @@ router.get('/', verificarToken, verificarPermiso('patients', 'ver'), listarPacie
 router.get('/:id', verificarToken, verificarPermiso('patients', 'ver'), obtenerPacientePorId);
 router.post('/', verificarToken, verificarPermiso('patients', 'crear'), crearPaciente);
 router.put('/:id', verificarToken, verificarPermiso('patients', 'editar'), actualizarPaciente);
+router.patch('/:id/fallecido', verificarToken, verificarPermiso('patients', 'editar'), marcarPacienteFallecido);
 router.delete('/:id', verificarToken, verificarPermiso('patients', 'eliminar'), eliminarPaciente);
 
 module.exports = router;

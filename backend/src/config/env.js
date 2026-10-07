@@ -11,6 +11,13 @@ const PRODUCTION_REQUIRED_VARIABLES = [
 ];
 
 const validateEnvironment = () => {
+  if (
+    process.env.SERVE_FRONTEND &&
+    !['true', 'false'].includes(process.env.SERVE_FRONTEND)
+  ) {
+    throw new Error('SERVE_FRONTEND debe ser true o false');
+  }
+
   const missing = REQUIRED_VARIABLES.filter(
     (name) => !String(process.env[name] || '').trim()
   );

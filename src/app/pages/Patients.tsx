@@ -235,11 +235,13 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
   const filteredPatients = patients.filter((p) => {
     const petName = p.petName || '';
     const tutorName = p.tutorName || '';
+    const tutorPhone = p.tutorPhone || '';
     const breed = p.breed || '';
 
     const matchesSearch =
       petName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       tutorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      tutorPhone.includes(searchTerm) ||
       breed.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesSpecies = !filterSpecies || p.species === filterSpecies;
@@ -1100,7 +1102,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Buscar por mascota, tutor o raza"
+                placeholder="Buscar por mascota, tutor, teléfono o raza"
                 className="w-full pl-10 pr-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
               />
             </div>
@@ -1227,7 +1229,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                   <img
                     src={resolveMediaUrl(patient.photo)}
                     alt={`Foto de ${patient.petName}`}
-                    className="w-full h-full object-cover"
+                    className={`w-full h-full object-cover${patient.isDeceased ? ' grayscale' : ''}`}
                   />
                 ) : (
                   <div className="flex h-full w-full flex-col items-center justify-center bg-muted text-muted-foreground">
@@ -1250,6 +1252,12 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                   <h3 className="text-foreground text-xl font-semibold">
                     {patient.petName || 'Sin nombre'}
                   </h3>
+
+                  {patient.isDeceased && (
+                    <span className="mt-1 inline-flex rounded-full bg-destructive/10 px-3 py-1 text-xs font-medium text-destructive">
+                      Fallecido
+                    </span>
+                  )}
 
                   <p className="text-muted-foreground text-sm mt-1">
                     {patient.breed || 'Raza no especificada'} ·{' '}
@@ -1302,6 +1310,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                     <Trash2 className="h-4 w-4 shrink-0" />
                     Eliminar
                   </button>}
+
                 </div>
               </div>
             </div>
@@ -1539,7 +1548,7 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                       <img
                         src={resolveMediaUrl(formData.photo)}
                         alt="Foto del paciente"
-                        className="w-full h-full object-cover"
+                        className={`w-full h-full object-cover${formData.isDeceased ? ' grayscale' : ''}`}
                       />
                     ) : (
                       <div className="w-full h-full bg-secondary flex items-center justify-center">

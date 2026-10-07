@@ -115,7 +115,7 @@ const mapHistorialToFrontend = (row) => ({
   diagnosis: row.diagnostico || '',
   treatment: row.tratamiento || '',
   observations: row.observaciones || '',
-  sourceType: row.origen === 'Cita clínica' ? 'appointment' : 'manual',
+  sourceType: row.origen === 'Cita clínica' ? 'appointment' : row.origen === 'Grooming' ? 'grooming' : 'manual',
   clinicalStatus: row.estado_clinico,
   createdBy: row.creado_por ? String(row.creado_por) : '',
   createdByName: row.creado_por_nombre || '',
@@ -251,6 +251,19 @@ const crearHistorial = async (req, res) => {
       });
     }
 
+    const [patients] = await connection.query(
+      'SELECT paciente_id, fallecido_en FROM paciente WHERE paciente_id = ? AND activo = 1 LIMIT 1',
+      [patientId]
+    );
+    if (patients.length === 0) {
+      return res.status(404).json({ message: 'Paciente no encontrado' });
+    }
+    if (patients[0].fallecido_en) {
+      return res.status(409).json({
+        message: 'No se pueden agregar registros clínicos a un paciente fallecido',
+      });
+    }
+
     const consultation = await getConsultationType(
       connection,
       consultationType
@@ -292,7 +305,7 @@ const crearHistorial = async (req, res) => {
         diagnosis || null,
         treatment || null,
         observations || null,
-        sourceType === 'appointment' ? 'Cita clínica' : 'Manual',
+        sourceType === 'appointment' ? 'Cita clínica' : sourceType === 'grooming' ? 'Grooming' : 'Manual',
         clinicalStatus || 'Completado',
         req.user?.id || null,
       ]
@@ -386,7 +399,7 @@ const actualizarHistorial = async (req, res) => {
         diagnosis || null,
         treatment || null,
         observations || null,
-        sourceType === 'appointment' ? 'Cita clínica' : 'Manual',
+        sourceType === 'appointment' ? 'Cita clínica' : sourceType === 'grooming' ? 'Grooming' : 'Manual',
         clinicalStatus || 'Completado',
         id,
       ]

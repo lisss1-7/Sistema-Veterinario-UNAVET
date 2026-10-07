@@ -36,6 +36,8 @@ const mapPacienteToFrontend = (row) => ({
   registrationDate: row.fecha_registro,
   lastVisit: row.ultima_visita,
   observations: row.observaciones,
+  isDeceased: Boolean(row.fallecido_en),
+  deceasedAt: row.fallecido_en || null,
 });
 
 const buscarEspeciePorNombre = async (connection, nombre) => {
@@ -177,6 +179,7 @@ const listarPacientes = async (req, res) => {
         p.alimentacion,
         p.foto_url,
         p.observaciones,
+        DATE_FORMAT(p.fallecido_en, '%Y-%m-%d %H:%i:%s') AS fallecido_en,
         DATE_FORMAT(p.fecha_registro, '%Y-%m-%d') AS fecha_registro,
         DATE_FORMAT(visita.ultima_visita, '%Y-%m-%d') AS ultima_visita,
         e.nombre AS especie,
@@ -234,6 +237,7 @@ const obtenerPacientePorId = async (req, res) => {
         p.alimentacion,
         p.foto_url,
         p.observaciones,
+        DATE_FORMAT(p.fallecido_en, '%Y-%m-%d %H:%i:%s') AS fallecido_en,
         DATE_FORMAT(p.fecha_registro, '%Y-%m-%d') AS fecha_registro,
         DATE_FORMAT(visita.ultima_visita, '%Y-%m-%d') AS ultima_visita,
         e.nombre AS especie,
@@ -684,6 +688,39 @@ const actualizarPaciente = async (req, res) => {
   }
 };
 
+const marcarPacienteFallecido = async (req, res) => {
+  const { id } = req.params;
+  if (!/^[1-9]\d*$/.test(String(id || ''))) {
+    return res.status(400).json({ message: 'El identificador del paciente no es válido' });
+  }
+
+  try {
+    await pool.query(
+      `UPDATE paciente SET fallecido_en = NOW()
+       WHERE paciente_id = ? AND activo = 1 AND fallecido_en IS NULL`,
+      [id]
+    );
+    const [rows] = await pool.query(
+      `SELECT DATE_FORMAT(fallecido_en, '%Y-%m-%d %H:%i:%s') AS fallecido_en
+       FROM paciente WHERE paciente_id = ? AND activo = 1 LIMIT 1`,
+      [id]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ message: 'Paciente no encontrado' });
+    }
+    return res.json({
+      message: 'Mascota marcada como fallecida correctamente',
+      isDeceased: Boolean(rows[0].fallecido_en),
+      deceasedAt: rows[0].fallecido_en,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: 'Error al registrar el fallecimiento de la mascota',
+      error: error.message,
+    });
+  }
+};
+
 const eliminarPaciente = async (req, res) => {
   try {
     const { id } = req.params;
@@ -719,5 +756,6 @@ module.exports = {
   obtenerPacientePorId,
   crearPaciente,
   actualizarPaciente,
+  marcarPacienteFallecido,
   eliminarPaciente,
 };

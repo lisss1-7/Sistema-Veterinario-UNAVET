@@ -179,7 +179,7 @@ const crearTratamiento = async (req, res) => {
           [veterinarianId]
         ),
         connection.query(
-          `SELECT paciente_id
+          `SELECT paciente_id, fallecido_en
            FROM paciente
            WHERE paciente_id = ? AND activo = 1
            LIMIT 1`,
@@ -196,6 +196,11 @@ const crearTratamiento = async (req, res) => {
       return res.status(400).json({
         message:
           'Paciente, tipo, estado o veterinario no pertenecen al catálogo activo',
+      });
+    }
+    if (patients[0].fallecido_en) {
+      return res.status(409).json({
+          message: 'No se pueden agregar tratamientos o servicios a un paciente fallecido',
       });
     }
 

@@ -2,6 +2,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const expectedPermissions = {
+  pacientes: [
+    ['get', '/', 'patients', 'ver'],
+    ['get', '/:id', 'patients', 'ver'],
+    ['post', '/', 'patients', 'crear'],
+    ['put', '/:id', 'patients', 'editar'],
+    ['patch', '/:id/fallecido', 'patients', 'editar'],
+    ['delete', '/:id', 'patients', 'eliminar'],
+  ],
   citas: [
     ['get', '/', 'appointments', 'ver'],
     ['get', '/:id', 'appointments', 'ver'],
@@ -55,6 +63,8 @@ for (const [routeName, expectations] of Object.entries(expectedPermissions)) {
         (layer) => layer.route?.path === path && layer.route.methods[method]
       );
       assert.ok(routeLayer, `No se encontro ${method.toUpperCase()} ${path}`);
+
+      assert.ok(routeLayer.route.stack.some((layer) => layer.handle.name === 'verificarToken'), 'requiere JWT');
 
       const permissionLayer = routeLayer.route.stack.find(
         (layer) => layer.handle.permission

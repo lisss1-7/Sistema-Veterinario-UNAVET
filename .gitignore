@@ -1,7 +1,6 @@
 # Variables de entorno
 .env
 .env.*
-!.env.example
 
 # Dependencias
 node_modules/
@@ -11,6 +10,11 @@ dist/
 build/
 backend/storage/media/
 backend/backups/
+
+# Archivos temporales de revisión y generación de documentos
+.codex_doc_deps/
+_docx_render/
+tmp/
 
 # Logs
 *.log

@@ -5,6 +5,7 @@ require('dotenv').config();
 
 const pool = require('./config/db');
 const { validateEnvironment } = require('./config/env');
+const { mountFrontend } = require('./middleware/frontendMiddleware');
 const authRoutes = require('./routes/authRoutes');
 const pacientesRoutes = require('./routes/pacientesRoutes');
 const historialRoutes = require('./routes/historialRoutes');
@@ -32,6 +33,7 @@ validateEnvironment();
 
 const app = express();
 const isProduction = process.env.NODE_ENV === 'production';
+const serveFrontend = process.env.SERVE_FRONTEND === 'true';
 const allowedOrigins = new Set(
   [process.env.FRONTEND_URL, ...(process.env.CORS_ORIGINS || '').split(',')]
     .map((origin) => String(origin || '').trim().replace(/\/+$/, ''))
@@ -71,9 +73,11 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-app.get('/', (req, res) => {
-  res.json({ message: 'Backend UNAVET funcionando correctamente' });
-});
+if (!serveFrontend) {
+  app.get('/', (req, res) => {
+    res.json({ message: 'Backend UNAVET funcionando correctamente' });
+  });
+}
 
 app.get('/api/health', async (req, res) => {
   try {
@@ -120,6 +124,8 @@ app.use('/api/catalogos', catalogosRoutes);
 app.use('/api/tutores', tutoresRoutes);
 app.use('/api/ai-reports', aiReportsRoutes);
 app.use('/api/cierre-ventas', cierreVentasRoutes);
+
+if (serveFrontend) mountFrontend(app);
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Ruta no encontrada' });

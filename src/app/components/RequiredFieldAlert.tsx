@@ -42,6 +42,11 @@ const isEmpty = (element: HTMLElement) => {
   return (element.dataset.fieldValue ?? '').trim() === '';
 };
 
+const shouldBlockFieldNavigation = (element: HTMLElement) =>
+  isRequiredField(element) &&
+  isEmpty(element) &&
+  element.dataset.hasSelectableOptions !== 'false';
+
 const belongsToSameForm = (current: HTMLElement, next: HTMLElement) => {
   const currentForm = current.closest('form');
   const nextForm = next.closest('form');
@@ -95,8 +100,7 @@ export default function RequiredFieldAlert() {
       if (
         currentField === nextField ||
         !belongsToSameForm(currentField, nextField) ||
-        !isRequiredField(currentField) ||
-        !isEmpty(currentField)
+        !shouldBlockFieldNavigation(currentField)
       ) {
         return false;
       }
@@ -123,8 +127,7 @@ export default function RequiredFieldAlert() {
         event.key !== 'Tab' ||
         openRef.current ||
         !(event.target instanceof HTMLElement) ||
-        !isRequiredField(event.target) ||
-        !isEmpty(event.target)
+        !shouldBlockFieldNavigation(event.target)
       ) {
         return;
       }
@@ -143,8 +146,7 @@ export default function RequiredFieldAlert() {
         !(nextField instanceof HTMLElement) ||
         !nextField.matches(NEXT_FIELD_SELECTOR) ||
         !belongsToSameForm(currentField, nextField) ||
-        !isRequiredField(currentField) ||
-        !isEmpty(currentField)
+        !shouldBlockFieldNavigation(currentField)
       ) {
         return;
       }

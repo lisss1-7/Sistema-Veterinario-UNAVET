@@ -16,18 +16,9 @@ import PdfPreviewModal from '../components/PdfPreviewModal';
 import { useModulePermissions } from '../hooks/useModulePermissions';
 import { API_URL } from '../config/api';
 import { getAuthHeaders } from '../utils/apiClient';
+import { detectReportType, filterReportData, type ReportType } from '../utils/aiReportRequest';
 
 type ChatRole = 'user' | 'assistant';
-
-type ReportType =
-  | 'general'
-  | 'patients'
-  | 'appointments'
-  | 'grooming'
-  | 'inventory'
-  | 'prescriptions'
-  | 'vaccinations'
-  | 'treatments';
 
 type ChartData = {
   title: string;
@@ -147,7 +138,7 @@ export default function AIReports() {
       id: 'welcome',
       role: 'assistant',
       content:
-        'Hola, soy el asistente de reportes de UNAVET. Cada reporte utiliza únicamente datos actuales del módulo solicitado. Puedes pedirme, por ejemplo: “citas por estado”, “existencias bajas” o “reporte general”.',
+        'Hola, soy el asistente de reportes de UNAVET. Escribe el reporte que necesitas, por ejemplo: “citas pendientes de este mes”, “pacientes caninos por raza” o “reporte general”. Utilizaré los datos disponibles del sistema.',
     },
   ]);
 
@@ -184,25 +175,22 @@ export default function AIReports() {
       const previousReportType = [...messages]
         .reverse()
         .find((message) => message.reportType)?.reportType;
-      const reportType = detectedReportType || previousReportType;
+      const reportType = detectedReportType || previousReportType || 'general';
 
-      if (!reportType) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `${Date.now()}-assistant-guidance`,
-            role: 'assistant',
-            content:
-              'Indica qué deseas analizar: pacientes, citas clínicas, peluquería y aseo, inventario, recetas, vacunación, tratamientos o un reporte general.',
-          },
-        ]);
-        return;
+      const loadedData = await loadSystemData(reportType);
+      let selection: { data: SystemData; scope: string[] };
+      try {
+        selection = filterReportData(prompt, reportType, loadedData);
+      } catch (error) {
+        throw new ReportRequestError(error instanceof Error ? error.message : 'Revisa los filtros solicitados.');
       }
-
-      const systemData = await loadSystemData(reportType);
-      const metrics = generateReportMetrics(reportType, systemData);
+      const systemData = selection.data;
+      const metrics = {
+        ...generateReportMetrics(reportType, systemData, selection.scope),
+        requestScope: selection.scope,
+      };
       const chart = applyChartVariant(
-        generateChartForReport(reportType, systemData, prompt)
+        generateChartForReport(reportType, systemData, prompt, selection.scope)
       );
       const secondaryChart = generateComplementaryChart(
         reportType,
@@ -726,7 +714,7 @@ export default function AIReports() {
                   handleSendMessage();
                 }
               }}
-              placeholder="Ejemplo: muestra las citas por estado..."
+              placeholder="Ejemplo: citas pendientes de este mes..."
               maxLength={500}
               disabled={!permissions.canCreate || isGenerating}
               className="flex-1 px-4 py-3 bg-secondary border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-foreground text-sm"
@@ -805,7 +793,9 @@ async function requestAIReport(
       );
     }
 
-    return content.trim();
+    return data?.providerUsed === 'datos-del-sistema'
+      ? content.trim().replace('1) Resumen\n', '1) Resumen\nLa IA no pudo responder; se muestra un resumen con los datos del sistema y los filtros reconocidos.\n\n')
+      : content.trim();
   } catch (error) {
     console.warn('No fue posible obtener el reporte:', error);
     throw error;
@@ -869,58 +859,7 @@ function localizeReportText(value: unknown) {
     .replace(/\bstock\b/gi, 'existencias');
 }
 
-function detectReportType(prompt: string): ReportType | null {
-  const normalized = normalizeReportText(prompt);
-
-  if (normalized.includes('reporte general') || normalized.includes('resumen general')) {
-    return 'general';
-  }
-  if (normalized.includes('cita') || normalized.includes('agenda')) {
-    return 'appointments';
-  }
-  if (
-    normalized.includes('grooming') ||
-    normalized.includes('peluqueria') ||
-    normalized.includes('estetica') ||
-    normalized.includes('aseo') ||
-    normalized.includes('bano')
-  ) {
-    return 'grooming';
-  }
-  if (
-    normalized.includes('stock') ||
-    normalized.includes('existencia') ||
-    normalized.includes('inventario') ||
-    normalized.includes('producto')
-  ) {
-    return 'inventory';
-  }
-  if (
-    normalized.includes('paciente') ||
-    normalized.includes('mascota') ||
-    normalized.includes('especie') ||
-    normalized.includes('raza')
-  ) {
-    return 'patients';
-  }
-  if (normalized.includes('receta') || normalized.includes('medicamento')) {
-    return 'prescriptions';
-  }
-  if (normalized.includes('vacuna') || normalized.includes('inmuniza')) {
-    return 'vaccinations';
-  }
-  if (
-    normalized.includes('tratamiento') ||
-    normalized.includes('laboratorio') ||
-    normalized.includes('servicio clinico')
-  ) {
-    return 'treatments';
-  }
-
-  return null;
-}
-
-function generateReportMetrics(reportType: ReportType, data: SystemData) {
+function generateReportMetrics(reportType: ReportType, data: SystemData, scope: string[] = []): Record<string, unknown> {
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
     2,
@@ -1057,6 +996,13 @@ function generateReportMetrics(reportType: ReportType, data: SystemData) {
       ),
       lowStockCount: lowStockProducts.length,
       outOfStockCount: outOfStockProducts.length,
+      ...(scope.some((filter) => filter.startsWith('Vencimiento:')) ? {
+        requestedExpirations: activeInventory.map((product) => ({
+          name: product.name,
+          expirationDate: product.expirationDate,
+          currentStock: Number(product.currentStock) || 0,
+        })),
+      } : {}),
       lowStockProducts: lowStockProducts.map((product: any) => ({
         name: product.name || 'Producto sin nombre',
         category: product.category || 'Sin categoría',
@@ -1158,6 +1104,9 @@ function generateReportMetrics(reportType: ReportType, data: SystemData) {
   const generalMetrics = generateSystemMetrics(data);
   return {
     totals: generalMetrics.totals,
+    modules: Object.fromEntries(
+      (Object.keys(REPORT_ENDPOINTS) as DataModule[]).map((module) => [module, generateReportMetrics(module, data)])
+    ),
     operationalAlerts: {
       lowStock: generalMetrics.inventory.lowStock,
       outOfStock: generalMetrics.inventory.outOfStock,
@@ -1246,7 +1195,8 @@ function countMatchingDistribution(
 function generateChartForReport(
   reportType: ReportType,
   data: SystemData,
-  prompt: string
+  prompt: string,
+  scope: string[] = []
 ) {
   const normalized = normalizeReportText(prompt);
   const distributionChart = (
@@ -1369,13 +1319,14 @@ function generateChartForReport(
       'category'
     );
   }
-  if (reportType === 'inventory' && /(vence|vencimiento|caduc)/.test(normalized)) {
+  if (reportType === 'inventory' && /(venc|caduc)/.test(normalized)) {
     const now = new Date();
     const today = now.toISOString().slice(0, 10);
     const limit = new Date(now);
     limit.setDate(limit.getDate() + 30);
     const limitKey = limit.toISOString().slice(0, 10);
-    const expiring = activeInventory.filter(
+    const requestedPeriod = scope.some((filter) => filter.startsWith('Vencimiento:'));
+    const expiring = requestedPeriod ? activeInventory : activeInventory.filter(
       (product: any) =>
         product.expirationDate &&
         product.expirationDate >= today &&
@@ -1383,7 +1334,7 @@ function generateChartForReport(
     );
     return normalizeChart({
       title: 'Productos próximos a vencer',
-      description: 'Unidades de productos con vencimiento dentro de los próximos 30 días.',
+      description: requestedPeriod ? 'Unidades de productos con vencimiento en el periodo solicitado.' : 'Unidades de productos con vencimiento dentro de los próximos 30 días.',
       labels: expiring.map((product: any) =>
         localizeReportText(product.name || 'Producto sin nombre')
       ),

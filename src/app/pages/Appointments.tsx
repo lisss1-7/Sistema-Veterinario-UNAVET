@@ -48,6 +48,8 @@ type CatalogItem = {
   [key: string]: any;
 };
 
+const OTHER_REASON_VALUE = '__unavet_other_appointment_reason__';
+
 const toLocalDateKey = (date: Date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -110,8 +112,18 @@ export default function Appointments() {
   const [patients, setPatients] = useState<any[]>([]);
  
   const [appointmentStatusOptions, setAppointmentStatusOptions] = useState<string[]>([]);
+  const [consultationTypeOptions, setConsultationTypeOptions] = useState<string[]>([]);
+  const [reasonSelection, setReasonSelection] = useState<string | null>(null);
   const [timeSlots, setTimeSlots] = useState<string[]>([]);
   const [clockNow, setClockNow] = useState(() => Date.now());
+
+  const selectedReason = reasonSelection ?? (
+    formData.reason
+      ? consultationTypeOptions.includes(formData.reason)
+        ? formData.reason
+        : OTHER_REASON_VALUE
+      : ''
+  );
 
 
   useEffect(() => {
@@ -205,7 +217,12 @@ export default function Appointments() {
         throw new Error(data.message || `Error al cargar catálogo ${endpoint}`);
       }
 
-      setter(mapCatalogNames(data));
+      const names = mapCatalogNames(data).filter(
+        (name) =>
+          endpoint !== 'tipos-consulta' ||
+          name.trim().toLocaleLowerCase('es') !== 'grooming programado'
+      );
+      setter(names);
     } catch (error) {
       console.error(`Error al cargar catálogo ${endpoint}:`, error);
       setter([]);
@@ -213,7 +230,10 @@ export default function Appointments() {
   };
 
   const loadCatalogs = async () => {
-    await fetchCatalogSafely('estados-cita', setAppointmentStatusOptions);
+    await Promise.all([
+      fetchCatalogSafely('estados-cita', setAppointmentStatusOptions),
+      fetchCatalogSafely('tipos-consulta', setConsultationTypeOptions),
+    ]);
   };
 
   const filteredAppointments = appointments.filter((a: any) => {
@@ -306,6 +326,14 @@ export default function Appointments() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+
+    if (!formData.reason?.trim()) {
+      setFormError({
+        title: 'Falta el motivo de consulta',
+        message: 'Selecciona un tipo de consulta o elige Otro y escribe el motivo.',
+      });
+      return;
+    }
 
     if (
       !isValidName(formData.petName) ||
@@ -484,6 +512,7 @@ export default function Appointments() {
   };
 
   const openModal = (appointment?: Appointment, initialDate?: string) => {
+    setReasonSelection(null);
     if (appointment) {
       setEditingAppointment(appointment);
       setFormData(appointment);
@@ -899,7 +928,11 @@ export default function Appointments() {
                 </label>
 
                 <SearchablePatientSelect
-                  patients={patients}
+                  patients={patients.filter(
+                    (patient) =>
+                      !patient.isDeceased ||
+                      patient.id === formData.patientId
+                  )}
                   value={formData.patientId || ''}
                   onChange={(patientId) => {
                     const selectedPatient = patients.find(
@@ -1028,19 +1061,52 @@ export default function Appointments() {
               </div>
 
               <div>
-                <label className="block text-foreground mb-2 text-sm">
+                <label htmlFor="appointment-reason" className="block text-foreground mb-2 text-sm">
                   Motivo de consulta
                 </label>
 
-                <textarea
-                  value={formData.reason || ''}
-                  onChange={(e) =>
-                    setFormData({ ...formData, reason: e.target.value })
-                  }
-                  className="w-full rounded-xl border border-border bg-secondary/80 px-4 py-3 text-foreground shadow-sm transition-all placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  rows={3}
+                <ThemedSelect
+                  id="appointment-reason"
+                  value={selectedReason}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setReasonSelection(value);
+                    setFormData({
+                      ...formData,
+                      reason: value === OTHER_REASON_VALUE ? '' : value,
+                    });
+                  }}
+                  className="w-full rounded-xl border border-border bg-secondary/80 px-4 py-2.5 text-foreground shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                   required
-                />
+                >
+                  <option value="">Seleccionar motivo de consulta</option>
+                  {consultationTypeOptions.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                  <option value={OTHER_REASON_VALUE}>Otro</option>
+                </ThemedSelect>
+
+                {selectedReason === OTHER_REASON_VALUE && (
+                  <div className="mt-3">
+                    <label htmlFor="appointment-other-reason" className="block text-foreground mb-2 text-sm">
+                      Especifique otro motivo de consulta
+                    </label>
+                    <textarea
+                      id="appointment-other-reason"
+                      value={formData.reason || ''}
+                      onChange={(e) => {
+                        setReasonSelection(OTHER_REASON_VALUE);
+                        setFormData({ ...formData, reason: e.target.value });
+                      }}
+                      placeholder="Escribe el motivo de consulta"
+                      className="w-full rounded-xl border border-border bg-secondary/80 px-4 py-3 text-foreground shadow-sm transition-all placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      rows={3}
+                      required
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-col sm:flex-row sm:justify-start gap-4 pt-4">

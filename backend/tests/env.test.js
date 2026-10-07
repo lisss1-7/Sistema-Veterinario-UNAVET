@@ -50,3 +50,14 @@ test('rechaza producción sin almacenamiento multimedia persistente', () => {
     }
   );
 });
+
+test('el frontend integrado es opcional y rechaza una activación mal escrita', () => {
+  for (const value of [undefined, 'false', 'true']) {
+    withEnvironment({ ...productionEnvironment, SERVE_FRONTEND: value }, () => {
+      assert.doesNotThrow(validateEnvironment);
+    });
+  }
+  withEnvironment({ ...productionEnvironment, SERVE_FRONTEND: 'yes' }, () => {
+    assert.throws(validateEnvironment, /SERVE_FRONTEND/);
+  });
+});

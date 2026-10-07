@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { sincronizarHistorialDesdeGrooming } = require('../utils/groomingHistory');
 const { validarHorarioConfigurado } = require('../utils/scheduleUtils');
 const {
   areValidNameParts,
@@ -633,10 +634,13 @@ const crearGrooming = async (req, res) => {
       ]
     );
 
+    await sincronizarHistorialDesdeGrooming(connection, result.insertId);
     await connection.commit();
 
     res.status(201).json({
-      message: 'Cita de grooming creada correctamente',
+      message: pacienteId
+        ? 'Cita de grooming creada correctamente y agregada al historial del paciente'
+        : 'Cita de grooming creada correctamente',
       id: String(result.insertId),
     });
   } catch (error) {
@@ -923,10 +927,13 @@ const actualizarGrooming = async (req, res) => {
       ]
     );
 
+    await sincronizarHistorialDesdeGrooming(connection, id);
     await connection.commit();
 
     res.json({
-      message: 'Cita de grooming actualizada correctamente',
+      message: pacienteId
+        ? 'Cita de grooming actualizada correctamente y sincronizada con el historial'
+        : 'Cita de grooming actualizada correctamente',
     });
   } catch (error) {
     await connection.rollback();
@@ -941,11 +948,12 @@ const actualizarGrooming = async (req, res) => {
 };
 
 const cambiarEstadoGrooming = async (req, res) => {
+  const connection = await pool.getConnection();
   try {
     const { id } = req.params;
     const { status } = req.body;
 
-    const [validStatuses] = await pool.query(
+    const [validStatuses] = await connection.query(
       `SELECT estado_grooming_id, nombre
        FROM estado_grooming
        WHERE nombre = ?
@@ -959,7 +967,8 @@ const cambiarEstadoGrooming = async (req, res) => {
       });
     }
 
-    const [result] = await pool.query(
+    await connection.beginTransaction();
+    const [result] = await connection.query(
       `UPDATE cita_grooming
        SET estado_grooming_id = ?
        WHERE grooming_id = ?`,
@@ -967,44 +976,63 @@ const cambiarEstadoGrooming = async (req, res) => {
     );
 
     if (result.affectedRows === 0) {
+      await connection.rollback();
       return res.status(404).json({
         message: 'Cita de grooming no encontrada',
       });
     }
+    await sincronizarHistorialDesdeGrooming(connection, id);
+    await connection.commit();
     res.json({
       message: 'Estado actualizado correctamente',
     });
   } catch (error) {
+    await connection.rollback();
     res.status(500).json({
       message: 'Error al cambiar estado de grooming',
       error: error.message,
     });
+  } finally {
+    connection.release();
   }
 };
 
 const eliminarGrooming = async (req, res) => {
+  const connection = await pool.getConnection();
   try {
     const { id } = req.params;
 
-    const [result] = await pool.query(
+    await connection.beginTransaction();
+    await connection.query(
+      `DELETE FROM historial_clinico
+       WHERE grooming_id = ? AND origen = 'Grooming' AND estado_clinico = 'Pendiente'
+         AND veterinario_id IS NULL AND diagnostico IS NULL AND tratamiento IS NULL`,
+      [id]
+    );
+    const [result] = await connection.query(
       'DELETE FROM cita_grooming WHERE grooming_id = ?',
       [id]
     );
 
     if (result.affectedRows === 0) {
+      await connection.rollback();
       return res.status(404).json({
         message: 'Cita de grooming no encontrada',
       });
     }
 
+    await connection.commit();
     res.json({
       message: 'Cita de grooming eliminada correctamente',
     });
   } catch (error) {
+    await connection.rollback();
     res.status(500).json({
       message: 'Error al eliminar cita de grooming',
       error: error.message,
     });
+  } finally {
+    connection.release();
   }
 };
 

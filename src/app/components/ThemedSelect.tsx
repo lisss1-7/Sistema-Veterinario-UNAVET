@@ -99,6 +99,10 @@ export default function ThemedSelect({
     defaultValue === undefined ? undefined : optionValue(String(defaultValue));
 
   const handleValueChange = (nextValue: string) => {
+    // Radix can emit an empty native value while registering new options.
+    // An intentional empty selection uses EMPTY_VALUE instead.
+    if (nextValue === '') return;
+
     const nextNativeValue = nextValue === EMPTY_VALUE ? '' : nextValue;
     const target = { value: nextNativeValue } as HTMLSelectElement;
 
@@ -129,6 +133,9 @@ export default function ThemedSelect({
         aria-invalid={ariaInvalid}
         data-required-field={required || undefined}
         data-field-value={value === undefined ? defaultValue : value}
+        data-has-selectable-options={options.some(
+          (option) => option.value.trim() !== '' && !option.disabled
+        )}
         className={`themed-select-trigger inline-flex items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
       >
         <SelectPrimitive.Value />

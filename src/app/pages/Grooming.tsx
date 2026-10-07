@@ -30,11 +30,13 @@ import {
   getTodayLocal,
   isClinicDateTimePastOrCurrent,
   isValidName,
+  isValidPetName,
   isValidPhone,
   isValidAgeSpacing,
   isNonNegativeNumber,
   sanitizeAgeText,
   sanitizeName,
+  sanitizePetName,
   sanitizePhone,
 } from '../utils/formValidation';
 import { API_URL } from '../config/api';
@@ -462,9 +464,16 @@ export default function Grooming() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    setFormError(null);
 
+    if (!isValidPetName(formData.petName)) {
+      setFormError({
+        title: 'Revisa el nombre de la mascota',
+        message: 'El nombre puede contener letras y números y debe tener entre 2 y 80 caracteres.',
+      });
+      return;
+    }
     if (
-      !isValidName(formData.petName) ||
       !isValidName(formData.tutorFirstName) ||
       !isValidName(formData.tutorFirstSurname) ||
       (formData.tutorMiddleName && !isValidName(formData.tutorMiddleName)) ||
@@ -562,9 +571,9 @@ export default function Grooming() {
       await loadGrooming();
 
       setSuccessMessage(
-        editingGrooming
+        data.message || (editingGrooming
           ? 'Cita de grooming actualizada correctamente'
-          : 'Cita de grooming creada correctamente'
+          : 'Cita de grooming creada correctamente')
       );
 
       setShowSuccessModal(true);
@@ -665,6 +674,7 @@ export default function Grooming() {
   };
 
   const openModal = (groomingItem?: GroomingAppointment, date?: string) => {
+    setFormError(null);
     if (groomingItem) {
       const linkedPatient = patients.find(
         (patient) => patient.id === (groomingItem as GroomingFormData).patientId
@@ -1393,7 +1403,7 @@ export default function Grooming() {
                   label="Nombre de la mascota"
                   value={formData.petName || ''}
                   onChange={(value) =>
-                    setFormData({ ...formData, petName: sanitizeName(value) })
+                    setFormData({ ...formData, petName: sanitizePetName(value) })
                   }
                   required
                   minLength={2}
@@ -1494,6 +1504,10 @@ export default function Grooming() {
                         ? 'Seleccionar raza'
                         : 'Seleccione una especie primero'}
                     </option>
+                    {selectedBreedOption && selectedBreedOption !== 'Otra' &&
+                      !breedOptions.some((breed) => breed.nombre === selectedBreedOption) && (
+                        <option value={selectedBreedOption}>{selectedBreedOption}</option>
+                      )}
                     {breedOptions
                       .filter(
                         (breed) => breed.nombre.toLocaleLowerCase('es-GT') !== 'otra'
@@ -1611,7 +1625,7 @@ export default function Grooming() {
                 <FormInput
                   label="Costo del servicio de grooming, Q"
                   type="number"
-                  value={formData.groomingCost || ''}
+                  value={formData.groomingCost ?? ''}
                   onChange={(value) =>
                     setFormData({
                       ...formData,
@@ -1629,7 +1643,7 @@ export default function Grooming() {
                   <FormInput
                     label="Costo del transporte, Q"
                     type="number"
-                    value={formData.transportCost || ''}
+                    value={formData.transportCost ?? ''}
                     onChange={(value) =>
                       setFormData({
                         ...formData,
@@ -1698,6 +1712,24 @@ export default function Grooming() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {formError && (
+        <div className="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[90]">
+          <ModalCard>
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
+                <AlertTriangle className="w-10 h-10 text-red-600" />
+              </div>
+            </div>
+            <h3 className="text-foreground text-xl mb-2">{formError.title}</h3>
+            <p className="text-muted-foreground text-sm mb-6" role="alert">{formError.message}</p>
+            <button type="button" onClick={() => setFormError(null)}
+              className="w-full px-4 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors">
+              Aceptar
+            </button>
+          </ModalCard>
         </div>
       )}
 

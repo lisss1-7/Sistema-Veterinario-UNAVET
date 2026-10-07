@@ -236,7 +236,7 @@ const crearVacunacion = async (req, res) => {
           [veterinarianId]
         ),
         connection.query(
-          `SELECT paciente_id
+          `SELECT paciente_id, fallecido_en
            FROM paciente
            WHERE paciente_id = ? AND activo = 1
            LIMIT 1`,
@@ -253,6 +253,11 @@ const crearVacunacion = async (req, res) => {
       return res.status(400).json({
         message:
           'Paciente, vacuna, unidad de intervalo o veterinario no pertenecen al catálogo activo',
+      });
+    }
+    if (patients[0].fallecido_en) {
+      return res.status(409).json({
+          message: 'No se pueden registrar vacunas para un paciente fallecido',
       });
     }
 
