@@ -30,7 +30,7 @@ import PdfPreviewModal from '../components/PdfPreviewModal';
 import PatientDeceasedModal from '../components/PatientDeceasedModal';
 import { useModulePermissions } from '../hooks/useModulePermissions';
 import { requestJson } from '../utils/apiClient';
-import { isPdfAttachment, loadPdfAttachment, readTreatmentAttachment } from '../utils/treatmentAttachment';
+import { appendTreatmentPdfAttachment, isPdfAttachment, loadPdfAttachment, readTreatmentAttachment } from '../utils/treatmentAttachment';
 import { loadMediaAsDataUrl, resolveMediaUrl } from '../utils/media';
 
 type PatientWithPhoto = Patient & {
@@ -880,6 +880,7 @@ export default function PatientDetail() {
         addPdfFooter(doc);
         doc.addPage();
         drawUnavetPdfHeader(doc, logoBase64, 'Sistema de Gestión Veterinaria');
+        doc.setTextColor('#2F2924');
         y = 43;
       }
 
@@ -889,7 +890,7 @@ export default function PatientDetail() {
 
       if (isPdfAttachment(treat.attachmentPhoto)) {
         doc.setFont('helvetica', 'normal');
-        doc.text(doc.splitTextToSize('El PDF adjunto se puede consultar y descargar desde el expediente del paciente.', 178), 16, y);
+        doc.text(doc.splitTextToSize('Las páginas del documento adjunto se incluyen al final de esta ficha.', 178), 16, y);
       } else {
         try {
           const attachmentPhoto = await loadMediaAsDataUrl(treat.attachmentPhoto);
@@ -907,7 +908,7 @@ export default function PatientDetail() {
     }
 
     addPdfFooter(doc);
-    return doc;
+    return appendTreatmentPdfAttachment(doc.output('blob'), treat.attachmentPhoto);
   };
 
   const createAllTreatmentsPdf = async () => {
@@ -1115,10 +1116,10 @@ export default function PatientDetail() {
     return doc;
   };
 
-  const openPdfPreview = (doc: jsPDF, title: string, filename: string) => {
+  const openPdfPreview = (doc: jsPDF | Blob, title: string, filename: string) => {
     if (pdfPreview?.url) URL.revokeObjectURL(pdfPreview.url);
     setPdfPreview({
-      url: URL.createObjectURL(doc.output('blob')),
+      url: URL.createObjectURL(doc instanceof Blob ? doc : doc.output('blob')),
       title,
       filename,
     });
@@ -1218,16 +1219,29 @@ export default function PatientDetail() {
   };
 
   const downloadTreatmentPdf = async (treat: TreatmentServiceExtended) => {
-    const doc = await createTreatmentPdf(treat);
-    doc.save(formatPdfName('Servicio', patient?.petName));
+    try {
+      const blob = await createTreatmentPdf(treat);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = formatPdfName('Servicio', patient?.petName);
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'No fue posible generar el PDF');
+    }
   };
 
   const previewTreatmentPdf = async (treat: TreatmentServiceExtended) => {
-    openPdfPreview(
-      await createTreatmentPdf(treat),
-      'Vista previa del tratamiento o servicio',
-      formatPdfName('Servicio', patient?.petName)
-    );
+    try {
+      openPdfPreview(
+        await createTreatmentPdf(treat),
+        'Vista previa del tratamiento o servicio',
+        formatPdfName('Servicio', patient?.petName)
+      );
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'No fue posible generar el PDF');
+    }
   };
 
   const downloadAllTreatmentsPdf = async () => {

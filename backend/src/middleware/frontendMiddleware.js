@@ -20,7 +20,7 @@ const mountFrontend = (app, directory = path.join(__dirname, '../../../dist')) =
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' data: https://fonts.gstatic.com",
     "img-src 'self' data: blob: https:",
-    "connect-src 'self' https:",
+    "connect-src 'self' https: data:",
     "frame-src 'self' blob:",
     "object-src 'self' blob:",
     "base-uri 'self'",

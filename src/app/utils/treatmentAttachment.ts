@@ -34,3 +34,26 @@ export const loadPdfAttachment = async (value: string): Promise<Blob> => {
   const bytes = Uint8Array.from(content, (character) => character.charCodeAt(0));
   return new Blob([bytes], { type: 'application/pdf' });
 };
+
+export const appendTreatmentPdfAttachment = async (
+  pdf: Blob,
+  value?: string | null
+): Promise<Blob> => {
+  if (!value || !isPdfAttachment(value)) return pdf;
+
+  try {
+    const attachment = await loadPdfAttachment(value);
+    const { PDFDocument } = await import('pdf-lib');
+    const document = await PDFDocument.load(await pdf.arrayBuffer(), { updateMetadata: false });
+    const attachedDocument = await PDFDocument.load(await attachment.arrayBuffer());
+    if (attachedDocument.getPageCount() === 0) {
+      throw new Error('El PDF adjunto no contiene páginas');
+    }
+    const pages = await document.copyPages(attachedDocument, attachedDocument.getPageIndices());
+    pages.forEach((page) => document.addPage(page));
+    const bytes = await document.save();
+    return new Blob([new Uint8Array(bytes)], { type: 'application/pdf' });
+  } catch {
+    throw new Error('No fue posible anexar el PDF adjunto. Verifique que el archivo esté disponible, sea válido y no tenga contraseña.');
+  }
+};

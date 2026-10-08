@@ -35,6 +35,7 @@ test('sirve React y sus rutas conservando las respuestas y protección de la API
     const policy = response.headers.get('content-security-policy');
     const hash = crypto.createHash('sha256').update(inlineScript.replace(/\r\n?/g, '\n')).digest('base64');
     assert.ok(policy.includes(`'sha256-${hash}'`));
+    assert.ok(policy.includes("connect-src 'self' https: data:"), 'permite procesar imágenes data: al generar PDF');
     assert.ok(policy.includes("frame-src 'self' blob:"), 'permite la vista previa PDF existente');
     assert.ok(policy.includes('https://fonts.googleapis.com'), 'conserva la tipografía existente');
     assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
