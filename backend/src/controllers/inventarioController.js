@@ -1,8 +1,9 @@
 const pool = require('../config/db');
+const { randomUUID } = require('crypto');
 const {
   recordMovement,
   consumeLots,
-  addToPrimaryLot,
+  getProductAndLots,
   setTotalStock,
 } = require('../utils/inventoryLots');
 
@@ -104,25 +105,6 @@ const getOrCreateCategory = async (connection, name) => {
   return rows[0].categoria_id;
 };
 
-const getOrCreateSupplier = async (connection, name) => {
-  const normalizedName = String(name || '').trim();
-  if (!normalizedName) return null;
-  await connection.query(
-    `INSERT INTO proveedor (nombre, activo)
-     VALUES (?, 1)
-     ON DUPLICATE KEY UPDATE activo = 1`,
-    [normalizedName]
-  );
-  const [rows] = await connection.query(
-    `SELECT proveedor_id
-     FROM proveedor
-     WHERE nombre = ?
-     LIMIT 1`,
-    [normalizedName]
-  );
-  return rows[0].proveedor_id;
-};
-
 const getOrCreateUnit = async (connection, name) => {
   const normalizedName = String(name || '').trim();
   await connection.query(
@@ -142,12 +124,9 @@ const getOrCreateUnit = async (connection, name) => {
 };
 
 const normalizeNumbers = (body) => {
-  const stock = Number(body.currentStock);
   const minimum = Number(body.minStock);
   const price = Number(body.price);
   if (
-    !Number.isInteger(stock) ||
-    stock < 0 ||
     !Number.isInteger(minimum) ||
     minimum < 0 ||
     !Number.isFinite(price) ||
@@ -155,7 +134,7 @@ const normalizeNumbers = (body) => {
   ) {
     return null;
   }
-  return { stock, minimum, price };
+  return { minimum, price };
 };
 
 const normalizeAuditItems = (items) => {
@@ -281,8 +260,6 @@ const crearProducto = async (req, res) => {
       category,
       description,
       presentation,
-      expirationDate,
-      supplier,
       status,
     } = req.body;
     if (!name || !category || !presentation) {
@@ -293,16 +270,13 @@ const crearProducto = async (req, res) => {
     const numbers = normalizeNumbers(req.body);
     if (!numbers) {
       return res.status(400).json({
-        message: 'Stock, mínimo y precio deben ser valores válidos',
+        message: 'Mínimo y precio deben ser valores válidos',
       });
     }
 
     await connection.beginTransaction();
-    const [categoryId, supplierId, unitId] = await Promise.all([
-      getOrCreateCategory(connection, category),
-      getOrCreateSupplier(connection, supplier),
-      getOrCreateUnit(connection, presentation),
-    ]);
+    const categoryId = await getOrCreateCategory(connection, category);
+    const unitId = await getOrCreateUnit(connection, presentation);
     const [result] = await connection.query(
       `INSERT INTO producto_inventario (
          categoria_id,
@@ -324,42 +298,9 @@ const crearProducto = async (req, res) => {
         status === 'Inactivo' ? 0 : 1,
       ]
     );
-    const [lotResult] = await connection.query(
-      `INSERT INTO lote_producto (
-         producto_id,
-         proveedor_id,
-         codigo_lote,
-         fecha_vencimiento,
-         precio_compra,
-         stock
-       )
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [
-        result.insertId,
-        supplierId,
-        `INICIAL-${result.insertId}`,
-        expirationDate || null,
-        req.body.purchasePrice || null,
-        numbers.stock,
-      ]
-    );
-    if (numbers.stock > 0) {
-      await recordMovement({
-        connection,
-        productId: result.insertId,
-        lotId: lotResult.insertId,
-        userId: req.user?.id,
-        movementType: 'Entrada',
-        quantity: numbers.stock,
-        previousStock: 0,
-        newStock: numbers.stock,
-        reason: 'Existencia inicial del producto',
-        referenceType: 'Compra',
-      });
-    }
     await connection.commit();
     res.status(201).json({
-      message: 'Producto y lote inicial creados correctamente',
+      message: 'Producto creado sin existencias; registre una compra para recibir productos',
       id: String(result.insertId),
     });
   } catch (error) {
@@ -381,8 +322,6 @@ const actualizarProducto = async (req, res) => {
       category,
       description,
       presentation,
-      expirationDate,
-      supplier,
       status,
     } = req.body;
     if (!name || !category || !presentation) {
@@ -393,7 +332,7 @@ const actualizarProducto = async (req, res) => {
     const numbers = normalizeNumbers(req.body);
     if (!numbers) {
       return res.status(400).json({
-        message: 'Stock, mínimo y precio deben ser valores válidos',
+        message: 'Mínimo y precio deben ser valores válidos',
       });
     }
 
@@ -413,11 +352,8 @@ const actualizarProducto = async (req, res) => {
       });
     }
 
-    const [categoryId, supplierId, unitId] = await Promise.all([
-      getOrCreateCategory(connection, category),
-      getOrCreateSupplier(connection, supplier),
-      getOrCreateUnit(connection, presentation),
-    ]);
+    const categoryId = await getOrCreateCategory(connection, category);
+    const unitId = await getOrCreateUnit(connection, presentation);
     await connection.query(
       `UPDATE producto_inventario
        SET
@@ -440,19 +376,9 @@ const actualizarProducto = async (req, res) => {
         id,
       ]
     );
-    await setTotalStock({
-      connection,
-      productId: id,
-      targetStock: numbers.stock,
-      supplierId,
-      expirationDate: expirationDate || null,
-      purchasePrice: req.body.purchasePrice || null,
-      userId: req.user?.id,
-      reason: 'Ajuste realizado al editar el producto',
-    });
     await connection.commit();
     res.json({
-      message: 'Producto y existencias actualizados correctamente',
+      message: 'Ficha del producto actualizada correctamente',
     });
   } catch (error) {
     await connection.rollback();
@@ -469,21 +395,40 @@ const ajustarStock = async (req, res) => {
   try {
     const { id } = req.params;
     const quantity = Number(req.body.adjustment);
-    if (!Number.isInteger(quantity) || quantity === 0) {
+    if (!Number.isInteger(quantity) || quantity === 0 || Math.abs(quantity) > 2147483647) {
       return res.status(400).json({
         message: 'El ajuste debe ser un entero distinto de cero',
       });
     }
 
+    const reason = String(req.body.reason || '').trim();
+    const operation = req.body.operation || 'adjustment';
+    if (!reason || reason.length > 200 || !['adjustment', 'consumption'].includes(operation)) {
+      return res.status(400).json({ message: 'Indique un motivo válido de hasta 200 caracteres' });
+    }
+    if (operation === 'consumption' && quantity > 0) {
+      return res.status(400).json({ message: 'Un consumo interno debe descontar existencias' });
+    }
+    const movementReason = `${operation === 'consumption' ? 'Consumo interno' : 'Ajuste manual'}: ${reason}`;
     await connection.beginTransaction();
     let newStock;
     if (quantity > 0) {
-      newStock = await addToPrimaryLot({
-        connection,
-        productId: id,
-        quantity,
-        userId: req.user?.id,
-        reason: req.body.reason || 'Ajuste manual de inventario',
+      const inventory = await getProductAndLots(connection, id);
+      if (!inventory.product.activo || inventory.stock + quantity > 2147483647) {
+        const error = new Error('Producto inactivo o existencia fuera del límite permitido');
+        error.statusCode = 400;
+        throw error;
+      }
+      // Corrections never refill a purchase lot or replace its supplier/expiration.
+      const [lot] = await connection.query(
+        'INSERT INTO lote_producto (producto_id, codigo_lote, stock) VALUES (?, ?, ?)',
+        [id, `AJUSTE-${randomUUID()}`, quantity]
+      );
+      newStock = inventory.stock + quantity;
+      await recordMovement({
+        connection, productId: id, lotId: lot.insertId, userId: req.user?.id,
+        movementType: 'Entrada', quantity, previousStock: inventory.stock, newStock,
+        reason: movementReason, referenceType: 'Manual',
       });
     } else {
       const result = await consumeLots({
@@ -491,7 +436,7 @@ const ajustarStock = async (req, res) => {
         productId: id,
         quantity: Math.abs(quantity),
         userId: req.user?.id,
-        reason: req.body.reason || 'Ajuste manual de inventario',
+        reason: movementReason,
         referenceType: 'Manual',
         referenceId: null,
       });

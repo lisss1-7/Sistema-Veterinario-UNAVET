@@ -17,6 +17,7 @@ import ThemedSelect from './ThemedSelect';
 import { CreateButton } from './ModuleHeader';
 import { API_URL } from '../config/api';
 import { getAuthHeaders } from '../utils/apiClient';
+import { calculateSalesTotals } from '../utils/inventoryOperations';
 import type { ModulePermissions } from '../hooks/useModulePermissions';
 
 type SaleItem = {
@@ -41,7 +42,8 @@ type Sale = {
   invoiceNit: string;
   invoiceName: string;
   total: number;
-  canceled?: boolean;
+  canceled: boolean;
+  cancellationReason: string;
   items: Array<SaleItem & { id: string; subtotal: number }>;
 };
 
@@ -245,6 +247,8 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
   const [showFinalizeConfirm, setShowFinalizeConfirm] = useState(false);
   const [showFinalizedSuccess, setShowFinalizedSuccess] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Sale | null>(null);
+  const [cancellationReason, setCancellationReason] = useState('');
+  const [canceling, setCanceling] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [client, setClient] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
@@ -369,21 +373,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
     void loadOptions();
   }, []);
 
-  const totals = useMemo(
-    () =>
-      sales.reduce(
-        (result, sale) => {
-          sale.payments.forEach((payment) => {
-            result.byMethod[payment.code] =
-              (result.byMethod[payment.code] || 0) + payment.amount;
-          });
-          result.total += sale.total;
-          return result;
-        },
-        { byMethod: {} as Record<string, number>, total: 0 }
-      ),
-    [sales]
-  );
+  const totals = useMemo(() => calculateSalesTotals(sales), [sales]);
 
   const currentShiftTotals = useMemo(() => {
     const active = sales.filter((sale) => Number(sale.id) > Number(afterSaleId) && !sale.canceled);
@@ -557,11 +547,12 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
   };
 
   const deleteSale = async () => {
-    if (!deleteTarget || !permissions.canDelete) return;
+    if (!deleteTarget || !permissions.canDelete || canceling || !cancellationReason.trim()) return;
+    setCanceling(true);
     try {
       const response = await fetch(
-        `${API_URL}/cierre-ventas/${deleteTarget.id}`,
-        { method: 'DELETE', headers: getAuthHeaders() }
+        `${API_URL}/cierre-ventas/${deleteTarget.id}/anular`,
+        { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ reason: cancellationReason }) }
       );
       const data = await response.json();
       if (!response.ok) throw new Error(data.message);
@@ -571,14 +562,14 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
     } catch (error) {
       await loadDayStatus();
       setNotice({
-        title: 'No se pudo eliminar la venta',
+        title: 'No se pudo anular la venta',
         message:
           error instanceof Error
             ? error.message
-            : 'Ocurrió un error inesperado al eliminar la venta.',
+            : 'Ocurrió un error inesperado al anular la venta.',
         type: 'error',
       });
-    }
+    } finally { setCanceling(false); }
   };
 
   const finalizeDay = async () => {
@@ -691,22 +682,18 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
           <div>
             <p className="font-semibold">Día finalizado</p>
             <p className="text-sm">
-              Este cierre está en modo de solo lectura. Ya no se pueden registrar ni eliminar ventas.
+              Este cierre está en modo de solo lectura. Ya no se pueden registrar ni anular ventas.
             </p>
           </div>
         </div>
       )}
 
       <div className="mb-4 grid grid-cols-1 gap-2 min-[400px]:grid-cols-2 lg:grid-cols-3 min-[400px]:[&>div:last-child]:col-span-2 lg:[&>div:last-child]:col-span-1">
-        <SummaryCard label="Ventas registradas" value={String(sales.length)} />
+        <SummaryCard label="Ventas registradas" value={String(totals.saleCount)} />
         <SummaryCard label="Total del día" value={money(totals.total)} />
         <SummaryCard
           label="Productos vendidos"
-          value={String(
-            sales.flatMap((sale) => sale.items)
-              .filter((item) => item.type === 'Producto')
-              .reduce((sum, item) => sum + item.quantity, 0)
-          )}
+          value={String(totals.productQuantity)}
         />
       </div>
 
@@ -752,6 +739,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
               <div className="min-w-0">
                 <h3 className="break-words font-semibold text-foreground">{sale.client || 'Consumidor final'}</h3>
                 <p className="break-words text-sm text-muted-foreground">{description(sale)}</p>
+                {sale.canceled && <p className="mt-1 text-sm text-red-700">Anulada: {sale.cancellationReason}</p>}
               </div>
               <p className="shrink-0 font-bold text-primary">{money(sale.total)}</p>
             </div>
@@ -770,10 +758,10 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
             {permissions.canDelete && <div className="mt-2 flex justify-end">
               <button
                 type="button"
-                title="Eliminar venta"
-                aria-label={`Eliminar venta de ${sale.client || 'Consumidor final'}`}
-                onClick={() => setDeleteTarget(sale)}
-                disabled={isDayClosed}
+                title="Anular venta"
+                aria-label={`Anular venta de ${sale.client || 'Consumidor final'}`}
+                onClick={() => { setCancellationReason(''); setDeleteTarget(sale); }}
+                disabled={isDayClosed || sale.canceled}
                 className="flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-red-100 p-2 text-red-600 hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Trash2 className="h-4 w-4" />
@@ -815,7 +803,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
           <tbody className="divide-y divide-border">
             {sales.map((sale) => (
               <tr key={sale.id} className="hover:bg-muted text-sm text-foreground">
-                <td className="break-words px-4 py-3">{sale.client || 'Consumidor final'}</td>
+                <td className="break-words px-4 py-3">{sale.client || 'Consumidor final'}{sale.canceled && <p className="mt-1 text-xs text-red-700">Anulada: {sale.cancellationReason}</p>}</td>
                 <td className="[overflow-wrap:anywhere] px-4 py-3">{description(sale)}</td>
                 {paymentOptions.map((payment) => (
                   <PaymentCell
@@ -832,9 +820,9 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
                 {permissions.canDelete && <td className="px-4 py-3 text-center">
                   <button
                     type="button"
-                    title="Eliminar venta"
-                    onClick={() => setDeleteTarget(sale)}
-                    disabled={isDayClosed}
+                    title="Anular venta"
+                    onClick={() => { setCancellationReason(''); setDeleteTarget(sale); }}
+                    disabled={isDayClosed || sale.canceled}
                     className="p-2 bg-red-100 hover:bg-red-200 disabled:opacity-40 disabled:cursor-not-allowed text-red-600 rounded-lg"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -986,13 +974,16 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
         <div className="modal-backdrop fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="bg-card rounded-2xl shadow-2xl max-w-sm w-full max-h-[90vh] max-h-[90dvh] overflow-y-auto p-6 text-center">
             <AlertTriangle className="w-12 h-12 text-red-600 mx-auto mb-3" />
-            <h3 className="text-foreground text-xl mb-2">¿Eliminar esta venta?</h3>
+            <h3 className="text-foreground text-xl mb-2">¿Anular esta venta?</h3>
             <p className="text-muted-foreground text-sm mb-5">
-              Los productos de esta venta serán reintegrados al inventario.
+              Los productos se reintegrarán una sola vez. El documento y sus pagos se conservarán como anulados y se excluirán de los totales.
             </p>
+            <label className="mb-4 block text-left text-sm text-foreground">Motivo de anulación
+              <textarea required maxLength={200} disabled={canceling} value={cancellationReason} onChange={(event) => setCancellationReason(event.target.value)} className="mt-2 w-full rounded-xl border border-border bg-secondary px-3 py-2" />
+            </label>
             <div className="flex gap-3">
-              <button type="button" onClick={() => setDeleteTarget(null)} className="flex-1 px-4 py-2 bg-muted rounded-lg">Cancelar</button>
-              <button type="button" onClick={deleteSale} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg">Eliminar</button>
+              <button disabled={canceling} type="button" onClick={() => setDeleteTarget(null)} className="flex-1 px-4 py-2 bg-muted rounded-lg">Cancelar</button>
+              <button disabled={canceling || !cancellationReason.trim()} type="button" onClick={deleteSale} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg disabled:opacity-50">{canceling ? 'Anulando...' : 'Anular'}</button>
             </div>
           </div>
         </div>
@@ -1043,7 +1034,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
             <Lock className="w-12 h-12 text-red-600 mx-auto mb-3" />
             <h3 className="text-foreground text-xl mb-2">¿Finalizar el día?</h3>
             <p className="text-muted-foreground text-sm mb-5">
-              Después de finalizar el {formatDisplayDate(date)} ya no será posible registrar ni eliminar ventas de esa fecha.
+              Después de finalizar el {formatDisplayDate(date)} ya no será posible registrar ni anular ventas de esa fecha.
               {' '}También se cerrará automáticamente el último turno pendiente.
             </p>
             <div className="flex gap-3">

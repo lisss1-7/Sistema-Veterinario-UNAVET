@@ -19,6 +19,7 @@ router.get('/turnos', verificarToken, verificarPermiso('inventory', 'ver'), list
 router.post('/turnos/finalizar', verificarToken, verificarPermiso('inventory', 'editar'), finalizarTurno);
 router.post('/finalizar', verificarToken, verificarPermiso('inventory', 'editar'), finalizarDia);
 router.post('/', verificarToken, verificarPermiso('inventory', 'crear'), crearVenta);
+router.post('/:id/anular', verificarToken, verificarPermiso('inventory', 'eliminar'), eliminarVenta);
 router.delete('/:id', verificarToken, verificarPermiso('inventory', 'eliminar'), eliminarVenta);
 
 module.exports = router;
