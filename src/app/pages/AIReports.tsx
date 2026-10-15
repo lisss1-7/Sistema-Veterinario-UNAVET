@@ -570,7 +570,7 @@ export default function AIReports() {
       </div>
 
       <div className="bg-card border border-border rounded-2xl shadow-lg flex-1 min-h-[70vh] md:min-h-0 flex flex-col overflow-hidden">
-        <div className="bg-gradient-to-r from-foreground via-muted-foreground to-primary px-3 py-3 sm:px-4 sm:py-4 md:px-5">
+        <div className="bg-gradient-to-r from-foreground via-muted-foreground to-primary dark:from-[#2D2118] dark:via-[#49362A] dark:to-[#5E4635] px-3 py-3 sm:px-4 sm:py-4 md:px-5">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-[#F7EFE6]/15 border border-[#F7EFE6]/20 flex items-center justify-center shrink-0">
               <Bot className="w-5 h-5 text-[#F7EFE6]" />

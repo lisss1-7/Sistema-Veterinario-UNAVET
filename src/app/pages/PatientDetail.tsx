@@ -1,9 +1,8 @@
-import { useState, useEffect, type FormEvent, type ReactNode } from 'react';
+import { useState, useEffect, useRef, type FormEvent, type ReactNode } from 'react';
 import { useParams, Link, useLocation } from 'react-router';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import {
   ArrowLeft,
-  Plus,
   Download,
   Camera,
   Upload,
@@ -26,6 +25,7 @@ import { getTodayLocal } from '../utils/formValidation';
 import { drawUnavetPdfHeader, getUnavetLogoBase64 } from '../utils/pdfBranding';
 import { formatDateForDisplay } from '../utils/dateFormat';
 import ThemedSelect from '../components/ThemedSelect';
+import { CreateButton } from '../components/ModuleHeader';
 import PdfPreviewModal from '../components/PdfPreviewModal';
 import PatientDeceasedModal from '../components/PatientDeceasedModal';
 import { useModulePermissions } from '../hooks/useModulePermissions';
@@ -2617,19 +2617,15 @@ function SectionHeader({
   canAdd?: boolean;
 }) {
   return (
-    <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
+    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <h3 className="text-foreground text-lg">{title}</h3>
 
-      <div className="flex flex-col sm:flex-row gap-2">
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap-reverse sm:items-start sm:justify-end">
         {extraButton}
 
-        {canAdd && <button
-          onClick={onAdd}
-          className="flex items-center justify-center gap-2 px-4 py-2 text-lg bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors"
-        >
-          <Plus className="w-4 h-4" />
+        {canAdd && <CreateButton onClick={onAdd}>
           {buttonText}
-        </button>}
+        </CreateButton>}
       </div>
     </div>
   );

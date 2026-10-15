@@ -1,6 +1,61 @@
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
 @import './tailwind.css';
 @import './theme.css';
+
+/* La auditoría comparte la paleta y superficies de los formularios clínicos. */
+.inventory-audit .audit-icon {
+  color: var(--patient-form-heading);
+  border-color: var(--patient-form-border);
+  background: var(--patient-form-accent-soft);
+}
+
+.inventory-audit .audit-progress-track {
+  background: var(--patient-form-accent-soft);
+}
+
+.inventory-audit .audit-progress-fill,
+.inventory-audit .audit-table-heading {
+  background: linear-gradient(135deg, var(--patient-form-accent), var(--patient-form-accent-hover));
+  color: white;
+}
+
+.dark .inventory-audit .audit-table-heading {
+  color: #211710;
+}
+
+.inventory-audit .audit-product-row {
+  background: var(--patient-form-surface);
+  transition: background-color 160ms ease;
+}
+
+.inventory-audit .audit-product-row:nth-child(even) {
+  background: color-mix(in srgb, var(--patient-form-panel) 55%, var(--patient-form-surface));
+}
+
+.inventory-audit .audit-product-row:hover {
+  background: var(--patient-form-accent-soft);
+}
+
+.inventory-audit .audit-status {
+  border-color: var(--patient-form-border);
+}
+
+.inventory-audit .audit-status-pending {
+  background: var(--patient-form-accent-soft);
+  color: var(--patient-form-heading);
+}
+
+.inventory-audit .audit-status-correct {
+  background: color-mix(in srgb, var(--success) 14%, var(--patient-form-input));
+  color: var(--foreground);
+  border-color: color-mix(in srgb, var(--success) 50%, var(--patient-form-border));
+}
+
+.inventory-audit .audit-status-difference {
+  background: color-mix(in srgb, var(--destructive) 12%, var(--patient-form-input));
+  color: var(--destructive);
+  border-color: color-mix(in srgb, var(--destructive) 50%, var(--patient-form-border));
+}
 /* Fondo compartido para los modales: mejora el contraste con cursores claros. */
 .modal-backdrop {
   background-color: rgb(45 33 24 / 68%) !important;
@@ -21,8 +76,35 @@
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+.app-sidebar nav {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(245 240 235 / 45%) transparent;
+}
+
+.app-sidebar nav::-webkit-scrollbar {
+  width: 5px;
+}
+
+.app-sidebar nav::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background-color: rgb(245 240 235 / 45%);
+}
+
 .app-main {
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Conserva la altura del visor en navegadores que aún no admiten dvh. */
+@supports not (height: 100dvh) {
+  .pdf-preview-dialog {
+    height: 100vh;
+  }
+
+  @media (min-width: 640px) {
+    .pdf-preview-dialog {
+      height: 92vh;
+    }
+  }
 }
 
 button,
@@ -70,6 +152,10 @@ textarea,
   }
 
   .modal-backdrop > .pdf-preview-dialog {
+    height: calc(
+      100vh - max(0.5rem, env(safe-area-inset-top)) -
+        max(0.5rem, env(safe-area-inset-bottom))
+    );
     height: calc(
       100dvh - max(0.5rem, env(safe-area-inset-top)) -
         max(0.5rem, env(safe-area-inset-bottom))

@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router';
 import * as Popover from '@radix-ui/react-popover';
 import {
   Search,
-  Plus,
   Edit,
   Trash2,
   Eye,
@@ -24,6 +23,7 @@ import {
 } from 'lucide-react';
 import type { Patient } from '../utils/types';
 import ThemedSelect from '../components/ThemedSelect';
+import ModuleHeader, { CreateButton } from '../components/ModuleHeader';
 import { useModulePermissions } from '../hooks/useModulePermissions';
 import {
   isValidName,
@@ -141,8 +141,8 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    loadPatients();
-    loadCatalogs();
+    loadPatients(true);
+    loadCatalogs(true);
     loadExistingTutors();
   }, []);
 
@@ -150,9 +150,9 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
     setCurrentPage(1);
   }, [searchTerm, filterSpecies, sortOrder, pageSize]);
 
-  const loadPatients = async () => {
+  const loadPatients = async (usePrefetch = false) => {
     try {
-      const data = await getPatientsList();
+      const data = await getPatientsList(usePrefetch);
       setPatients(data);
     } catch (error) {
       console.error('Error al cargar pacientes:', error);
@@ -162,9 +162,9 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
     }
   };
 
-  const loadCatalogs = async () => {
+  const loadCatalogs = async (usePrefetch = false) => {
     try {
-      const data = await getPatientCatalogs();
+      const data = await getPatientCatalogs(usePrefetch);
       setSpeciesOptions(data.species);
       setSexOptions(data.sexes);
       setReproductiveStatusOptions(data.reproductiveStatuses);
@@ -1033,27 +1033,17 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
 
   return (
     <div className="w-full p-[0.825rem] md:p-[1.375rem]">
-      <div className="mb-3 flex flex-col gap-2 sm:mb-6 sm:flex-row sm:items-center sm:gap-4">
-        <div>
-          <h1 className="text-foreground text-xl md:text-2xl font-bold mb-2">
-            {isRegistrationPage
+      <ModuleHeader title={isRegistrationPage
               ? 'Registrar paciente'
               : activeSection === 'patients'
                 ? 'Pacientes'
-                : 'Tutores'}
-          </h1>
-        </div>
+                : 'Tutores'}>
         {!isRegistrationPage && activeSection === 'patients' && permissions.canCreate && (
-          <button
-            type="button"
-            onClick={() => openModal()}
-            className="flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-base text-[#F7EFE6] shadow-lg transition-all duration-300 hover:bg-primary/90 hover:shadow-xl sm:text-lg"
-          >
-            <Plus className="h-4 w-4" strokeWidth={2.5} />
+          <CreateButton onClick={() => openModal()}>
             Agregar paciente
-          </button>
+          </CreateButton>
         )}
-      </div>
+      </ModuleHeader>
 
       {!isRegistrationPage && (
         <div className="mb-3 flex w-full max-w-md rounded-xl border border-border bg-card p-1 shadow-sm sm:mb-6">
@@ -1228,6 +1218,8 @@ export default function Patients({ mode = 'list' }: PatientsProps) {
                 {patient.photo ? (
                   <img
                     src={resolveMediaUrl(patient.photo)}
+                    loading="lazy"
+                    decoding="async"
                     alt={`Foto de ${patient.petName}`}
                     className={`w-full h-full object-cover${patient.isDeceased ? ' grayscale' : ''}`}
                   />

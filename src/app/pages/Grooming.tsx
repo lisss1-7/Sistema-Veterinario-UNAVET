@@ -24,6 +24,7 @@ import type { GroomingAppointment } from '../utils/types';
 import SearchablePatientSelect from '../components/SearchablePatientSelect';
 import ThemedSelect from '../components/ThemedSelect';
 import InformationCard from '../components/InformationCard';
+import ModuleHeader, { CreateButton } from '../components/ModuleHeader';
 import { useModulePermissions } from '../hooks/useModulePermissions';
 import { formatDateForDisplay } from '../utils/dateFormat';
 import {
@@ -721,22 +722,9 @@ export default function Grooming() {
 
   return (
     <div className="p-[0.825rem] md:p-[1.375rem]">
-      <div className="flex flex-wrap items-center gap-[0.825rem] mb-[0.825rem]">
-        <div>
-          <h1 className="text-foreground text-xl md:text-2xl font-bold">
-            Grooming
-          </h1>
-        </div>
-
-        {permissions.canCreate && <button
-          onClick={() => openModal()}
-          className="flex items-center justify-center gap-2 px-[0.825rem] py-[0.55rem] text-[0.9625rem] bg-gradient-to-br from-primary to-primary hover:from-[#7a5f3c] hover:to-primary text-[#F7EFE6] rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105"
-        >
-          <Plus className="w-4 h-4 drop-shadow-sm" strokeWidth={2.5} />
-          Nueva cita de grooming
-        </button>}
-        <div className="sm:ml-auto">
-          <div className="flex gap-1 rounded-xl border border-border bg-card p-1" aria-label="Vista de grooming">
+      <ModuleHeader title="Grooming">
+        <div className="h-11">
+          <div className="flex h-full gap-1 rounded-xl border border-border bg-card p-1" aria-label="Vista de grooming">
             <button type="button" aria-pressed={viewMode === 'calendar'} onClick={() => setViewMode('calendar')}
               className={`flex items-center gap-2 rounded-lg px-[0.6875rem] py-[0.4125rem] text-[0.825rem] font-semibold transition-colors ${viewMode === 'calendar' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>
               <CalendarDays className="h-4 w-4" /> Calendario
@@ -747,7 +735,10 @@ export default function Grooming() {
             </button>
           </div>
         </div>
-      </div>
+        {permissions.canCreate && <CreateButton onClick={() => openModal()}>
+          Nueva cita de grooming
+        </CreateButton>}
+      </ModuleHeader>
 
       <div className="mb-[0.825rem] grid grid-cols-2 gap-2 sm:gap-[0.6875rem] xl:grid-cols-4">
         <InformationCard
