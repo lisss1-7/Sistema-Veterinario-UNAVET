@@ -8,7 +8,7 @@ COPY src ./src
 COPY public ./public
 ARG VITE_API_URL=/api
 ARG VITE_DELIVERY_MODE=full
-RUN npm run build
+RUN NODE_OPTIONS=--max-old-space-size=1024 npm run build
 
 FROM node:24-bookworm-slim AS backend-dependencies
 WORKDIR /app/backend
