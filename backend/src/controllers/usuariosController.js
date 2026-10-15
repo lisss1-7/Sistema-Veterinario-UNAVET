@@ -24,7 +24,10 @@ const mapUsuarioToFrontend = (row) => ({
   phone: row.telefono || '',
   specialty: row.especialidad || '',
   status: row.estado,
-  lastAccess: row.ultimo_acceso || null,
+  // MySQL resolves its session timezone; avoid reinterpreting DATETIME in Node's timezone.
+  lastAccess: row.ultimo_acceso_epoch == null
+    ? null
+    : new Date(Number(row.ultimo_acceso_epoch) * 1000).toISOString(),
   creationDate: row.fecha_creacion,
   deletedAt: row.fecha_eliminacion || null,
 });
@@ -80,7 +83,7 @@ const listarUsuarios = async (req, res) => {
         u.telefono,
         ${specialtiesSelect('u')},
         estado.nombre AS estado,
-        u.ultimo_acceso,
+        UNIX_TIMESTAMP(u.ultimo_acceso) AS ultimo_acceso_epoch,
         DATE_FORMAT(u.creado_en, '%Y-%m-%d') AS fecha_creacion,
         u.eliminado_en AS fecha_eliminacion,
         r.nombre AS rol
@@ -122,7 +125,7 @@ const obtenerUsuarioPorId = async (req, res) => {
         u.telefono,
         ${specialtiesSelect('u')},
         estado.nombre AS estado,
-        u.ultimo_acceso,
+        UNIX_TIMESTAMP(u.ultimo_acceso) AS ultimo_acceso_epoch,
         DATE_FORMAT(u.creado_en, '%Y-%m-%d') AS fecha_creacion,
         r.nombre AS rol
       FROM usuario u
@@ -428,7 +431,7 @@ const actualizarUsuario = async (req, res) => {
         u.telefono,
         ${specialtiesSelect('u')},
         estado.nombre AS estado,
-        u.ultimo_acceso,
+        UNIX_TIMESTAMP(u.ultimo_acceso) AS ultimo_acceso_epoch,
         DATE_FORMAT(u.creado_en, '%Y-%m-%d') AS fecha_creacion,
         r.nombre AS rol
       FROM usuario u

@@ -23,6 +23,7 @@ delete require.cache[controllerPath];
 const {
   eliminarUsuario,
   listarUsuarios,
+  obtenerUsuarioPorId,
   restaurarUsuario,
 } = require(controllerPath);
 
@@ -37,6 +38,38 @@ const createResponse = () => ({
     this.body = body;
     return this;
   },
+});
+
+test('último acceso conserva el instante de MySQL aunque Node tenga otra zona horaria', async () => {
+  const previousTZ = process.env.TZ;
+  process.env.TZ = 'America/Guatemala';
+  try {
+    db.query = async (sql) => {
+      assert.match(sql, /UNIX_TIMESTAMP\(u\.ultimo_acceso\) AS ultimo_acceso_epoch/);
+      return [[{
+        usuario_id: 2,
+        ultimo_acceso_epoch: String(Date.parse('2026-10-14T17:30:00Z') / 1000),
+        ultimo_acceso: new Date('2026-10-14T23:30:00Z'),
+      }]];
+    };
+    for (const action of [listarUsuarios, obtenerUsuarioPorId]) {
+      const res = createResponse();
+      await action({ params: { id: '2' } }, res);
+      assert.equal(res.statusCode, 200);
+      const user = Array.isArray(res.body) ? res.body[0] : res.body;
+      assert.equal(user.lastAccess, '2026-10-14T17:30:00.000Z');
+      assert.equal(new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'America/Guatemala', hour: '2-digit', minute: '2-digit',
+      }).format(new Date(user.lastAccess)), '11:30');
+    }
+    db.query = async () => [[{ usuario_id: 2, ultimo_acceso_epoch: null }]];
+    const res = createResponse();
+    await listarUsuarios({}, res);
+    assert.equal(res.body[0].lastAccess, null);
+  } finally {
+    if (previousTZ === undefined) delete process.env.TZ;
+    else process.env.TZ = previousTZ;
+  }
 });
 
 test('lista únicamente usuarios que no tienen borrado lógico', async () => {
