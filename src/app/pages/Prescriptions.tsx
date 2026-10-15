@@ -26,6 +26,7 @@ import PdfPreviewModal from '../components/PdfPreviewModal';
 import { useModulePermissions } from '../hooks/useModulePermissions';
 import { API_URL } from '../config/api';
 import { getAuthHeaders } from '../utils/apiClient';
+import { clinicalPdfLines, drawClinicalPdfLine, observationParagraphs } from '../utils/clinicalText';
 
 type CatalogItem = {
   id?: number;
@@ -595,7 +596,9 @@ export default function Prescriptions() {
       sectionY += 8;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10.5);
-      const lines: string[] = doc.splitTextToSize(value, pageWidth - marginX * 2);
+      const width = pageWidth - marginX * 2;
+      const bullets = label === 'Observaciones';
+      const lines = clinicalPdfLines(doc, value, width, bullets);
       for (const line of lines) {
         if (sectionY > 255) {
           nextSectionPage();
@@ -603,7 +606,7 @@ export default function Prescriptions() {
           doc.setFont('helvetica', 'normal');
           doc.setFontSize(10.5);
         }
-        doc.text(line, marginX, sectionY);
+        drawClinicalPdfLine(doc, line, marginX, sectionY, width, bullets);
         sectionY += 6;
       }
       sectionY += 10;
@@ -879,12 +882,23 @@ export default function Prescriptions() {
               </div>
 
               <div className="border-t border-border pt-4">
-                <p className="text-foreground text-sm">
+                <p className="text-foreground text-sm text-justify whitespace-pre-line break-words">
                   <strong>Motivo de consulta:</strong> {prescription.reason || 'No registrado'}
                 </p>
-                <p className="text-foreground text-sm">
+                <p className="text-foreground text-sm text-justify whitespace-pre-line break-words">
                   <strong>Diagnóstico:</strong> {prescription.diagnosis || 'No registrado'}
                 </p>
+                {prescription.observations?.trim() && (
+                  <div className="text-foreground text-sm mt-2">
+                    <strong>Observaciones:</strong>
+                    {observationParagraphs(prescription.observations).map((paragraph, index) => (
+                      <p key={index} className="flex gap-2 mt-1">
+                        <span aria-hidden="true">-</span>
+                        <span className="flex-1 min-w-0 text-justify break-words">{paragraph}</span>
+                      </p>
+                    ))}
+                  </div>
+                )}
 
                 <div className="mt-3">
                   <p className="text-foreground text-sm font-medium mb-2">

@@ -24,6 +24,7 @@ import type {
 import { getTodayLocal } from '../utils/formValidation';
 import { drawUnavetPdfHeader, getUnavetLogoBase64 } from '../utils/pdfBranding';
 import { formatDateForDisplay } from '../utils/dateFormat';
+import { clinicalPdfLines, drawClinicalPdfLine, observationParagraphs } from '../utils/clinicalText';
 import ThemedSelect from '../components/ThemedSelect';
 import { CreateButton } from '../components/ModuleHeader';
 import PdfPreviewModal from '../components/PdfPreviewModal';
@@ -654,6 +655,7 @@ export default function PatientDetail() {
       ['Motivo de consulta', record.reason || 'N/A'],
       ['Diagnóstico', record.diagnosis || 'N/A'],
       ['Tratamiento indicado', record.treatment || 'N/A'],
+      ...(record.observations?.trim() ? [['Observaciones', record.observations]] : []),
     ];
     const nextPage = () => {
       addPdfFooter(doc);
@@ -671,14 +673,15 @@ export default function PatientDetail() {
       textY += 7;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
-      const lines: string[] = doc.splitTextToSize(value, 178);
+      const bullets = label === 'Observaciones';
+      const lines = clinicalPdfLines(doc, value, 178, bullets);
       for (const line of lines) {
         if (textY > 260) nextPage();
         // El encabezado y el pie cambian la fuente al añadir páginas.
         doc.setTextColor('#2F2924');
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(10);
-        doc.text(line, 16, textY);
+        drawClinicalPdfLine(doc, line, 16, textY, 178, bullets);
         textY += 5;
       }
       textY += 8;
@@ -772,12 +775,12 @@ export default function PatientDetail() {
       doc.setTextColor('#2F2924');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
-      const titleLine: string[] = doc.splitTextToSize(`${record.date || 'N/A'} • ${record.consultationType || 'Consulta'}${record.sourceType === 'prescription' ? `\nEstado: ${record.prescriptionStatus}\nMotivo: ${record.reason || 'No registrado'}` : ''}`, 72);
+      const titleLine = clinicalPdfLines(doc, `${record.date || 'N/A'} • ${record.consultationType || 'Consulta'}${record.sourceType === 'prescription' ? `\nEstado: ${record.prescriptionStatus}\nMotivo: ${record.reason || 'No registrado'}` : ''}`, 72);
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7.5);
-      const diagnosis: string[] = doc.splitTextToSize(`Diagnóstico: ${record.diagnosis || 'No registrado'}`, 48);
-      const treatment: string[] = doc.splitTextToSize(`Tratamiento: ${record.treatment || 'N/A'}`, 40);
+      const diagnosis = clinicalPdfLines(doc, `Diagnóstico: ${record.diagnosis || 'No registrado'}`, 48);
+      const treatment = clinicalPdfLines(doc, `Tratamiento: ${record.treatment || 'N/A'}`, 40);
       const lineCount = Math.max(titleLine.length, diagnosis.length, treatment.length);
       let offset = 0;
       while (offset < lineCount) {
@@ -797,13 +800,13 @@ export default function PatientDetail() {
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(8);
         const titleChunk = titleLine.slice(offset, offset + count);
-        if (titleChunk.length) doc.text(titleChunk, 18, y + 6, { lineHeightFactor: 1.4 });
+        titleChunk.forEach((line, index) => drawClinicalPdfLine(doc, line, 18, y + 6 + index * 4, 72));
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7.5);
         const diagnosisChunk = diagnosis.slice(offset, offset + count);
         const treatmentChunk = treatment.slice(offset, offset + count);
-        if (diagnosisChunk.length) doc.text(diagnosisChunk, 98, y + 6, { lineHeightFactor: 1.5 });
-        if (treatmentChunk.length) doc.text(treatmentChunk, 152, y + 6, { lineHeightFactor: 1.5 });
+        diagnosisChunk.forEach((line, index) => drawClinicalPdfLine(doc, line, 98, y + 6 + index * 4, 48));
+        treatmentChunk.forEach((line, index) => drawClinicalPdfLine(doc, line, 152, y + 6 + index * 4, 40));
         y += height;
         offset += count;
       }
@@ -2648,8 +2651,21 @@ function InfoItem({ label, value }: { label: string; value?: string | number }) 
 }
 
 function RecordLine({ label, value }: { label: string; value?: string }) {
+  if (label === 'Observaciones' && value?.trim()) {
+    return (
+      <div className="text-sm mt-2">
+        <span className="text-muted-foreground">{label}:</span>
+        {observationParagraphs(value).map((paragraph, index) => (
+          <p key={index} className="flex gap-2 mt-1 text-foreground">
+            <span aria-hidden="true">-</span>
+            <span className="flex-1 min-w-0 text-justify break-words">{paragraph}</span>
+          </p>
+        ))}
+      </div>
+    );
+  }
   return (
-    <div className="text-sm mt-2">
+    <div className={`text-sm mt-2 ${['Motivo', 'Diagnóstico', 'Tratamiento'].includes(label) ? 'text-justify whitespace-pre-line break-words' : ''}`}>
       <span className="text-muted-foreground">{label}: </span>
       <span className="text-foreground">{value || 'N/A'}</span>
     </div>
