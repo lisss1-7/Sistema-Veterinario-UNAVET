@@ -638,91 +638,51 @@ export default function PatientDetail() {
   };
 
   const createClinicalPdf = async (record: ClinicalRecordExtended) => {
-    const { doc, logoBase64 } = await createPdfBase(record.sourceType === 'prescription' ? 'Receta en historial clínico' : 'Registro Clínico');
-
-    if (record.sourceType === 'prescription') {
-      let textY = 96;
-      const sections = [
-        ['Fecha / estado', `${formatDateForDisplay(record.date)} · ${record.prescriptionStatus || ''}`],
-        ['Veterinario', record.veterinarian || 'No asignado'],
-        ['Registrado por', record.createdByName || 'No disponible'],
-        ['Motivo de consulta', record.reason || 'No registrado'],
-        ...(record.diagnosis ? [['Diagnóstico', record.diagnosis]] : []),
-        ['Medicamentos e indicaciones', record.treatment || 'Sin medicamentos'],
-        ...(record.observations ? [['Observaciones', record.observations]] : []),
-      ];
-      const nextPage = () => {
-        addPdfFooter(doc);
-        doc.addPage();
-        drawUnavetPdfHeader(doc, logoBase64, 'Sistema de Gestión Veterinaria');
-        textY = 43;
-      };
-      for (const [label, value] of sections) {
-        if (textY > 240) nextPage();
+    const isPrescription = record.sourceType === 'prescription';
+    const { doc, logoBase64 } = await createPdfBase(isPrescription ? 'Receta en historial clínico' : 'Registro Clínico');
+    let textY = 96;
+    // La atribución del personal permanece en el sistema, fuera del documento.
+    const sections = isPrescription ? [
+      ['Fecha / estado', `${formatDateForDisplay(record.date)} · ${record.prescriptionStatus || ''}`],
+      ['Motivo de consulta', record.reason || 'No registrado'],
+      ...(record.diagnosis ? [['Diagnóstico', record.diagnosis]] : []),
+      ['Medicamentos e indicaciones', record.treatment || 'Sin medicamentos'],
+      ...(record.observations ? [['Observaciones', record.observations]] : []),
+    ] : [
+      ['Fecha', formatDateForDisplay(record.date)],
+      ['Tipo de consulta', record.consultationType || 'N/A'],
+      ['Motivo de consulta', record.reason || 'N/A'],
+      ['Diagnóstico', record.diagnosis || 'N/A'],
+      ['Tratamiento indicado', record.treatment || 'N/A'],
+    ];
+    const nextPage = () => {
+      addPdfFooter(doc);
+      doc.addPage();
+      drawUnavetPdfHeader(doc, logoBase64, 'Sistema de Gestión Veterinaria');
+      textY = 43;
+    };
+    for (const [label, value] of sections) {
+      // Reservar título y dos líneas para evitar títulos aislados al pie.
+      if (textY + 17 > 260) nextPage();
+      doc.setTextColor('#2F2924');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text(label, 16, textY);
+      textY += 7;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      const lines: string[] = doc.splitTextToSize(value, 178);
+      for (const line of lines) {
+        if (textY > 260) nextPage();
+        // El encabezado y el pie cambian la fuente al añadir páginas.
         doc.setTextColor('#2F2924');
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(11);
-        doc.text(label, 16, textY);
-        textY += 7;
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(10);
-        const lines: string[] = doc.splitTextToSize(value, 178);
-        for (const line of lines) {
-          if (textY > 260) {
-            nextPage();
-            doc.setTextColor('#2F2924');
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(10);
-          }
-          doc.text(line, 16, textY);
-          textY += 5;
-        }
-        textY += 8;
+        doc.text(line, 16, textY);
+        textY += 5;
       }
-      addPdfFooter(doc);
-      return doc;
+      textY += 8;
     }
-
-    let y = 96;
-
-    doc.setTextColor('#2F2924');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text('Datos del registro', 16, y);
-
-    y += 9;
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.text(`Fecha: ${record.date}`, 16, y);
-    y += 7;
-    doc.text(`Tipo de consulta: ${record.consultationType}`, 16, y);
-    y += 7;
-    doc.text(`Atendido por: ${record.veterinarian || 'N/A'}`, 16, y);
-    y += 7;
-    doc.text(`Registro creado por: ${record.createdByName || 'No disponible'}`, 16, y);
-    y += 12;
-
-    doc.setFont('helvetica', 'bold');
-    doc.text('Motivo de consulta', 16, y);
-    y += 7;
-    doc.setFont('helvetica', 'normal');
-    doc.text(doc.splitTextToSize(record.reason || 'N/A', 178), 16, y);
-    y += 18;
-
-    doc.setFont('helvetica', 'bold');
-    doc.text('Diagnóstico', 16, y);
-    y += 7;
-    doc.setFont('helvetica', 'normal');
-    doc.text(doc.splitTextToSize(record.diagnosis || 'N/A', 178), 16, y);
-    y += 18;
-
-    doc.setFont('helvetica', 'bold');
-    doc.text('Tratamiento indicado', 16, y);
-    y += 7;
-    doc.setFont('helvetica', 'normal');
-    doc.text(doc.splitTextToSize(record.treatment || 'N/A', 178), 16, y);
-
     addPdfFooter(doc);
     return doc;
   };
