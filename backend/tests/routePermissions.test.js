@@ -27,6 +27,13 @@ const expectedPermissions = {
     ['delete', '/:id', 'grooming', 'eliminar'],
   ],
   inventario: [
+    ['get', '/proveedores', 'inventory', 'ver'],
+    ['post', '/proveedores', 'inventory', 'crear'],
+    ['put', '/proveedores/:id', 'inventory', 'editar'],
+    ['get', '/compras', 'inventory', 'ver'],
+    ['post', '/compras', 'inventory', 'crear'],
+    ['post', '/compras/:id/anular', 'inventory', 'eliminar'],
+    ['get', '/movimientos', 'inventory', 'ver'],
     ['get', '/', 'inventory', 'ver'],
     ['post', '/auditorias/finalizar', 'inventory', 'editar'],
     ['get', '/:id', 'inventory', 'ver'],
@@ -46,6 +53,9 @@ const expectedPermissions = {
   dashboard: [['get', '/resumen', 'dashboard', 'ver']],
   aiReports: [['post', '/chat', 'aiReports', 'crear']],
   cierreVentas: [
+    ['get', '/turnos', 'inventory', 'ver'],
+    ['post', '/turnos/finalizar', 'inventory', 'editar'],
+    ['post', '/:id/anular', 'inventory', 'eliminar'],
     ['get', '/', 'inventory', 'ver'],
     ['get', '/estado', 'inventory', 'ver'],
     ['post', '/finalizar', 'inventory', 'editar'],

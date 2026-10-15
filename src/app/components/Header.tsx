@@ -1,3 +1,4 @@
+import { apiFetch as fetch } from '../utils/apiFetch';
 import {
   Bell,
   Bone,
@@ -52,7 +53,7 @@ export function Header({ onMenuClick }: HeaderProps) {
     loadNotifications();
 
     const interval = setInterval(() => {
-      loadNotifications();
+      if (document.visibilityState === 'visible') loadNotifications();
     }, 10000);
 
     const handleUpdate = () => {

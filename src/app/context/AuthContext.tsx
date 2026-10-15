@@ -1,3 +1,4 @@
+import { apiFetch as fetch } from '../utils/apiFetch';
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import type { UserRole } from '../config/roles';
 import { API_URL } from '../config/api';

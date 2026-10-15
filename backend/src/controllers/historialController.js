@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { obtenerRecetas } = require('./recetasController');
 
 const HISTORIAL_SELECT = `
   SELECT
@@ -193,7 +194,29 @@ const listarHistorialPorPaciente = async (req, res) => {
        ORDER BY historial.fecha DESC, historial.historial_id DESC`,
       [pacienteId]
     );
-    res.json(rows.map(mapHistorialToFrontend));
+    const prescriptions = await obtenerRecetas(pool, pacienteId);
+    const prescriptionRecords = prescriptions.map((prescription) => ({
+      id: `prescription-${prescription.id}`,
+      prescriptionId: prescription.id,
+      patientId: prescription.patientId,
+      date: prescription.date,
+      consultationType: 'Receta médica',
+      veterinarianId: prescription.veterinarianId,
+      veterinarian: prescription.veterinarian,
+      createdBy: prescription.createdBy,
+      createdByName: prescription.createdByName,
+      reason: prescription.reason,
+      diagnosis: prescription.diagnosis,
+      treatment: prescription.medications.map((medication) =>
+        `${medication.productName} · Cantidad: ${medication.quantity}\nIndicaciones: ${medication.instructions || 'Sin indicaciones'}\nEntrega: ${medication.deliveryMode}`
+      ).join('\n\n'),
+      observations: prescription.observations,
+      sourceType: 'prescription',
+      prescriptionStatus: prescription.status,
+      clinicalStatus: 'Completado',
+    }));
+    res.json([...rows.map(mapHistorialToFrontend), ...prescriptionRecords]
+      .sort((a, b) => b.date.localeCompare(a.date)));
   } catch (error) {
     res.status(500).json({
       message: 'Error al listar historial clínico',

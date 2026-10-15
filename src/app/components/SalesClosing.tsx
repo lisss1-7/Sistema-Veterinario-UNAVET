@@ -1,10 +1,11 @@
+import { apiFetch as fetch } from '../utils/apiFetch';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   AlertTriangle,
   ChevronDown,
   CheckCircle,
+  Clock3,
   Lock,
-  Plus,
   ReceiptText,
   Search,
   ShoppingCart,
@@ -13,8 +14,10 @@ import {
 } from 'lucide-react';
 import type { InventoryProduct } from '../utils/types';
 import ThemedSelect from './ThemedSelect';
+import { CreateButton } from './ModuleHeader';
 import { API_URL } from '../config/api';
 import { getAuthHeaders } from '../utils/apiClient';
+import { calculateSalesTotals } from '../utils/inventoryOperations';
 import type { ModulePermissions } from '../hooks/useModulePermissions';
 
 type SaleItem = {
@@ -39,7 +42,24 @@ type Sale = {
   invoiceNit: string;
   invoiceName: string;
   total: number;
+  canceled: boolean;
+  cancellationReason: string;
   items: Array<SaleItem & { id: string; subtotal: number }>;
+};
+
+type SalesShift = {
+  id: string;
+  number: number;
+  label: string;
+  throughSaleId: string;
+  closedAt: string;
+  responsible: string;
+  summary: {
+    saleCount: number;
+    total: number;
+    productQuantity: number;
+    payments: Array<{ code: string; name: string; amount: number }>;
+  };
 };
 
 type Props = {
@@ -111,7 +131,7 @@ function SaleItemSelector({ services, products, value, onChange }: SaleItemSelec
   };
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative min-w-0">
       <div className="flex items-center bg-secondary border border-border rounded-lg focus-within:ring-2 focus-within:ring-primary">
         <Search className="w-4 h-4 ml-3 text-primary shrink-0" />
         <input
@@ -134,12 +154,12 @@ function SaleItemSelector({ services, products, value, onChange }: SaleItemSelec
             }
           }}
           placeholder="Escribe para buscar o selecciona"
-          className="w-full px-3 py-2 bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none"
+          className="min-w-0 w-full px-3 py-2 bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none"
           role="combobox"
           aria-expanded={open}
           aria-autocomplete="list"
         />
-        <button type="button" onClick={() => setOpen((current) => !current)} className="p-2.5 text-primary" aria-label="Mostrar productos y servicios">
+        <button type="button" onClick={() => setOpen((current) => !current)} className="shrink-0 p-2.5 text-primary" aria-label="Mostrar productos y servicios">
           <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
         </button>
       </div>
@@ -204,6 +224,18 @@ const money = (value: number) =>
 
 export default function SalesClosing({ inventory, permissions, onInventoryChanged }: Props) {
   const [date, setDate] = useState(today());
+  const dateRef = useRef(date);
+  dateRef.current = date;
+  const [shifts, setShifts] = useState<SalesShift[]>([]);
+  const [currentShiftNumber, setCurrentShiftNumber] = useState(1);
+  const [afterSaleId, setAfterSaleId] = useState('0');
+  const [loadingShifts, setLoadingShifts] = useState(false);
+  const [shiftsKnown, setShiftsKnown] = useState(false);
+  const [showShiftConfirm, setShowShiftConfirm] = useState(false);
+  const [shiftLabel, setShiftLabel] = useState('');
+  const [closingShift, setClosingShift] = useState(false);
+  const [shiftSuccess, setShiftSuccess] = useState<{ number: number; total: number } | null>(null);
+  const [finalizingDay, setFinalizingDay] = useState(false);
   const [sales, setSales] = useState<Sale[]>([]);
   const [services, setServices] = useState<ServiceOption[]>([]);
   const [paymentOptions, setPaymentOptions] = useState<PaymentOption[]>([]);
@@ -215,6 +247,8 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
   const [showFinalizeConfirm, setShowFinalizeConfirm] = useState(false);
   const [showFinalizedSuccess, setShowFinalizedSuccess] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Sale | null>(null);
+  const [cancellationReason, setCancellationReason] = useState('');
+  const [canceling, setCanceling] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [client, setClient] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
@@ -238,12 +272,12 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
       );
       const data = await response.json();
       if (!response.ok) throw new Error(data.message);
-      setSales(Array.isArray(data) ? data : []);
+      if (dateRef.current === date) setSales(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error al cargar cierre de ventas:', error);
-      setSales([]);
+      if (dateRef.current === date) setSales([]);
     } finally {
-      setLoading(false);
+      if (dateRef.current === date) setLoading(false);
     }
   };
 
@@ -256,8 +290,9 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
       );
       const data = await response.json();
       if (!response.ok) throw new Error(data.message);
-      setIsDayClosed(Boolean(data.isClosed));
+      if (dateRef.current === date) setIsDayClosed(Boolean(data.isClosed));
     } catch (error) {
+      if (dateRef.current !== date) return;
       setIsDayClosed(false);
       setNotice({
         title: 'No se pudo consultar el estado del día',
@@ -268,13 +303,37 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
         type: 'error',
       });
     } finally {
-      setLoadingDayStatus(false);
+      if (dateRef.current === date) setLoadingDayStatus(false);
+    }
+  };
+
+  const loadShifts = async () => {
+    setLoadingShifts(true);
+    setShiftsKnown(false);
+    try {
+      const response = await fetch(`${API_URL}/cierre-ventas/turnos?fecha=${encodeURIComponent(date)}`, { headers: getAuthHeaders() });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'No se pudieron consultar los turnos.');
+      if (dateRef.current !== date) return;
+      setShifts(data.shifts);
+      setCurrentShiftNumber(data.currentNumber);
+      setAfterSaleId(data.afterSaleId);
+      setShiftsKnown(true);
+    } catch (error) {
+      if (dateRef.current === date) setNotice({ title: 'No se pudieron cargar los turnos', message: error instanceof Error ? error.message : 'Intente consultar la fecha nuevamente.', type: 'error' });
+    } finally {
+      if (dateRef.current === date) setLoadingShifts(false);
     }
   };
 
   useEffect(() => {
     setIsDayClosed(false);
-    void Promise.all([loadSales(), loadDayStatus()]);
+    setShifts([]);
+    setShiftsKnown(false);
+    setShowShiftConfirm(false);
+    setShowFinalizeConfirm(false);
+    setShiftLabel('');
+    void Promise.all([loadSales(), loadDayStatus(), loadShifts()]);
   }, [date]);
 
   useEffect(() => {
@@ -314,21 +373,22 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
     void loadOptions();
   }, []);
 
-  const totals = useMemo(
-    () =>
-      sales.reduce(
-        (result, sale) => {
-          sale.payments.forEach((payment) => {
-            result.byMethod[payment.code] =
-              (result.byMethod[payment.code] || 0) + payment.amount;
-          });
-          result.total += sale.total;
-          return result;
-        },
-        { byMethod: {} as Record<string, number>, total: 0 }
-      ),
-    [sales]
-  );
+  const totals = useMemo(() => calculateSalesTotals(sales), [sales]);
+
+  const currentShiftTotals = useMemo(() => {
+    const active = sales.filter((sale) => Number(sale.id) > Number(afterSaleId) && !sale.canceled);
+    const payments = new Map<string, { code: string; name: string; amount: number }>();
+    for (const sale of active) for (const payment of sale.payments) {
+      const previous = payments.get(payment.code);
+      payments.set(payment.code, { code: payment.code, name: payment.name, amount: (previous?.amount || 0) + Number(payment.amount) });
+    }
+    return {
+      saleCount: active.length,
+      total: active.reduce((sum, sale) => sum + Number(sale.total), 0),
+      productQuantity: active.reduce((sum, sale) => sum + sale.items.reduce((quantity, item) => quantity + (item.type === 'Producto' ? Number(item.quantity) : 0), 0), 0),
+      payments: [...payments.values()],
+    };
+  }, [sales, afterSaleId]);
 
   const saleTotal = items.reduce(
     (sum, item) => sum + item.quantity * item.unitPrice,
@@ -487,11 +547,12 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
   };
 
   const deleteSale = async () => {
-    if (!deleteTarget || !permissions.canDelete) return;
+    if (!deleteTarget || !permissions.canDelete || canceling || !cancellationReason.trim()) return;
+    setCanceling(true);
     try {
       const response = await fetch(
-        `${API_URL}/cierre-ventas/${deleteTarget.id}`,
-        { method: 'DELETE', headers: getAuthHeaders() }
+        `${API_URL}/cierre-ventas/${deleteTarget.id}/anular`,
+        { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ reason: cancellationReason }) }
       );
       const data = await response.json();
       if (!response.ok) throw new Error(data.message);
@@ -501,18 +562,19 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
     } catch (error) {
       await loadDayStatus();
       setNotice({
-        title: 'No se pudo eliminar la venta',
+        title: 'No se pudo anular la venta',
         message:
           error instanceof Error
             ? error.message
-            : 'Ocurrió un error inesperado al eliminar la venta.',
+            : 'Ocurrió un error inesperado al anular la venta.',
         type: 'error',
       });
-    }
+    } finally { setCanceling(false); }
   };
 
   const finalizeDay = async () => {
-    if (!permissions.canEdit) return;
+    if (!permissions.canEdit || finalizingDay || closingShift || !shiftsKnown) return;
+    setFinalizingDay(true);
     try {
       const response = await fetch(`${API_URL}/cierre-ventas/finalizar`, {
         method: 'POST',
@@ -523,6 +585,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
       if (!response.ok) throw new Error(data.message);
 
       setIsDayClosed(true);
+      await loadShifts();
       setShowFinalizeConfirm(false);
       setShowForm(false);
       setDeleteTarget(null);
@@ -539,7 +602,28 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
             : 'Ocurrió un error inesperado al finalizar el día.',
         type: 'error',
       });
-    }
+    } finally { setFinalizingDay(false); }
+  };
+
+  const finalizeShift = async () => {
+    if (!permissions.canEdit || closingShift || finalizingDay || !shiftsKnown || isDayClosed) return;
+    setClosingShift(true);
+    try {
+      const response = await fetch(`${API_URL}/cierre-ventas/turnos/finalizar`, {
+        method: 'POST', headers: getAuthHeaders(),
+        body: JSON.stringify({ date, number: currentShiftNumber, label: shiftLabel.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'No se pudo cerrar el turno.');
+      setShowShiftConfirm(false);
+      setShiftLabel('');
+      await Promise.all([loadSales(), loadDayStatus(), loadShifts()]);
+      setShiftSuccess({ number: data.shift.number, total: data.shift.summary.total });
+    } catch (error) {
+      setShowShiftConfirm(false);
+      await Promise.all([loadDayStatus(), loadShifts()]);
+      setNotice({ title: 'No se pudo cerrar el turno', message: error instanceof Error ? error.message : 'Intente nuevamente.', type: 'error' });
+    } finally { setClosingShift(false); }
   };
 
   const description = (sale: Sale) =>
@@ -552,40 +636,44 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
       .join(', ');
 
   return (
-    <div>
-      <div className="mb-3 flex flex-col gap-3 md:mb-6 md:flex-row md:items-end md:gap-4">
-        <div>
-          <h2 className="text-foreground text-xl">Cierre de ventas</h2>
+    <div className="min-w-0">
+      <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-end">
+        <div className="min-w-0 xl:mr-auto">
+          <h2 className="text-foreground text-xl font-semibold">Cierre de ventas</h2>
         </div>
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div>
-            <label className="block text-foreground text-xs mb-1">Fecha del cierre</label>
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <div className="min-w-0 w-full sm:w-auto">
+            <label htmlFor="sales-closing-date" className="block text-foreground text-xs mb-1">Fecha del cierre</label>
             <input
+              id="sales-closing-date"
               type="date"
               value={date}
+              disabled={closingShift || finalizingDay}
               onChange={(event) => setDate(event.target.value)}
-              className="px-4 py-2 bg-secondary border border-border rounded-lg text-foreground"
+              className="h-11 min-w-0 w-full px-4 py-2 bg-secondary border border-border rounded-xl text-foreground"
             />
           </div>
-          {permissions.canCreate && <button
-            type="button"
-            onClick={() => setShowForm(true)}
-            disabled={loadingDayStatus || isDayClosed}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg"
-          >
-            <Plus className="w-4 h-4" />
-            Registrar venta
+          {permissions.canEdit && <button type="button" onClick={() => setShowShiftConfirm(true)}
+            disabled={loading || loadingDayStatus || loadingShifts || !shiftsKnown || isDayClosed || closingShift || finalizingDay}
+            className="flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-primary px-4 text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50">
+            <Clock3 className="h-4 w-4 shrink-0" />Cerrar turno
           </button>}
+          {permissions.canEdit && <button
+            type="button"
+            onClick={() => setShowFinalizeConfirm(true)}
+            disabled={loadingDayStatus || isDayClosed || !shiftsKnown || closingShift || finalizingDay}
+            className="flex h-11 items-center justify-center gap-2 rounded-xl px-4 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white"
+          >
+            <Lock className="w-4 h-4 shrink-0" />
+            {isDayClosed ? 'Día finalizado' : 'Finalizar día'}
+          </button>}
+          {permissions.canCreate && <CreateButton
+            onClick={() => setShowForm(true)}
+            disabled={loadingDayStatus || isDayClosed || closingShift || finalizingDay}
+          >
+            Registrar venta
+          </CreateButton>}
         </div>
-        {permissions.canEdit && <button
-          type="button"
-          onClick={() => setShowFinalizeConfirm(true)}
-          disabled={loadingDayStatus || isDayClosed}
-          className="flex w-full md:w-auto md:ml-auto items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg"
-        >
-          <Lock className="w-4 h-4" />
-          {isDayClosed ? 'Día finalizado' : 'Finalizar día'}
-        </button>}
       </div>
 
       {isDayClosed && (
@@ -594,32 +682,64 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
           <div>
             <p className="font-semibold">Día finalizado</p>
             <p className="text-sm">
-              Este cierre está en modo de solo lectura. Ya no se pueden registrar ni eliminar ventas.
+              Este cierre está en modo de solo lectura. Ya no se pueden registrar ni anular ventas.
             </p>
           </div>
         </div>
       )}
 
-      <div className="mb-3 grid grid-cols-2 gap-2 sm:mb-6 sm:grid-cols-3 sm:gap-4 [&>div:last-child]:col-span-2 sm:[&>div:last-child]:col-span-1">
-        <SummaryCard label="Ventas registradas" value={String(sales.length)} />
+      <div className="mb-4 grid grid-cols-1 gap-2 min-[400px]:grid-cols-2 lg:grid-cols-3 min-[400px]:[&>div:last-child]:col-span-2 lg:[&>div:last-child]:col-span-1">
+        <SummaryCard label="Ventas registradas" value={String(totals.saleCount)} />
         <SummaryCard label="Total del día" value={money(totals.total)} />
         <SummaryCard
           label="Productos vendidos"
-          value={String(
-            sales.flatMap((sale) => sale.items)
-              .filter((item) => item.type === 'Producto')
-              .reduce((sum, item) => sum + item.quantity, 0)
-          )}
+          value={String(totals.productQuantity)}
         />
       </div>
 
-      <div className="space-y-2 md:hidden">
+      <section className="mb-4 min-w-0 rounded-2xl border border-border bg-card p-4 shadow-sm" aria-label="Cierres de turno">
+        <div className="mb-3 flex items-start gap-3">
+          <div className="rounded-xl bg-primary/15 p-2 text-primary"><Clock3 className="h-5 w-5" /></div>
+          <div className="min-w-0">
+            <h3 className="font-semibold text-foreground">{isDayClosed ? 'Cierres de turno del día' : `Turno ${currentShiftNumber} en curso`}</h3>
+            <p className="text-sm text-muted-foreground">Cerrar turno permite continuar vendiendo en el siguiente. Finalizar día cierra toda la jornada.</p>
+          </div>
+        </div>
+        {(loading || loadingShifts) && <p role="status" className="text-sm text-muted-foreground">Actualizando resumen de turnos…</p>}
+        {!isDayClosed && shiftsKnown && !loading && !loadingShifts && <>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <SummaryCard label="Ventas de este turno" value={String(currentShiftTotals.saleCount)} />
+            <SummaryCard label="Total de este turno" value={money(currentShiftTotals.total)} />
+            <SummaryCard label="Productos de este turno" value={String(currentShiftTotals.productQuantity)} />
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {currentShiftTotals.payments.map((payment) => <span key={payment.code} className="rounded-lg bg-muted px-3 py-2 text-sm text-foreground">{payment.name}: {money(payment.amount)}</span>)}
+          </div>
+        </>}
+        <h4 className="mb-2 mt-4 text-sm font-semibold text-foreground">Turnos cerrados · {shifts.length}</h4>
+        {shiftsKnown && !shifts.length && <p className="text-sm text-muted-foreground">Todavía no hay turnos cerrados para esta fecha.</p>}
+        <div className="grid gap-3 xl:grid-cols-2">
+          {shifts.map((shift) => <article key={shift.id} className="min-w-0 rounded-xl border border-border bg-muted/40 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h5 className="min-w-0 break-words font-semibold text-foreground">{shift.label}{shift.label !== `Turno ${shift.number}` ? ` · Turno ${shift.number}` : ''}</h5>
+              <span className="font-semibold text-primary">{money(shift.summary.total)}</span>
+            </div>
+            <p className="mt-1 break-words text-xs text-muted-foreground">Cerrado por {shift.responsible} · {new Intl.DateTimeFormat('es-GT', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Guatemala' }).format(new Date(shift.closedAt))}</p>
+            <p className="mt-2 text-sm text-foreground">{shift.summary.saleCount} ventas · {shift.summary.productQuantity} productos</p>
+            <div className="mt-2 flex flex-wrap gap-2">{shift.summary.payments.map((payment) => <span key={payment.code} className="rounded-lg bg-card px-2 py-1 text-xs text-foreground">{payment.name}: {money(payment.amount)}</span>)}</div>
+          </article>)}
+        </div>
+        {!!shifts.length && <p className="mt-3 text-xs text-muted-foreground">Los cierres conservan el resumen del momento. Los cambios posteriores en ventas se reflejan en el total del día.</p>}
+      </section>
+
+      <div className="space-y-2 lg:hidden">
         {sales.map((sale) => (
           <article key={sale.id} className="rounded-xl border border-border bg-card p-3 shadow-sm">
-            <div className="flex items-start justify-between gap-2">
+            <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0">
-                <h3 className="font-semibold text-foreground">{sale.client || 'Consumidor final'}</h3>
-                <p className="text-sm text-muted-foreground">{description(sale)}</p>
+                <h3 className="break-words font-semibold text-foreground">{sale.client || 'Consumidor final'}</h3>
+                <p className="break-words text-sm text-muted-foreground">{description(sale)}</p>
+                {sale.canceled && <p className="mt-1 text-sm text-red-700">Anulada: {sale.cancellationReason}</p>}
               </div>
               <p className="shrink-0 font-bold text-primary">{money(sale.total)}</p>
             </div>
@@ -631,18 +751,18 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
               ))}
             </div>
             {(sale.invoiceNit || sale.invoiceName) && (
-              <p className="mt-2 text-xs text-muted-foreground">
+              <p className="mt-2 break-words text-xs text-muted-foreground">
                 Factura: {sale.invoiceNit || 'Sin NIT'} · {sale.invoiceName || 'Sin nombre'}
               </p>
             )}
             {permissions.canDelete && <div className="mt-2 flex justify-end">
               <button
                 type="button"
-                title="Eliminar venta"
-                aria-label={`Eliminar venta de ${sale.client || 'Consumidor final'}`}
-                onClick={() => setDeleteTarget(sale)}
-                disabled={isDayClosed}
-                className="rounded-lg bg-red-100 p-2 text-red-600 hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-40"
+                title="Anular venta"
+                aria-label={`Anular venta de ${sale.client || 'Consumidor final'}`}
+                onClick={() => { setCancellationReason(''); setDeleteTarget(sale); }}
+                disabled={isDayClosed || sale.canceled}
+                className="flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-red-100 p-2 text-red-600 hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Trash2 className="h-4 w-4" />
               </button>
@@ -664,27 +784,27 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
         </div>
       </div>
 
-      <div className="hidden overflow-x-auto rounded-xl border border-border bg-card shadow-lg md:block">
-        <table className="w-full min-w-[1250px]">
+      <div className="hidden max-w-full overflow-x-auto rounded-xl border border-border bg-card shadow-lg lg:block">
+        <table className="w-full table-fixed" style={{ minWidth: 830 + (permissions.canDelete ? 100 : 0) + paymentOptions.length * 110 }}>
           <thead className="bg-muted text-foreground text-sm">
             <tr>
-              <th className="px-4 py-3 text-left">Cliente</th>
-              <th className="px-4 py-3 text-left min-w-[300px]">Descripción</th>
+              <th className="w-[180px] px-4 py-3 text-left">Cliente</th>
+              <th className="px-4 py-3 text-left">Descripción</th>
               {paymentOptions.map((payment) => (
-                <th key={payment.id} className="px-4 py-3 text-right">
+                <th key={payment.id} className="w-[110px] break-words px-2 py-3 text-right text-[13px] leading-snug">
                   {payment.nombre}
                 </th>
               ))}
-              <th className="px-4 py-3 text-left">Factura NIT</th>
-              <th className="px-4 py-3 text-left">Nombre</th>
-              {permissions.canDelete && <th className="px-4 py-3 text-center">Acciones</th>}
+              <th className="w-[150px] px-4 py-3 text-left">Factura NIT</th>
+              <th className="w-[200px] px-4 py-3 text-left">Nombre</th>
+              {permissions.canDelete && <th className="w-[100px] px-4 py-3 text-center">Acciones</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {sales.map((sale) => (
               <tr key={sale.id} className="hover:bg-muted text-sm text-foreground">
-                <td className="px-4 py-3">{sale.client || 'Consumidor final'}</td>
-                <td className="px-4 py-3">{description(sale)}</td>
+                <td className="break-words px-4 py-3">{sale.client || 'Consumidor final'}{sale.canceled && <p className="mt-1 text-xs text-red-700">Anulada: {sale.cancellationReason}</p>}</td>
+                <td className="[overflow-wrap:anywhere] px-4 py-3">{description(sale)}</td>
                 {paymentOptions.map((payment) => (
                   <PaymentCell
                     key={payment.id}
@@ -695,14 +815,14 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
                     }
                   />
                 ))}
-                <td className="px-4 py-3">{sale.invoiceNit || '—'}</td>
-                <td className="px-4 py-3">{sale.invoiceName || '—'}</td>
+                <td className="break-words px-4 py-3">{sale.invoiceNit || '—'}</td>
+                <td className="break-words px-4 py-3">{sale.invoiceName || '—'}</td>
                 {permissions.canDelete && <td className="px-4 py-3 text-center">
                   <button
                     type="button"
-                    title="Eliminar venta"
-                    onClick={() => setDeleteTarget(sale)}
-                    disabled={isDayClosed}
+                    title="Anular venta"
+                    onClick={() => { setCancellationReason(''); setDeleteTarget(sale); }}
+                    disabled={isDayClosed || sale.canceled}
                     className="p-2 bg-red-100 hover:bg-red-200 disabled:opacity-40 disabled:cursor-not-allowed text-red-600 rounded-lg"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -735,7 +855,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
 
       {showForm && permissions.canCreate && !isDayClosed && (
         <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-3xl w-full max-h-[92vh] overflow-y-auto p-5 md:p-6">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-3xl min-w-0 w-full max-h-[92vh] max-h-[92dvh] overflow-y-auto p-3 sm:p-5 md:p-6">
             <div className="flex justify-between gap-4 mb-5">
               <div>
                 <h3 className="text-foreground text-xl">Registrar venta</h3>
@@ -746,7 +866,8 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
               <button
                 type="button"
                 onClick={() => { setShowForm(false); resetForm(); }}
-                className="p-2 bg-muted rounded-lg self-start"
+                aria-label="Cerrar formulario de venta"
+                className="flex min-h-11 min-w-11 shrink-0 items-center justify-center p-2 bg-muted rounded-lg self-start"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -776,8 +897,8 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
                 <h4 className="text-foreground font-medium mb-3">
                   Productos y servicios
                 </h4>
-                <div className="grid grid-cols-1 md:grid-cols-[1fr_100px_130px_auto] gap-3 items-end">
-                  <div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_100px_130px_auto] gap-3 items-end">
+                  <div className="min-w-0 sm:col-span-2 xl:col-span-1">
                     <label className="block text-foreground mb-2 text-sm">Descripción</label>
                     <SaleItemSelector
                       services={services}
@@ -788,25 +909,25 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
                   </div>
                   <NumberField label="Cantidad" value={quantity} onChange={setQuantity} min={1} />
                   <NumberField label="Precio (Q)" value={unitPrice} onChange={setUnitPrice} min={0} />
-                  <button
-                    type="button"
+                  <CreateButton
                     onClick={addItem}
-                    className="px-4 py-2 bg-muted-foreground text-white rounded-lg"
+                    className="w-full sm:col-span-2 xl:col-span-1"
                   >
                     Agregar
-                  </button>
+                  </CreateButton>
                 </div>
 
                 <div className="space-y-2 mt-4">
                   {items.map((item, index) => (
                     <div key={`${item.description}-${index}`} className="flex items-center justify-between gap-3 bg-card/60 rounded-lg px-3 py-2 text-sm">
-                      <span className="text-foreground">
+                      <span className="min-w-0 break-words text-foreground">
                         {item.quantity} × {item.description} — {money(item.quantity * item.unitPrice)}
                       </span>
                       <button
                         type="button"
                         onClick={() => setItems(items.filter((_, itemIndex) => itemIndex !== index))}
-                        className="text-red-600 p-1"
+                        aria-label={`Quitar ${item.description}`}
+                        className="flex min-h-11 min-w-11 shrink-0 items-center justify-center text-red-600 p-1"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -827,17 +948,17 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
                 <p className="text-foreground text-lg font-semibold">
                   Total: {money(saleTotal)}
                 </p>
-                <div className="flex gap-3 w-full sm:w-auto">
+                <div className="flex flex-col gap-3 w-full sm:w-auto sm:flex-row">
                   <button
                     type="button"
                     onClick={() => { setShowForm(false); resetForm(); }}
-                    className="flex-1 px-4 py-2 bg-muted text-foreground rounded-lg"
+                    className="min-h-11 flex-1 sm:flex-none whitespace-nowrap px-4 py-2 bg-muted text-foreground rounded-lg"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg"
+                    className="min-h-11 flex-1 sm:flex-none flex items-center justify-center gap-2 whitespace-nowrap px-4 py-2 bg-primary text-white rounded-lg"
                   >
                     <ShoppingCart className="w-4 h-4" />
                     Guardar venta
@@ -851,15 +972,18 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
 
       {deleteTarget && permissions.canDelete && !isDayClosed && (
         <div className="modal-backdrop fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="bg-card rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center">
+          <div className="bg-card rounded-2xl shadow-2xl max-w-sm w-full max-h-[90vh] max-h-[90dvh] overflow-y-auto p-6 text-center">
             <AlertTriangle className="w-12 h-12 text-red-600 mx-auto mb-3" />
-            <h3 className="text-foreground text-xl mb-2">¿Eliminar esta venta?</h3>
+            <h3 className="text-foreground text-xl mb-2">¿Anular esta venta?</h3>
             <p className="text-muted-foreground text-sm mb-5">
-              Los productos de esta venta serán reintegrados al inventario.
+              Los productos se reintegrarán una sola vez. El documento y sus pagos se conservarán como anulados y se excluirán de los totales.
             </p>
+            <label className="mb-4 block text-left text-sm text-foreground">Motivo de anulación
+              <textarea required maxLength={200} disabled={canceling} value={cancellationReason} onChange={(event) => setCancellationReason(event.target.value)} className="mt-2 w-full rounded-xl border border-border bg-secondary px-3 py-2" />
+            </label>
             <div className="flex gap-3">
-              <button type="button" onClick={() => setDeleteTarget(null)} className="flex-1 px-4 py-2 bg-muted rounded-lg">Cancelar</button>
-              <button type="button" onClick={deleteSale} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg">Eliminar</button>
+              <button disabled={canceling} type="button" onClick={() => setDeleteTarget(null)} className="flex-1 px-4 py-2 bg-muted rounded-lg">Cancelar</button>
+              <button disabled={canceling || !cancellationReason.trim()} type="button" onClick={deleteSale} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg disabled:opacity-50">{canceling ? 'Anulando...' : 'Anular'}</button>
             </div>
           </div>
         </div>
@@ -867,7 +991,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
 
       {showSuccess && (
         <div className="modal-backdrop fixed inset-0 z-[70] flex items-center justify-center p-4">
-          <div className="bg-card rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center">
+          <div className="bg-card rounded-2xl shadow-2xl max-w-sm w-full max-h-[90vh] max-h-[90dvh] overflow-y-auto p-6 text-center">
             <CheckCircle className="w-14 h-14 text-green-700 mx-auto mb-3" />
             <h3 className="text-foreground text-xl mb-2">Venta registrada</h3>
             <p className="text-muted-foreground text-sm mb-5">
@@ -878,18 +1002,46 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
         </div>
       )}
 
+      {showShiftConfirm && permissions.canEdit && !isDayClosed && (
+        <div className="modal-backdrop fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="shift-confirm-title" className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <Clock3 className="mx-auto mb-3 h-12 w-12 text-primary" />
+            <h3 id="shift-confirm-title" className="text-center text-xl font-semibold text-foreground">¿Cerrar el turno {currentShiftNumber}?</h3>
+            <p className="mt-2 text-center text-sm text-muted-foreground">Se guardará el resumen de este turno. El día seguirá abierto y las nuevas ventas pertenecerán al siguiente turno.</p>
+            <div className="my-4 rounded-xl bg-muted p-3 text-center text-foreground">{currentShiftTotals.saleCount} ventas · <strong>{money(currentShiftTotals.total)}</strong></div>
+            <label htmlFor="sales-shift-label" className="text-sm text-foreground">Nombre del turno (opcional)</label>
+            <input id="sales-shift-label" value={shiftLabel} onChange={(event) => setShiftLabel(event.target.value)} maxLength={80} disabled={closingShift} placeholder="Ejemplo: Mañana" className="mt-1 mb-5 min-h-11 w-full rounded-xl border border-border bg-secondary px-3 text-foreground" />
+            <div className="flex flex-wrap gap-3">
+              <button type="button" disabled={closingShift} onClick={() => setShowShiftConfirm(false)} className="min-h-11 flex-1 rounded-xl bg-muted px-3 text-foreground disabled:opacity-50">Cancelar</button>
+              <button type="button" disabled={closingShift || loading || loadingShifts || !shiftsKnown} onClick={finalizeShift} className="min-h-11 flex-1 rounded-xl bg-primary px-3 text-primary-foreground disabled:opacity-50">{closingShift ? 'Cerrando…' : 'Sí, cerrar turno'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {shiftSuccess && <div className="modal-backdrop fixed inset-0 z-[80] flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" aria-labelledby="shift-success-title" className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 text-center shadow-2xl">
+          <CheckCircle className="mx-auto mb-3 h-12 w-12 text-primary" />
+          <h3 id="shift-success-title" className="text-xl font-semibold text-foreground">Turno {shiftSuccess.number} cerrado</h3>
+          <p className="my-3 text-muted-foreground">Total registrado: {money(shiftSuccess.total)}. El día sigue abierto para el siguiente turno.</p>
+          <button type="button" onClick={() => setShiftSuccess(null)} className="min-h-11 w-full rounded-xl bg-primary text-primary-foreground">Continuar</button>
+        </div>
+      </div>}
+
       {showFinalizeConfirm && permissions.canEdit && !isDayClosed && (
         <div className="modal-backdrop fixed inset-0 z-[80] flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-md w-full p-6 text-center">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] max-h-[90dvh] overflow-y-auto p-6 text-center">
             <Lock className="w-12 h-12 text-red-600 mx-auto mb-3" />
             <h3 className="text-foreground text-xl mb-2">¿Finalizar el día?</h3>
             <p className="text-muted-foreground text-sm mb-5">
-              Después de finalizar el {formatDisplayDate(date)} ya no será posible registrar ni eliminar ventas de esa fecha.
+              Después de finalizar el {formatDisplayDate(date)} ya no será posible registrar ni anular ventas de esa fecha.
+              {' '}También se cerrará automáticamente el último turno pendiente.
             </p>
             <div className="flex gap-3">
               <button
                 type="button"
                 onClick={() => setShowFinalizeConfirm(false)}
+                disabled={finalizingDay}
                 className="flex-1 px-4 py-2 bg-muted text-foreground rounded-lg"
               >
                 Cancelar
@@ -897,9 +1049,10 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
               <button
                 type="button"
                 onClick={finalizeDay}
+                disabled={finalizingDay || closingShift || !shiftsKnown}
                 className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg"
               >
-                Sí, finalizar
+                {finalizingDay ? 'Finalizando…' : 'Sí, finalizar'}
               </button>
             </div>
           </div>
@@ -908,7 +1061,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
 
       {showFinalizedSuccess && (
         <div className="modal-backdrop fixed inset-0 z-[80] flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-sm w-full max-h-[90vh] max-h-[90dvh] overflow-y-auto p-6 text-center">
             <CheckCircle className="w-14 h-14 text-green-700 mx-auto mb-3" />
             <h3 className="text-foreground text-xl mb-2">Día finalizado</h3>
             <p className="text-muted-foreground text-sm mb-5">
@@ -927,7 +1080,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
 
       {notice && (
         <div className="modal-backdrop fixed inset-0 z-[90] flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-sm w-full max-h-[90vh] max-h-[90dvh] overflow-y-auto p-6 text-center">
             <div
               className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${
                 notice.type === 'error' ? 'bg-red-100' : 'bg-amber-100'
@@ -962,19 +1115,19 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
 }
 
 function PaymentCell({ value }: { value: number }) {
-  return <td className="px-4 py-3 text-right">{value ? money(value) : '—'}</td>;
+  return <td className="break-words px-2 py-3 text-right tabular-nums">{value ? money(value) : '—'}</td>;
 }
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-card border border-border rounded-xl p-3.5 shadow-md">
+    <div className="min-w-0 bg-card border border-border rounded-xl p-3.5 shadow-md">
       <div className="flex items-center gap-3">
-        <div className="p-1.5 bg-muted rounded-lg">
+        <div className="shrink-0 p-1.5 bg-muted rounded-lg">
           <ReceiptText className="w-4 h-4 text-primary" />
         </div>
-        <div>
+        <div className="min-w-0">
           <p className="text-muted-foreground text-xs">{label}</p>
-          <p className="text-foreground text-lg font-semibold">{value}</p>
+          <p className="break-words text-foreground text-lg font-semibold">{value}</p>
         </div>
       </div>
     </div>
@@ -996,7 +1149,7 @@ function Field({
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full px-4 py-2 bg-secondary border border-border rounded-lg"
+        className="min-w-0 w-full px-4 py-2 bg-secondary border border-border rounded-lg"
       />
     </div>
   );
@@ -1022,7 +1175,7 @@ function NumberField({
         step="0.01"
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="w-full px-3 py-2 bg-secondary border border-border rounded-lg"
+        className="min-w-0 w-full px-3 py-2 bg-secondary border border-border rounded-lg"
       />
     </div>
   );

@@ -24,7 +24,10 @@ const mapUsuarioToFrontend = (row) => ({
   phone: row.telefono || '',
   specialty: row.especialidad || '',
   status: row.estado,
-  lastAccess: row.ultimo_acceso || null,
+  // MySQL resolves its session timezone; avoid reinterpreting DATETIME in Node's timezone.
+  lastAccess: row.ultimo_acceso_epoch == null
+    ? null
+    : new Date(Number(row.ultimo_acceso_epoch) * 1000).toISOString(),
   creationDate: row.fecha_creacion,
   deletedAt: row.fecha_eliminacion || null,
 });
@@ -61,6 +64,11 @@ const obtenerEstadoUsuario = async (connection, status) => {
 const listarUsuarios = async (req, res) => {
   try {
     const includeDeleted = req.query?.includeDeleted === 'true';
+    // Ocultar del directorio no modifica la cuenta ni su acceso al sistema.
+    const hiddenUserIds = String(process.env.USER_DIRECTORY_HIDDEN_IDS || '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter((id) => /^[1-9]\d*$/.test(id));
     const [rows] = await pool.query(
       `
       SELECT
@@ -75,7 +83,7 @@ const listarUsuarios = async (req, res) => {
         u.telefono,
         ${specialtiesSelect('u')},
         estado.nombre AS estado,
-        u.ultimo_acceso,
+        UNIX_TIMESTAMP(u.ultimo_acceso) AS ultimo_acceso_epoch,
         DATE_FORMAT(u.creado_en, '%Y-%m-%d') AS fecha_creacion,
         u.eliminado_en AS fecha_eliminacion,
         r.nombre AS rol
@@ -84,9 +92,10 @@ const listarUsuarios = async (req, res) => {
       INNER JOIN estado_usuario estado
         ON estado.estado_usuario_id = u.estado_usuario_id
       WHERE (? = 1 OR u.eliminado_en IS NULL)
+        ${hiddenUserIds.length ? `AND u.usuario_id NOT IN (${hiddenUserIds.map(() => '?').join(', ')})` : ''}
       ORDER BY u.usuario_id ASC
       `,
-      [includeDeleted ? 1 : 0]
+      [includeDeleted ? 1 : 0, ...hiddenUserIds]
     );
 
     res.json(rows.map(mapUsuarioToFrontend));
@@ -116,7 +125,7 @@ const obtenerUsuarioPorId = async (req, res) => {
         u.telefono,
         ${specialtiesSelect('u')},
         estado.nombre AS estado,
-        u.ultimo_acceso,
+        UNIX_TIMESTAMP(u.ultimo_acceso) AS ultimo_acceso_epoch,
         DATE_FORMAT(u.creado_en, '%Y-%m-%d') AS fecha_creacion,
         r.nombre AS rol
       FROM usuario u
@@ -422,7 +431,7 @@ const actualizarUsuario = async (req, res) => {
         u.telefono,
         ${specialtiesSelect('u')},
         estado.nombre AS estado,
-        u.ultimo_acceso,
+        UNIX_TIMESTAMP(u.ultimo_acceso) AS ultimo_acceso_epoch,
         DATE_FORMAT(u.creado_en, '%Y-%m-%d') AS fecha_creacion,
         r.nombre AS rol
       FROM usuario u

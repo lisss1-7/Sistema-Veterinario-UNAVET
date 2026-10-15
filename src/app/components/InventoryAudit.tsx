@@ -1,3 +1,4 @@
+import { apiFetch as fetch } from '../utils/apiFetch';
 import { useMemo, useState, type ReactNode } from 'react';
 import {
   AlertCircle,
@@ -7,8 +8,11 @@ import {
   ClipboardCheck,
   Download,
   Loader2,
+  ListChecks,
+  Package,
   RotateCcw,
   Search,
+  UserRound,
   X,
 } from 'lucide-react';
 
@@ -170,7 +174,7 @@ export default function InventoryAudit({
 
   if (completedAudit) {
     return (
-      <div className="rounded-2xl border border-border bg-card p-6 shadow-lg">
+      <div className="inventory-audit patient-form-shell rounded-[30px] border border-border/80 bg-card p-4 shadow-lg sm:p-6">
         <div className="mx-auto max-w-xl text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
             <CheckCircle2 className="h-10 w-10 text-green-700" />
@@ -182,11 +186,11 @@ export default function InventoryAudit({
             quedó registrada y el inventario fue conciliado con el conteo físico.
           </p>
           <div className="mt-6 grid grid-cols-2 gap-3 text-left">
-            <div className="rounded-xl bg-muted p-4">
+            <div className="patient-form-section rounded-xl border border-border bg-muted p-4">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Productos</p>
               <p className="mt-1 text-xl font-bold text-foreground">{completedAudit.totalProducts}</p>
             </div>
-            <div className="rounded-xl bg-muted p-4">
+            <div className="patient-form-section rounded-xl border border-border bg-muted p-4">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Diferencias</p>
               <p className="mt-1 text-xl font-bold text-foreground">{completedAudit.discrepancies}</p>
             </div>
@@ -198,7 +202,7 @@ export default function InventoryAudit({
             <button
               type="button"
               onClick={() => void downloadAuditPdf(completedAudit)}
-              className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-[#F7EFE6] transition-colors hover:bg-primary/90"
+              className="patient-form-primary flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 py-2.5 font-semibold transition-all duration-200"
             >
               <Download className="h-4 w-4" />
               Descargar PDF
@@ -206,7 +210,7 @@ export default function InventoryAudit({
             <button
               type="button"
               onClick={onBack}
-              className="rounded-lg bg-muted px-4 py-2 text-foreground transition-colors hover:bg-border"
+              className="patient-form-secondary min-h-[44px] rounded-xl border px-4 py-2.5 font-semibold transition-colors"
             >
               Volver al inventario
             </button>
@@ -217,9 +221,10 @@ export default function InventoryAudit({
   }
 
   return (
-    <div className="space-y-3 sm:space-y-5">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-        <div>
+    <div className="inventory-audit patient-form-shell rounded-[30px] border border-border/80 bg-card p-3 sm:p-5">
+      <div className="patient-form space-y-3 sm:space-y-5">
+      <div className="patient-form-section flex flex-col gap-4 rounded-2xl border p-4 sm:p-5">
+        <div className="min-w-0">
           <button
             type="button"
             onClick={onBack}
@@ -228,20 +233,26 @@ export default function InventoryAudit({
             <ArrowLeft className="h-4 w-4" />
             Regresar al inventario
           </button>
-          <h2 className="text-xl font-bold text-foreground">
-            Auditoría de inventario - {formatAuditMonth(auditDate)}
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Registra el conteo físico de todos los productos activos. Al finalizar, las diferencias ajustarán las existencias del sistema.
-          </p>
+          <div className="flex items-start gap-3">
+            <div className="audit-icon flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border">
+              <ClipboardCheck className="h-6 w-6" />
+            </div>
+            <div className="min-w-0">
+              <p className="mb-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary/80">Control de existencias</p>
+              <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Auditoría de inventario</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Registra el conteo físico de todos los productos activos. Al finalizar, las diferencias ajustarán las existencias del sistema.
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:w-[560px] [&>button:first-child]:col-span-2 sm:[&>button:first-child]:col-span-1">
+        <div className="grid min-w-0 grid-cols-1 gap-2 min-[400px]:grid-cols-2 sm:grid-cols-3 min-[400px]:[&>button:first-child]:col-span-2 sm:[&>button:first-child]:col-span-1">
           <button
             type="button"
             onClick={() => setConfirmationType('finalize')}
             disabled={!isComplete || !canFinalize || isFinishing}
-            className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-[#F7EFE6] transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="patient-form-primary flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
           >
             {isFinishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
             Finalizar auditoría
@@ -249,15 +260,16 @@ export default function InventoryAudit({
           <button
             type="button"
             onClick={markWithoutDifferences}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/80"
+            className="patient-form-secondary flex min-h-[44px] items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors"
           >
+            <ListChecks className="h-4 w-4 shrink-0" />
             Marcar sin diferencias
           </button>
           <button
             type="button"
             onClick={() => countedItems > 0 && setConfirmationType('reset')}
             disabled={countedItems === 0}
-            className="flex items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            className="patient-form-secondary flex min-h-[44px] items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RotateCcw className="h-4 w-4" />
             Reiniciar conteo
@@ -278,27 +290,38 @@ export default function InventoryAudit({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-4 xl:grid-cols-4">
         <AuditSummary label="Periodo auditado" value={formatAuditMonth(auditDate)} icon={<ClipboardCheck className="h-5 w-5" />} />
-        <AuditSummary label="Ítems contados" value={`${countedItems}/${auditProducts.length}`} />
-        <AuditSummary label="Discrepancias" value={String(discrepancyCount)} alert={discrepancyCount > 0} />
-        <AuditSummary label="Auditor" value={user?.name || user?.email || 'Usuario actual'} />
+        <AuditSummary label="Ítems contados" value={`${countedItems}/${auditProducts.length}`} icon={<Package className="h-5 w-5" />} />
+        <AuditSummary label="Discrepancias" value={String(discrepancyCount)} alert={discrepancyCount > 0} icon={<AlertTriangle className="h-5 w-5" />} />
+        <AuditSummary label="Auditor" value={user?.name || user?.email || 'Usuario actual'} icon={<UserRound className="h-5 w-5" />} />
       </div>
 
-      <div className="rounded-xl border border-border bg-card p-3 shadow-sm sm:p-4">
+      <div className="patient-form-section rounded-2xl border border-border bg-card p-3 shadow-sm sm:p-4">
+        <div className="mb-4">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-sm">
+            <span className="font-semibold text-foreground">Avance del conteo</span>
+            <span className="text-muted-foreground">{countedItems} de {auditProducts.length} productos</span>
+          </div>
+          <div role="progressbar" aria-label="Avance del conteo" aria-valuemin={0} aria-valuemax={auditProducts.length || 1} aria-valuenow={countedItems} className="audit-progress-track h-2 overflow-hidden rounded-full">
+            <div className="audit-progress-fill h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none" style={{ width: `${auditProducts.length ? (countedItems / auditProducts.length) * 100 : 0}%` }} />
+          </div>
+        </div>
+        <label htmlFor="audit-product-search" className="mb-2 block text-sm font-medium text-foreground">Buscar en el conteo</label>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
           <input
+            id="audit-product-search"
             type="search"
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
             placeholder="Buscar producto por nombre o categoría"
-            className="w-full rounded-lg border border-border bg-secondary py-2 pl-10 pr-4 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            className="w-full rounded-xl border border-border bg-secondary/80 py-2.5 pl-10 pr-4 text-foreground shadow-sm transition-all placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
           />
         </div>
       </div>
 
-      <div className="space-y-2 md:hidden">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:hidden">
         {filteredProducts.map((product) => {
           const physicalStock = physicalCounts[product.id] ?? '';
           const difference = physicalStock === ''
@@ -307,18 +330,18 @@ export default function InventoryAudit({
           const status = auditStatus(physicalStock, Number(product.currentStock));
 
           return (
-            <article key={product.id} className="rounded-xl border border-border bg-card p-3 shadow-sm">
+            <article key={product.id} className="patient-form-section rounded-2xl border border-border bg-card p-3 shadow-sm">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <h3 className="font-semibold text-foreground">{product.name}</h3>
-                  <p className="text-sm text-muted-foreground">{product.category} · {product.presentation}</p>
+                  <h3 className="break-words font-semibold text-foreground">{product.name}</h3>
+                  <p className="break-words text-sm text-muted-foreground">{product.category} · {product.presentation}</p>
                 </div>
-                <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${
+                <span className={`audit-status shrink-0 rounded-full border px-2 py-1 text-xs font-medium ${
                   status === 'Correcto'
-                    ? 'bg-green-100 text-green-800'
+                    ? 'audit-status-correct'
                     : status === 'Con diferencia'
-                      ? 'bg-red-100 text-red-700'
-                      : 'bg-yellow-100 text-yellow-800'
+                      ? 'audit-status-difference'
+                      : 'audit-status-pending'
                 }`}>{status}</span>
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
@@ -336,7 +359,7 @@ export default function InventoryAudit({
                     inputMode="numeric"
                     value={physicalStock}
                     onChange={(event) => updatePhysicalCount(product.id, event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-border bg-secondary px-2 py-1.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="mt-1 min-w-0 w-full rounded-xl border border-border bg-secondary/80 px-2 py-2.5 text-foreground shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
                 <div>
@@ -353,7 +376,7 @@ export default function InventoryAudit({
                 onChange={(event) => setNotes((current) => ({ ...current, [product.id]: event.target.value }))}
                 placeholder="Observaciones"
                 aria-label={`Notas de ${product.name}`}
-                className="mt-2 w-full rounded-lg border border-border bg-secondary px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                className="mt-2 w-full rounded-xl border border-border bg-secondary/80 px-4 py-2.5 text-foreground shadow-sm transition-all placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </article>
           );
@@ -365,10 +388,14 @@ export default function InventoryAudit({
         )}
       </div>
 
-      <div className="hidden overflow-hidden rounded-2xl border border-border bg-card shadow-lg md:block">
+      <div className="patient-form-section hidden overflow-hidden rounded-2xl border border-border bg-card shadow-lg xl:block">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-4">
+          <h3 className="flex items-center gap-2 font-semibold text-foreground"><ListChecks className="h-5 w-5 text-primary" />Productos y conteo físico</h3>
+          <span className="text-sm text-muted-foreground">{filteredProducts.length} productos visibles</span>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1050px]">
-            <thead className="bg-primary text-[#F7EFE6]">
+            <thead className="audit-table-heading text-sm">
               <tr>
                 <th className="px-4 py-3 text-left">Producto</th>
                 <th className="px-4 py-3 text-left">Categoría</th>
@@ -390,7 +417,7 @@ export default function InventoryAudit({
                 const status = auditStatus(physicalStock, Number(product.currentStock));
 
                 return (
-                  <tr key={product.id} className="hover:bg-muted/60">
+                  <tr key={product.id} className="audit-product-row">
                     <td className="px-4 py-3 font-medium text-foreground">{product.name}</td>
                     <td className="px-4 py-3 text-foreground">{product.category}</td>
                     <td className="px-4 py-3 text-foreground">{product.presentation}</td>
@@ -404,7 +431,7 @@ export default function InventoryAudit({
                         value={physicalStock}
                         onChange={(event) => updatePhysicalCount(product.id, event.target.value)}
                         aria-label={`Conteo físico de ${product.name}`}
-                        className="w-28 rounded-lg border border-border bg-secondary px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                        className="w-28 rounded-xl border border-border bg-secondary/80 px-4 py-2.5 text-foreground shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                       />
                     </td>
                     <td className={`px-4 py-3 font-semibold ${difference === 0 || difference === null ? 'text-foreground' : 'text-red-600'}`}>
@@ -412,12 +439,12 @@ export default function InventoryAudit({
                     </td>
                     <td className="px-4 py-3">
                       <span
-                        className={`rounded-full px-3 py-1 text-xs font-medium ${
+                        className={`audit-status inline-flex rounded-full border px-3 py-1 text-xs font-medium ${
                           status === 'Correcto'
-                            ? 'bg-green-100 text-green-800'
+                            ? 'audit-status-correct'
                             : status === 'Con diferencia'
-                              ? 'bg-red-100 text-red-700'
-                              : 'bg-yellow-100 text-yellow-800'
+                              ? 'audit-status-difference'
+                              : 'audit-status-pending'
                         }`}
                       >
                         {status}
@@ -436,7 +463,7 @@ export default function InventoryAudit({
                         }
                         placeholder="Observaciones"
                         aria-label={`Notas de ${product.name}`}
-                        className="w-full min-w-48 rounded-lg border border-border bg-secondary px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                        className="w-full min-w-48 rounded-xl border border-border bg-secondary/80 px-4 py-2.5 text-foreground shadow-sm transition-all placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                       />
                     </td>
                   </tr>
@@ -456,12 +483,12 @@ export default function InventoryAudit({
 
       {confirmationType && (
         <div className="modal-backdrop fixed inset-0 z-[110] flex items-center justify-center p-4">
-          <div className="relative w-full max-w-md rounded-2xl border border-border bg-card p-6 text-center shadow-2xl">
+          <div className="patient-form-shell relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-[30px] border border-border/80 bg-card p-6 text-center shadow-2xl">
             <button
               type="button"
               onClick={() => setConfirmationType(null)}
               disabled={isFinishing}
-              className="absolute right-4 top-4 rounded-lg bg-muted p-2 text-foreground transition-colors hover:bg-border disabled:opacity-50"
+              className="patient-form-close absolute right-4 top-4 rounded-xl border bg-muted p-2 text-foreground transition-colors hover:bg-border disabled:opacity-50"
               aria-label="Cerrar confirmación"
             >
               <X className="h-4 w-4" />
@@ -506,7 +533,7 @@ export default function InventoryAudit({
                 type="button"
                 onClick={() => setConfirmationType(null)}
                 disabled={isFinishing}
-                className="flex-1 rounded-lg bg-muted px-4 py-2 text-foreground transition-colors hover:bg-border disabled:opacity-50"
+                className="patient-form-secondary min-h-[44px] flex-1 rounded-xl border px-4 py-2.5 font-semibold transition-colors disabled:opacity-50"
               >
                 Cancelar
               </button>
@@ -518,11 +545,7 @@ export default function InventoryAudit({
                     : () => void finalizeAudit()
                 }
                 disabled={isFinishing}
-                className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                  confirmationType === 'reset'
-                    ? 'bg-yellow-600 hover:bg-yellow-700 dark:bg-[#755112] dark:hover:bg-[#8a6018]'
-                    : 'bg-primary hover:bg-primary/90'
-                }`}
+                className="patient-form-primary flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
               >
                 {isFinishing ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -539,6 +562,7 @@ export default function InventoryAudit({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -555,15 +579,15 @@ function AuditSummary({
   alert?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+    <div className="patient-form-section rounded-2xl border border-border bg-card p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-          <p className={`mt-1 break-words text-base font-bold sm:truncate sm:text-lg ${alert ? 'text-red-600' : 'text-foreground'}`}>
+          <p className={`mt-1 break-words text-base font-bold sm:text-lg ${alert ? 'text-red-600' : 'text-foreground'}`}>
             {value}
           </p>
         </div>
-        {icon && <div className="rounded-full bg-primary/10 p-2 text-primary">{icon}</div>}
+        {icon && <div className="audit-icon hidden shrink-0 rounded-xl border p-2 sm:block">{icon}</div>}
       </div>
     </div>
   );

@@ -1,10 +1,12 @@
+import { apiFetch as fetch } from '../utils/apiFetch';
 import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router';
+import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import {
   Search,
-  Plus,
   Download,
   CheckCircle,
+  AlertTriangle,
   Eye,
   Edit,
   X,
@@ -18,11 +20,13 @@ import type {
 } from '../utils/types';
 import SearchablePatientSelect from '../components/SearchablePatientSelect';
 import ThemedSelect from '../components/ThemedSelect';
+import ModuleHeader, { CreateButton } from '../components/ModuleHeader';
 import { drawUnavetPdfHeader, getUnavetLogoBase64 } from '../utils/pdfBranding';
 import PdfPreviewModal from '../components/PdfPreviewModal';
 import { useModulePermissions } from '../hooks/useModulePermissions';
 import { API_URL } from '../config/api';
 import { getAuthHeaders } from '../utils/apiClient';
+import { clinicalPdfLines, drawClinicalPdfLine, observationParagraphs } from '../utils/clinicalText';
 
 type CatalogItem = {
   id?: number;
@@ -51,6 +55,7 @@ export default function Prescriptions() {
   const [editingPrescription, setEditingPrescription] =
     useState<Prescription | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
+  const [prescriptionError, setPrescriptionError] = useState<string | null>(null);
 
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewPrescription, setPreviewPrescription] =
@@ -570,57 +575,41 @@ export default function Prescriptions() {
       tableY += rowHeight;
     });
 
-    let diagnosisY = tableY + 12;
-
-    if (diagnosisY > 250) {
-      drawPdfFooter(doc);
-      doc.addPage();
-      drawUnavetPdfHeader(doc, logoBase64, 'Sistema de Gestión Veterinaria');
-      diagnosisY = 43;
-    }
-
-    doc.setTextColor(textColor);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text('Diagnostico', marginX, diagnosisY);
-
-    diagnosisY += 8;
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10.5);
-
-    const diagnosisLines = doc.splitTextToSize(
-      prescription.diagnosis || 'N/A',
-      pageWidth - marginX * 2
-    );
-
-    doc.text(diagnosisLines, marginX, diagnosisY);
-
-    if (prescription.observations) {
-      let observationsY = diagnosisY + diagnosisLines.length * 6 + 10;
-
-      if (observationsY > 250) {
+    let sectionY = tableY + 12;
+    const nextSectionPage = () => {
         drawPdfFooter(doc);
         doc.addPage();
         drawUnavetPdfHeader(doc, logoBase64, 'Sistema de Gestión Veterinaria');
-        observationsY = 43;
-      }
-
+        sectionY = 43;
+    };
+    const textSections = [
+      ['Motivo de consulta', prescription.reason || 'No registrado'],
+      ...(prescription.diagnosis?.trim() ? [['Diagnóstico', prescription.diagnosis]] : []),
+      ...(prescription.observations ? [['Observaciones', prescription.observations]] : []),
+    ];
+    for (const [label, value] of textSections) {
+      if (sectionY > 240) nextSectionPage();
+      doc.setTextColor(textColor);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('Observaciones', marginX, observationsY);
-
-      observationsY += 8;
-
+      doc.text(label, marginX, sectionY);
+      sectionY += 8;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10.5);
-
-      const observationLines = doc.splitTextToSize(
-        prescription.observations,
-        pageWidth - marginX * 2
-      );
-
-      doc.text(observationLines, marginX, observationsY);
+      const width = pageWidth - marginX * 2;
+      const bullets = label === 'Observaciones';
+      const lines = clinicalPdfLines(doc, value, width, bullets);
+      for (const line of lines) {
+        if (sectionY > 255) {
+          nextSectionPage();
+          doc.setTextColor(textColor);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(10.5);
+        }
+        drawClinicalPdfLine(doc, line, marginX, sectionY, width, bullets);
+        sectionY += 6;
+      }
+      sectionY += 10;
     }
 
     drawPdfFooter(doc);
@@ -661,6 +650,7 @@ export default function Prescriptions() {
   };
 
   const resetForm = () => {
+    setPrescriptionError(null);
     setEditingPrescription(null);
     setFormData({ medications: [] });
     setMedications([]);
@@ -706,6 +696,7 @@ export default function Prescriptions() {
         tutorPhone: fullPrescription.tutorPhone,
         veterinarianId: fullPrescription.veterinarianId || '',
         diagnosis: fullPrescription.diagnosis || '',
+        reason: fullPrescription.reason || '',
         observations: fullPrescription.observations || '',
       });
       setMedications(
@@ -754,6 +745,7 @@ export default function Prescriptions() {
         body: JSON.stringify({
           patientId: formData.patientId,
           diagnosis: formData.diagnosis,
+          reason: formData.reason,
           observations: formData.observations,
           ...(editingPrescription
             ? { veterinarianId: formData.veterinarianId }
@@ -784,7 +776,7 @@ export default function Prescriptions() {
       setShowSuccessModal(true);
     } catch (error) {
       console.error('Error al guardar receta:', error);
-      alert(
+      setPrescriptionError(
         error instanceof Error
           ? error.message
           : 'No se pudo guardar la receta.'
@@ -806,20 +798,14 @@ export default function Prescriptions() {
 
   return (
     <div className="w-full p-[0.825rem] md:p-[1.375rem]">
-      <div className="mb-3 flex flex-col gap-2 sm:mb-6 sm:flex-row sm:items-center sm:gap-4">
-        <h1 className="text-foreground text-xl md:text-2xl font-bold mb-2">
-          Recetas Médicas
-        </h1>
-
-        {permissions.canCreate && <button
+      <ModuleHeader title="Recetas Médicas">
+        {permissions.canCreate && <CreateButton
           onClick={openCreateModal}
           disabled={loadingCatalogs}
-          className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-base text-[#F7EFE6] transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 sm:text-lg"
         >
-          <Plus className="w-4 h-4" />
           Nueva receta
-        </button>}
-      </div>
+        </CreateButton>}
+      </ModuleHeader>
 
       <div className="mb-3 rounded-lg bg-card p-3 shadow-lg sm:mb-6 sm:p-6">
         <div className="relative">
@@ -896,9 +882,23 @@ export default function Prescriptions() {
               </div>
 
               <div className="border-t border-border pt-4">
-                <p className="text-foreground text-sm">
-                  <strong>Diagnóstico:</strong> {prescription.diagnosis}
+                <p className="text-foreground text-sm text-justify whitespace-pre-line break-words">
+                  <strong>Motivo de consulta:</strong> {prescription.reason || 'No registrado'}
                 </p>
+                <p className="text-foreground text-sm text-justify whitespace-pre-line break-words">
+                  <strong>Diagnóstico:</strong> {prescription.diagnosis || 'No registrado'}
+                </p>
+                {prescription.observations?.trim() && (
+                  <div className="text-foreground text-sm mt-2">
+                    <strong>Observaciones:</strong>
+                    {observationParagraphs(prescription.observations).map((paragraph, index) => (
+                      <p key={index} className="flex gap-2 mt-1">
+                        <span aria-hidden="true">-</span>
+                        <span className="flex-1 min-w-0 text-justify break-words">{paragraph}</span>
+                      </p>
+                    ))}
+                  </div>
+                )}
 
                 <div className="mt-3">
                   <p className="text-foreground text-sm font-medium mb-2">
@@ -1015,7 +1015,20 @@ export default function Prescriptions() {
 
               <div>
                 <label className="block text-foreground mb-2 text-sm">
-                  Diagnóstico
+                  Motivo de consulta
+                </label>
+                <textarea
+                  value={formData.reason || ''}
+                  onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+                  className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+                  rows={2}
+                  maxLength={10000}
+                />
+              </div>
+
+              <div>
+                <label className="block text-foreground mb-2 text-sm">
+                  Diagnóstico (opcional)
                 </label>
 
                 <textarea
@@ -1025,7 +1038,7 @@ export default function Prescriptions() {
                   }
                   className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
                   rows={2}
-                  required
+                  maxLength={10000}
                 />
               </div>
 
@@ -1198,13 +1211,12 @@ export default function Prescriptions() {
                     </div>
                   </div>
 
-                  <button
-                    type="button"
+                  <CreateButton
                     onClick={addMedication}
-                    className="w-full px-4 py-2 bg-muted-foreground hover:bg-muted-foreground text-white rounded-lg text-sm"
+                    className="w-full"
                   >
                     Agregar medicamento
-                  </button>
+                  </CreateButton>
                 </div>
               </div>
 
@@ -1246,6 +1258,38 @@ export default function Prescriptions() {
           </div>
         </div>
       )}
+
+      <AlertDialog.Root
+        open={prescriptionError !== null}
+        onOpenChange={(open) => {
+          if (!open) setPrescriptionError(null);
+        }}
+      >
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="modal-backdrop fixed inset-0 z-[90]" />
+          <AlertDialog.Content className="patient-form-shell fixed left-1/2 top-1/2 z-[91] max-h-[85vh] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-[30px] border border-border bg-card p-6 text-center shadow-2xl focus:outline-none">
+            <div className="mb-4 flex justify-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+                <AlertTriangle className="h-9 w-9 text-primary" aria-hidden="true" />
+              </div>
+            </div>
+            <AlertDialog.Title className="mb-2 text-xl font-semibold text-foreground">
+              No se pudo guardar la receta
+            </AlertDialog.Title>
+            <AlertDialog.Description className="mb-6 break-words text-sm leading-6 text-muted-foreground">
+              {prescriptionError}
+            </AlertDialog.Description>
+            <AlertDialog.Cancel asChild>
+              <button
+                type="button"
+                className="patient-form-primary w-full rounded-xl px-4 py-2.5 font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-card"
+              >
+                Entendido
+              </button>
+            </AlertDialog.Cancel>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
 
       {showSuccessModal && (
         <div className="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[60]">

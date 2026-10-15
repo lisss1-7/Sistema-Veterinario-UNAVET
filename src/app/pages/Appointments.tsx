@@ -1,3 +1,4 @@
+import { apiFetch as fetch } from '../utils/apiFetch';
 import { useState, useEffect, type FormEvent, type ReactNode } from 'react';
 import { useLocation } from 'react-router';
 import { toast } from 'sonner';
@@ -17,6 +18,7 @@ import {
 import type { Appointment } from '../utils/types';
 import SearchablePatientSelect from '../components/SearchablePatientSelect';
 import ThemedSelect from '../components/ThemedSelect';
+import ModuleHeader, { CreateButton } from '../components/ModuleHeader';
 import {
   getTodayLocal,
   isClinicDateTimePastOrCurrent,
@@ -548,25 +550,15 @@ export default function Appointments() {
 
   return (
     <div className="w-full p-[0.825rem] md:p-[1.375rem]">
-      <div className="mb-3 flex flex-col gap-2 sm:mb-6 sm:flex-row sm:items-center sm:gap-4">
-        <div>
-          <h1 className="text-foreground text-xl md:text-2xl font-bold mb-2">
-            Citas clínicas
-          </h1>
-        </div>
-
-        {permissions.canCreate && <button
-          onClick={() => openModal()}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 text-lg bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors"
-        >
-          <Plus className="w-4 h-4" />
+      <ModuleHeader title="Citas clínicas">
+        {permissions.canCreate && <CreateButton onClick={() => openModal()}>
           Nueva cita
-        </button>}
-      </div>
-      <div className="mb-3 rounded-2xl border border-border/60 bg-gradient-to-br from-card to-muted/20 p-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)] md:mb-4 md:p-4">
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-4">
+        </CreateButton>}
+      </ModuleHeader>
+      <div className="mb-3 rounded-2xl border border-border/60 bg-gradient-to-br from-card to-muted/20 p-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
           <div className="col-span-2 md:col-span-2">
-            <label className="block text-foreground mb-2 text-sm">
+            <label className="block text-foreground mb-1.5 text-sm">
               Buscar
             </label>
 
@@ -578,20 +570,20 @@ export default function Appointments() {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Buscar por mascota, tutor o raza"
-                className="w-full rounded-xl border border-border bg-secondary/80 py-2.5 pl-10 pr-4 text-foreground shadow-sm transition-all placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="min-h-[44px] w-full rounded-xl border border-border bg-secondary/80 py-2 pl-10 pr-4 text-sm text-foreground shadow-sm transition-all placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-foreground mb-2 text-sm">
+            <label className="block text-foreground mb-1.5 text-sm">
               Estado
             </label>
 
             <ThemedSelect
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className="w-full rounded-xl border border-border bg-secondary/80 px-4 py-2.5 text-foreground shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="min-h-[44px] w-full rounded-xl border border-border bg-secondary/80 px-3 py-2 text-sm text-foreground shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
               <option value="">Todos</option>
 
@@ -603,8 +595,8 @@ export default function Appointments() {
             </ThemedSelect>
           </div>
 
-          <div>
-            <label className="block text-foreground mb-2 text-sm">
+          <div className="min-w-0">
+            <label className="block text-foreground mb-1.5 text-sm">
               Fecha
             </label>
 
@@ -612,19 +604,19 @@ export default function Appointments() {
               type="date"
               value={filterDate}
               onChange={(e) => setFilterDate(e.target.value)}
-              className="w-full rounded-xl border border-border bg-secondary/80 px-4 py-2.5 text-foreground shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="min-h-[44px] min-w-0 max-w-full w-full rounded-xl border border-border bg-secondary/80 px-3 py-2 text-sm text-foreground shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
           </div>
         </div>
       </div>
 
       <section className="overflow-hidden rounded-[22px] border border-border/60 bg-card shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
-        <div className="flex flex-col gap-3 border-b border-border bg-gradient-to-r from-muted/60 via-card to-muted/50 p-3 sm:flex-row sm:items-center sm:justify-between md:p-3.5">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-primary p-2.5 text-white shadow-lg shadow-primary/20">
-              <CalendarDays className="w-5 h-5" />
+        <div className="flex flex-col gap-2 border-b border-border bg-gradient-to-r from-muted/60 via-card to-muted/50 p-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <div className="rounded-xl bg-primary p-2 text-white shadow-lg shadow-primary/20">
+              <CalendarDays className="w-4 h-4" />
             </div>
-            <h2 className="text-lg font-black capitalize tracking-tight text-foreground md:text-xl">
+            <h2 className="text-base font-black capitalize tracking-tight text-foreground md:text-lg">
               {calendarMonthLabel}
             </h2>
           </div>
@@ -633,25 +625,25 @@ export default function Appointments() {
             <button
               type="button"
               onClick={() => changeCalendarMonth(-1)}
-              className="rounded-xl bg-muted p-2.5 text-foreground transition-colors hover:bg-border"
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl bg-muted p-2 text-foreground transition-colors hover:bg-border"
               aria-label="Mes anterior"
             >
-              <ChevronLeft className="w-5 h-5" />
+              <ChevronLeft className="w-4 h-4" />
             </button>
             <button
               type="button"
               onClick={goToCurrentMonth}
-              className="rounded-xl bg-muted px-4 py-2 font-semibold text-foreground transition-colors hover:bg-border"
+              className="min-h-[44px] rounded-xl bg-muted px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-border"
             >
               Hoy
             </button>
             <button
               type="button"
               onClick={() => changeCalendarMonth(1)}
-              className="rounded-xl bg-muted p-2.5 text-foreground transition-colors hover:bg-border"
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl bg-muted p-2 text-foreground transition-colors hover:bg-border"
               aria-label="Mes siguiente"
             >
-              <ChevronRight className="w-5 h-5" />
+              <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -662,14 +654,14 @@ export default function Appointments() {
               key={appointment.id}
               type="button"
               onClick={() => setSelectedAppointment(appointment)}
-              className="w-full rounded-2xl border border-border bg-card p-3 text-left shadow-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:p-4"
+              className="w-full rounded-2xl border border-border bg-card p-3 text-left shadow-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-primary">
                     {formatDateForDisplay(appointment.date)} · {appointment.time.slice(0, 5)}
                   </p>
-                  <h3 className="mt-1 truncate text-base font-bold text-foreground">
+                  <h3 className="mt-1 truncate text-sm font-bold text-foreground">
                     {appointment.petName}
                   </h3>
                   <p className="truncate text-sm text-muted-foreground">
@@ -684,14 +676,14 @@ export default function Appointments() {
                   {appointment.status}
                 </span>
               </div>
-              <p className="mt-2 line-clamp-2 text-sm text-foreground sm:mt-3">
+              <p className="mt-2 line-clamp-2 text-sm text-foreground">
                 {appointment.reason || 'Sin motivo especificado'}
               </p>
             </button>
           ))}
 
           {monthAppointments.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+            <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-4 text-center text-sm text-muted-foreground">
               No hay citas en este mes con los filtros seleccionados.
             </div>
           )}
@@ -718,11 +710,11 @@ export default function Appointments() {
                 return (
                   <div
                     key={dateKey}
-                    className={`min-h-36 border-r border-b border-border/80 p-2.5 transition-colors ${
+                    className={`min-h-24 border-r border-b border-border/80 p-2 transition-colors ${
                       isCurrentMonth ? 'bg-card' : 'bg-muted/50'
                     } ${isToday ? 'bg-primary/5 ring-2 ring-inset ring-primary/20' : ''}`}
                   >
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-1">
                       <span
                         className={`w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold ${
                           isToday
@@ -738,7 +730,7 @@ export default function Appointments() {
                         <button
                           type="button"
                           onClick={() => openModal(undefined, dateKey)}
-                          className="w-7 h-7 flex items-center justify-center rounded-full text-primary hover:bg-muted transition-colors"
+                          className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-primary hover:bg-muted transition-colors"
                           aria-label={`Crear cita el ${dateKey}`}
                           title="Nueva cita en este día"
                         >
@@ -747,17 +739,17 @@ export default function Appointments() {
                       )}
                     </div>
 
-                    <div className="space-y-1.5 max-h-28 overflow-y-auto pr-0.5">
+                    <div className="space-y-1 max-h-20 overflow-y-auto pr-0.5">
                       {dayAppointments.map((appointment) => (
                         <button
                           key={appointment.id}
                           type="button"
                           onClick={() => setSelectedAppointment(appointment)}
-                          className={`w-full text-left rounded-lg border px-2 py-1.5 transition-all hover:shadow-sm ${getAppointmentColor(
+                          className={`min-h-[44px] w-full text-left rounded-lg border px-2 py-1 transition-all hover:shadow-sm ${getAppointmentColor(
                             appointment.status
                           )}`}
                         >
-                          <span className="block text-sm font-extrabold leading-tight">
+                          <span className="block text-xs font-extrabold leading-tight">
                             {appointment.time.slice(0, 5)} · {appointment.petName}
                           </span>
                           <span className="block truncate text-[11px] font-semibold opacity-100">
@@ -774,7 +766,7 @@ export default function Appointments() {
         </div>
 
         {filteredAppointments.length === 0 && (
-          <div className="p-4 text-center text-muted-foreground font-medium border-t border-border">
+          <div className="p-3 text-center text-sm text-muted-foreground font-medium border-t border-border">
             No hay citas que coincidan con los filtros seleccionados.
           </div>
         )}

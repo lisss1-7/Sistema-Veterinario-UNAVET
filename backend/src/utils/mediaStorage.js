@@ -208,7 +208,10 @@ const toClientMediaReference = (value) => {
     getPositiveInteger(process.env.MEDIA_URL_TTL_SECONDS, DEFAULT_URL_TTL_SECONDS),
     24 * 60 * 60
   );
-  const expires = Math.floor(Date.now() / 1000) + ttl;
+  // Mantener el enlace durante un intervalo corto permite reutilizar la foto
+  // en la caché privada del navegador sin ampliar la vigencia autorizada.
+  const cacheWindow = Math.max(1, Math.min(300, Math.floor(ttl / 2)));
+  const expires = Math.floor(Date.now() / 1000 / cacheWindow) * cacheWindow + ttl;
   const payload = `${parsed.bucket}/${parsed.filename}:${expires}`;
   const signature = sign(payload);
   return `media/${parsed.bucket}/${parsed.filename}?expires=${expires}&signature=${signature}`;

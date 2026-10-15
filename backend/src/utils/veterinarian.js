@@ -5,8 +5,11 @@ const normalizeRole = (value) =>
     .trim()
     .toLocaleLowerCase('es');
 
-const isVeterinarianRole = (roleName) =>
-  normalizeRole(roleName).includes('veterinario');
+const isVeterinarianRole = (roleName) => {
+  const role = normalizeRole(roleName);
+  // Los administradores de la clínica también ejercen como médicos veterinarios.
+  return role === 'administrador' || role.includes('veterinario');
+};
 
 const syncVeterinarianForUser = async (
   connection,

@@ -1,3 +1,4 @@
+import { apiFetch as fetch } from '../utils/apiFetch';
 import { useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router';
 import {
@@ -25,6 +26,7 @@ import {
   type SystemModule,
 } from '../config/deliveryScope';
 import { preloadPatientsModule } from '../utils/patientsModuleData';
+import { preloadModuleData } from '../utils/apiFetch';
 import { API_URL } from '../config/api';
 import { useAuth } from '../context/AuthContext';
 import { isAdministratorRole } from '../config/roles';
@@ -114,7 +116,7 @@ export function Sidebar({
   }, [permittedModules, systemModules]);
 
   const navClass = (active: boolean) =>
-    `group relative flex items-center gap-[0.6375rem] rounded-lg px-[0.85rem] py-[0.6375rem] text-[0.8925rem] transition-colors ${active
+    `group relative flex min-h-[56px] items-center gap-2 rounded-lg px-[0.7rem] py-[0.425rem] text-base transition-colors ${active
       ? 'bg-sidebar-accent text-sidebar-accent-foreground'
       : 'text-sidebar-foreground hover:bg-white/10'
     }`;
@@ -126,12 +128,12 @@ export function Sidebar({
     }`;
 
   const iconChipClass = (active: boolean) =>
-    `flex h-[1.9125rem] w-[1.9125rem] shrink-0 items-center justify-center rounded-lg border transition-colors ${active
+    `flex h-[2.125rem] w-[2.125rem] shrink-0 items-center justify-center rounded-lg border transition-colors ${active
       ? 'border-[#C9962F]/45 bg-[#C9962F]/20 text-[#E3B95F]'
       : 'border-white/10 bg-white/[0.06] text-sidebar-foreground/75 group-hover:border-white/20 group-hover:bg-white/10 group-hover:text-sidebar-foreground'
     }`;
 
-  const navLabelClass = `${isCollapsed ? 'hidden' : 'flex-1'} text-[0.8925rem] font-medium max-lg:text-sidebar-foreground`;
+  const navLabelClass = `${isCollapsed ? 'hidden' : 'min-w-0 flex-1 break-words'} text-base font-normal max-lg:text-sidebar-foreground`;
 
   return (
     <aside
@@ -246,13 +248,13 @@ export function Sidebar({
         type="button"
         aria-label="Cerrar menú"
         onClick={onNavigate}
-        className="absolute right-4 top-4 z-20 rounded-lg bg-white/10 p-2 text-sidebar-foreground hover:bg-white/20 lg:hidden"
+        className="absolute right-3 top-3 z-20 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg bg-white/10 p-2 text-sidebar-foreground hover:bg-white/20 lg:hidden"
       >
         <X className="h-[1.0625rem] w-[1.0625rem]" />
       </button>
 
       <div
-        className={`relative z-10 flex flex-col items-center pb-[1.0625rem] pt-[1.4875rem] text-center ${isCollapsed ? 'px-[0.425rem]' : 'px-[1.275rem]'
+        className={`relative z-10 flex shrink-0 flex-col items-center pb-2 pt-3 text-center ${isCollapsed ? 'px-[0.425rem]' : 'px-[1.275rem]'
           }`}
       >
         <NavLink
@@ -261,11 +263,11 @@ export function Sidebar({
           className="group focus:outline-none"
           aria-label="Ir a la página principal"
         >
-          <div className="mb-[0.6375rem] flex justify-center transition-transform group-hover:-translate-y-0.5">
+          <div className="mb-1.5 flex justify-center transition-transform group-hover:-translate-y-0.5">
             <img
               src={unavetLogo}
               alt="Logo UNAVET"
-              className={`h-auto object-contain ${isCollapsed ? 'w-[2.55rem]' : 'w-[5.1rem]'}`}
+              className={`h-auto object-contain ${isCollapsed ? 'w-[2.25rem]' : 'w-[3.25rem]'}`}
             />
           </div>
           <p className={`w-full text-center text-[0.74375rem] font-medium text-sidebar-foreground/75 ${isCollapsed ? 'hidden' : ''}`}>
@@ -275,7 +277,7 @@ export function Sidebar({
       </div>
 
       <div
-        className={`relative z-20 hidden px-[0.6375rem] pb-[0.425rem] lg:flex ${isCollapsed ? 'justify-center' : 'justify-end'
+        className={`relative z-20 hidden shrink-0 px-[0.6375rem] pb-1 lg:flex ${isCollapsed ? 'justify-center' : 'justify-end'
           }`}
       >
         <button
@@ -283,7 +285,7 @@ export function Sidebar({
           aria-label={isCollapsed ? 'Expandir menú' : 'Contraer menú'}
           title={isCollapsed ? 'Expandir menú' : 'Contraer menú'}
           onClick={onToggleCollapse}
-          className="flex h-[2.125rem] w-[2.125rem] items-center justify-center rounded-xl border border-white/15 bg-white/10 text-sidebar-foreground shadow-sm transition-colors hover:bg-white/20 hover:text-sidebar-foreground focus:outline-none focus:ring-2 focus:ring-[#C9962F]/70"
+          className="flex h-[44px] w-[44px] items-center justify-center rounded-xl border border-white/15 bg-white/10 text-sidebar-foreground shadow-sm transition-colors hover:bg-white/20 hover:text-sidebar-foreground focus:outline-none focus:ring-2 focus:ring-[#C9962F]/70"
         >
           {isCollapsed ? (
             <PanelLeftOpen className="h-[1.275rem] w-[1.275rem]" strokeWidth={2.2} />
@@ -293,7 +295,7 @@ export function Sidebar({
         </button>
       </div>
 
-      <nav className={`relative z-10 flex-1 overflow-y-auto py-[0.85rem] no-scrollbar ${isCollapsed ? 'px-[0.425rem]' : 'px-[0.6375rem]'}`}>
+      <nav className={`relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-contain py-1 ${isCollapsed ? 'px-[0.425rem]' : 'px-[0.6375rem]'}`}>
         {visibleModules.map((module) => {
           const ModuleIcon =
             iconByModule[module.codigo as keyof typeof iconByModule] || House;
@@ -309,11 +311,11 @@ export function Sidebar({
                 onClick={onNavigate}
                 onPointerEnter={preloadPatientsModule}
                 onFocus={preloadPatientsModule}
-                className={`${navClass(patientsActive)} mb-[0.425rem] ${isCollapsed ? 'justify-center px-[0.425rem]' : ''}`}
+                className={`${navClass(patientsActive)} mb-0.5 ${isCollapsed ? 'justify-center px-[0.425rem]' : ''}`}
                 title={isCollapsed ? module.nombre : undefined}
               >
                 <span className={iconChipClass(patientsActive)}>
-                  <ModuleIcon className="h-[1.0625rem] w-[1.0625rem]" strokeWidth={2} />
+                  <ModuleIcon className="h-[1.375rem] w-[1.375rem]" strokeWidth={2} />
                 </span>
                 <span className={navLabelClass}>
                   {module.nombre}
@@ -334,15 +336,17 @@ export function Sidebar({
               key={module.codigo}
               to={module.ruta}
               onClick={onNavigate}
+              onPointerEnter={() => preloadModuleData(module.codigo)}
+              onFocus={() => preloadModuleData(module.codigo)}
               className={({ isActive }) =>
-                `${navClass(isActive)} mb-[0.425rem] ${isCollapsed ? 'justify-center px-[0.425rem]' : ''}`
+                `${navClass(isActive)} mb-0.5 ${isCollapsed ? 'justify-center px-[0.425rem]' : ''}`
               }
               title={isCollapsed ? module.nombre : undefined}
             >
               {({ isActive }: { isActive: boolean }) => (
                 <>
                   <span className={iconChipClass(isActive)}>
-                    <ModuleIcon className="h-[1.0625rem] w-[1.0625rem]" strokeWidth={2} />
+                    <ModuleIcon className="h-[1.375rem] w-[1.375rem]" strokeWidth={2} />
                   </span>
                   <span className={navLabelClass}>
                     {module.nombre}
@@ -363,15 +367,17 @@ export function Sidebar({
           <NavLink
             to="/maintenance"
             onClick={onNavigate}
+            onPointerEnter={() => preloadModuleData('maintenance')}
+            onFocus={() => preloadModuleData('maintenance')}
             className={({ isActive }) =>
-              `${navClass(isActive)} mb-[0.425rem] ${isCollapsed ? 'justify-center px-[0.425rem]' : ''}`
+              `${navClass(isActive)} mb-0.5 ${isCollapsed ? 'justify-center px-[0.425rem]' : ''}`
             }
             title={isCollapsed ? 'Mantenimiento' : undefined}
           >
             {({ isActive }: { isActive: boolean }) => (
               <>
                 <span className={iconChipClass(isActive)}>
-                  <Settings className="h-[1.0625rem] w-[1.0625rem]" strokeWidth={2} />
+                  <Settings className="h-[1.375rem] w-[1.375rem]" strokeWidth={2} />
                 </span>
                 <span className={navLabelClass}>
                   Mantenimiento

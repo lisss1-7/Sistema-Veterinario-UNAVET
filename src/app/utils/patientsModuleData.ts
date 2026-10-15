@@ -1,5 +1,5 @@
 import type { Patient } from './types';
-import { requestJson } from './apiClient';
+import { getAuthHeaders, requestJson } from './apiClient';
 
 export type PatientCatalogOption = {
   nombre: string;
@@ -21,6 +21,30 @@ let patientCatalogsRequest: Promise<
   Pick<PatientsModuleData, 'species' | 'sexes' | 'reproductiveStatuses' | 'dietOptions'>
 > | null = null;
 
+type Prefetch<T> = { promise: Promise<T>; expiresAt: number };
+let preloadedPatients: Prefetch<Patient[]> | null = null;
+let preloadedCatalogs: Prefetch<Pick<PatientsModuleData, 'species' | 'sexes' | 'reproductiveStatuses' | 'dietOptions'>> | null = null;
+let requestSession = '';
+if (typeof window !== 'undefined') {
+  window.addEventListener('unavet-read-cache-cleared', () => {
+    preloadedPatients = null;
+    preloadedCatalogs = null;
+    patientsRequest = null;
+    patientCatalogsRequest = null;
+  });
+}
+const PREFETCH_TTL_MS = 30000;
+const checkSession = () => {
+  const session = getAuthHeaders().Authorization;
+  if (session !== requestSession) {
+    requestSession = session;
+    patientsRequest = null;
+    patientCatalogsRequest = null;
+    preloadedPatients = null;
+    preloadedCatalogs = null;
+  }
+};
+
 const fetchCollection = async <T>(endpoint: string): Promise<T[]> => {
   const data = await requestJson<unknown>(endpoint, {
     defaultError: `Error al cargar ${endpoint}`,
@@ -28,19 +52,28 @@ const fetchCollection = async <T>(endpoint: string): Promise<T[]> => {
   return Array.isArray(data) ? data as T[] : [];
 };
 
-export const getPatientsList = () => {
+export const getPatientsList = (usePrefetch = false) => {
+  checkSession();
+  const prefetched = preloadedPatients;
+  preloadedPatients = null;
+  if (usePrefetch && prefetched && prefetched.expiresAt > Date.now()) return prefetched.promise;
   if (!patientsRequest) {
-    patientsRequest = fetchCollection<Patient>('pacientes').finally(() => {
-      patientsRequest = null;
+    const request = fetchCollection<Patient>('pacientes').finally(() => {
+      if (patientsRequest === request) patientsRequest = null;
     });
+    patientsRequest = request;
   }
 
   return patientsRequest;
 };
 
-export const getPatientCatalogs = () => {
+export const getPatientCatalogs = (usePrefetch = false) => {
+  checkSession();
+  const prefetched = preloadedCatalogs;
+  preloadedCatalogs = null;
+  if (usePrefetch && prefetched && prefetched.expiresAt > Date.now()) return prefetched.promise;
   if (!patientCatalogsRequest) {
-    patientCatalogsRequest = Promise.all([
+    const request = Promise.all([
       fetchCollection<PatientCatalogOption>('catalogos/especies'),
       fetchCollection<PatientCatalogOption>('catalogos/sexos'),
       fetchCollection<PatientCatalogOption>('catalogos/estados-reproductivos'),
@@ -56,14 +89,26 @@ export const getPatientCatalogs = () => {
         dietOptions,
       }))
       .finally(() => {
-        patientCatalogsRequest = null;
+        if (patientCatalogsRequest === request) patientCatalogsRequest = null;
       });
+    patientCatalogsRequest = request;
   }
 
   return patientCatalogsRequest;
 };
 
 export const preloadPatientsModule = () => {
-  void getPatientsList().catch(() => undefined);
-  void getPatientCatalogs().catch(() => undefined);
+  checkSession();
+  if (!preloadedPatients || preloadedPatients.expiresAt <= Date.now()) {
+    const promise = getPatientsList();
+    const entry = { promise, expiresAt: Date.now() + PREFETCH_TTL_MS };
+    preloadedPatients = entry;
+    void promise.catch(() => { if (preloadedPatients === entry) preloadedPatients = null; });
+  }
+  if (!preloadedCatalogs || preloadedCatalogs.expiresAt <= Date.now()) {
+    const promise = getPatientCatalogs();
+    const entry = { promise, expiresAt: Date.now() + PREFETCH_TTL_MS };
+    preloadedCatalogs = entry;
+    void promise.catch(() => { if (preloadedCatalogs === entry) preloadedCatalogs = null; });
+  }
 };

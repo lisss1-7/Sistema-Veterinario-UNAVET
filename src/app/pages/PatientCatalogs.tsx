@@ -1,3 +1,4 @@
+import { apiFetch as fetch } from '../utils/apiFetch';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   ArrowUpRight,
@@ -8,7 +9,6 @@ import {
   Edit3,
   FlaskConical,
   PawPrint,
-  Plus,
   Power,
   RotateCcw,
   Search,
@@ -24,6 +24,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import ThemedSelect from '../components/ThemedSelect';
+import { CreateButton } from '../components/ModuleHeader';
 import { API_URL } from '../config/api';
 import { getAuthHeaders } from '../utils/apiClient';
 
@@ -887,15 +888,13 @@ export default function PatientCatalogs() {
               </div>
             </div>
             {permissions.canCreate && !catalog.readOnly && (
-              <button
+              <CreateButton
                 type="button"
                 onClick={openCreateForm}
                 disabled={loading || Boolean(error)}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <Plus className="h-4 w-4" aria-hidden="true" />
                 Agregar {catalog.singular}
-              </button>
+              </CreateButton>
             )}
           </div>
 

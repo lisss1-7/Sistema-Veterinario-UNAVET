@@ -18,6 +18,7 @@ const mapRecetaToFrontend = (row, medications = []) => {
     createdBy: row.creado_por ? String(row.creado_por) : '',
     createdByName: row.creado_por_nombre || '',
     diagnosis: row.diagnostico || '',
+    reason: row.motivo_consulta || '',
     observations: row.observaciones || '',
     status: row.estado,
     medications,
@@ -50,9 +51,12 @@ const obtenerMedicamentosPorReceta = async (
   connection,
   recetaId
 ) => {
+  const recipeIds = Array.isArray(recetaId) ? recetaId : [recetaId];
+  if (recipeIds.length === 0) return [];
   const [rows] = await connection.query(
     `
     SELECT
+      rm.receta_id,
       rm.receta_medicamento_id,
       rm.producto_id,
       rm.nombre_medicamento,
@@ -70,19 +74,16 @@ const obtenerMedicamentosPorReceta = async (
       ON rm.producto_id = p.producto_id
     INNER JOIN modo_entrega_receta modo
       ON modo.modo_entrega_id = rm.modo_entrega_id
-    WHERE rm.receta_id = ?
+    WHERE rm.receta_id IN (${recipeIds.map(() => '?').join(', ')})
     ORDER BY rm.receta_medicamento_id ASC
     `,
-    [recetaId]
+    recipeIds
   );
 
-  return rows.map(mapMedicamentoToFrontend);
+  return Array.isArray(recetaId) ? rows : rows.map(mapMedicamentoToFrontend);
 };
 
-const listarRecetas = async (req, res) => {
-  const connection = await pool.getConnection();
-
-  try {
+const obtenerRecetas = async (connection, patientId = null) => {
     const [rows] = await connection.query(
       `
       SELECT
@@ -96,6 +97,7 @@ const listarRecetas = async (req, res) => {
           '%Y-%m-%d'
         ) AS fecha_emision,
         r.diagnostico,
+        r.motivo_consulta,
         r.observaciones,
         estado.nombre AS estado,
         CONCAT_WS(
@@ -124,25 +126,26 @@ const listarRecetas = async (req, res) => {
         ON creador.usuario_id = r.creado_por
       INNER JOIN estado_receta estado
         ON estado.estado_receta_id = r.estado_receta_id
+      WHERE (? IS NULL OR r.paciente_id = ?)
       ORDER BY r.receta_id DESC
-      `
+      `,
+      [patientId, patientId]
     );
 
-    const recetas = [];
-
-    for (const row of rows) {
-      const medications =
-        await obtenerMedicamentosPorReceta(
-          connection,
-          row.receta_id
-        );
-
-      recetas.push(
-        mapRecetaToFrontend(row, medications)
-      );
+    const medicationRows = await obtenerMedicamentosPorReceta(connection, rows.map(row => row.receta_id));
+    const medicationsByRecipe = new Map();
+    for (const medication of medicationRows) {
+      const items = medicationsByRecipe.get(String(medication.receta_id)) || [];
+      items.push(mapMedicamentoToFrontend(medication));
+      medicationsByRecipe.set(String(medication.receta_id), items);
     }
+    return rows.map(row => mapRecetaToFrontend(row, medicationsByRecipe.get(String(row.receta_id)) || []));
+};
 
-    res.json(recetas);
+const listarRecetas = async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    res.json(await obtenerRecetas(connection));
   } catch (error) {
     console.error('Error al listar recetas:', error);
 
@@ -174,6 +177,7 @@ const obtenerRecetaPorId = async (req, res) => {
           '%Y-%m-%d'
         ) AS fecha_emision,
         r.diagnostico,
+        r.motivo_consulta,
         r.observaciones,
         estado.nombre AS estado,
         CONCAT_WS(
@@ -362,13 +366,14 @@ const crearReceta = async (req, res) => {
     const {
       patientId,
       diagnosis,
+      reason,
       observations,
       medications,
     } = req.body;
 
-    if (!patientId || !diagnosis) {
+    if (!patientId) {
       return res.status(400).json({
-        message: 'Paciente y diagnóstico son obligatorios',
+        message: 'Paciente es obligatorio',
       });
     }
 
@@ -429,6 +434,7 @@ const crearReceta = async (req, res) => {
           veterinario_id,
           fecha_emision,
           diagnostico,
+          motivo_consulta,
           observaciones,
           estado_receta_id,
           creado_por
@@ -438,6 +444,7 @@ const crearReceta = async (req, res) => {
           ?,
           ?,
           CURDATE(),
+          ?,
           ?,
           ?,
           (SELECT estado_receta_id
@@ -451,7 +458,8 @@ const crearReceta = async (req, res) => {
           patientId,
           tutorId,
           veterinarianId || null,
-          diagnosis,
+          diagnosis || '',
+          reason || null,
           observations || null,
           req.user?.id || null,
         ]
@@ -504,15 +512,16 @@ const actualizarReceta = async (req, res) => {
     const {
       patientId,
       diagnosis,
+      reason,
       observations,
       veterinarianId,
       medications,
     } = req.body;
 
-    if (!patientId || !diagnosis || !veterinarianId) {
+    if (!patientId || !veterinarianId) {
       return res.status(400).json({
         message:
-          'Paciente, veterinario y diagnóstico son obligatorios',
+          'Paciente y veterinario son obligatorios',
       });
     }
 
@@ -616,6 +625,7 @@ const actualizarReceta = async (req, res) => {
         tutor_id = ?,
         veterinario_id = ?,
         diagnostico = ?,
+        motivo_consulta = ?,
         observaciones = ?
       WHERE receta_id = ?
       `,
@@ -623,7 +633,8 @@ const actualizarReceta = async (req, res) => {
         patientId,
         patientRows[0].tutor_id,
         veterinarianId || null,
-        diagnosis,
+        diagnosis || '',
+        reason || null,
         observations || null,
         id,
       ]
@@ -754,6 +765,7 @@ const anularReceta = async (req, res) => {
 };
 
 module.exports = {
+  obtenerRecetas,
   listarRecetas,
   obtenerRecetaPorId,
   crearReceta,

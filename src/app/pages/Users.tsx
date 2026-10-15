@@ -7,7 +7,6 @@ import {
 } from 'react';
 import {
   Search,
-  Plus,
   Edit,
   Trash2,
   CheckCircle,
@@ -27,6 +26,7 @@ import {
 import { jsPDF } from 'jspdf';
 import type { SystemUser } from '../utils/types';
 import ThemedSelect from '../components/ThemedSelect';
+import ModuleHeader, { CreateButton } from '../components/ModuleHeader';
 import PdfPreviewModal from '../components/PdfPreviewModal';
 import { useAuth, type User } from '../context/AuthContext';
 import { useModulePermissions } from '../hooks/useModulePermissions';
@@ -889,26 +889,14 @@ export default function Users() {
 
   return (
     <div className="min-w-0 w-full p-[0.825rem] md:p-[1.375rem]">
-      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="mb-1 text-xl font-bold text-foreground md:text-2xl">
-            Gestión de Usuarios
-          </h1>
-          <p className="hidden text-sm text-muted-foreground sm:block">
-            Administra el acceso y los perfiles del equipo.
-          </p>
-        </div>
-
-        {permissions.canCreate && <button
-          type="button"
+      <ModuleHeader title="Gestión de Usuarios" description="Administra el acceso y los perfiles del equipo.">
+        {permissions.canCreate && <CreateButton
           onClick={() => openModal()}
           disabled={loadingRoles || roleOptions.length === 0}
-          className="flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-base font-semibold text-[#F7EFE6] shadow-lg shadow-primary/20 transition-all hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          <Plus className="h-4 w-4" />
           {loadingRoles ? 'Cargando roles...' : 'Nuevo usuario'}
-        </button>}
-      </div>
+        </CreateButton>}
+      </ModuleHeader>
 
       <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 [&>article:last-child]:col-span-2 sm:[&>article:last-child]:col-span-1">
         <SummaryCard

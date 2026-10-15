@@ -1,3 +1,4 @@
+import { apiFetch as fetch } from '../utils/apiFetch';
 ﻿import {
   useEffect,
   useState,
@@ -7,7 +8,6 @@
 
 import {
   Search,
-  Plus,
   Edit,
   Trash2,
   AlertTriangle,
@@ -15,14 +15,21 @@ import {
   CheckCircle,
   CalendarDays,
   ClipboardCheck,
+  ReceiptText,
   X,
 } from 'lucide-react';
 
 import type { InventoryProduct } from '../utils/types';
 import InventoryAudit from '../components/InventoryAudit';
+import SalesClosing from '../components/SalesClosing';
+import InventorySuppliers from '../components/inventory/InventorySuppliers';
+import InventoryPurchases from '../components/inventory/InventoryPurchases';
+import InventoryMovements from '../components/inventory/InventoryMovements';
+import { Field, inputClass, OperationModal, OperationNotice, primaryButton } from '../components/inventory/OperationUi';
 import ThemedSelect from '../components/ThemedSelect';
 import { useModulePermissions } from '../hooks/useModulePermissions';
 import InformationCard from '../components/InformationCard';
+import ModuleHeader, { CreateButton } from '../components/ModuleHeader';
 import { API_URL } from '../config/api';
 import { getAuthHeaders } from '../utils/apiClient';
 
@@ -66,7 +73,7 @@ export default function Inventory() {
   const { permissions } = useModulePermissions('inventory');
   const [inventory, setInventory] = useState<InventoryProduct[]>([]);
   const [activeSection, setActiveSection] =
-    useState<'inventory' | 'audit'>('inventory');
+    useState<'inventory' | 'audit' | 'sales' | 'suppliers' | 'purchases' | 'movements'>('inventory');
   const [showAuditDateModal, setShowAuditDateModal] = useState(false);
   const [auditDate, setAuditDate] = useState(getCurrentGuatemalaDate);
 
@@ -100,6 +107,13 @@ export default function Inventory() {
 
   const [showStockModal, setShowStockModal] = useState(false);
   const [stockMessage, setStockMessage] = useState('');
+  const [stockTarget, setStockTarget] = useState<InventoryProduct | null>(null);
+  const [stockDirection, setStockDirection] = useState(1);
+  const [stockQuantity, setStockQuantity] = useState(1);
+  const [stockReason, setStockReason] = useState('');
+  const [stockOperation, setStockOperation] = useState('adjustment');
+  const [stockBusy, setStockBusy] = useState(false);
+  const [stockError, setStockError] = useState('');
 
   const mapCatalogNames = (items: CatalogItem[]) => {
     if (!Array.isArray(items)) {
@@ -349,60 +363,30 @@ export default function Inventory() {
     setShowDeleteSuccessModal(false);
   };
 
-  const adjustStock = async (
-    id: string,
-    adjustment: number
-  ) => {
+  const adjustStock = (id: string, direction: number) => {
+    const product = inventory.find((item) => item.id === id);
+    if (!product) return;
+    setStockTarget(product); setStockDirection(direction); setStockQuantity(1);
+    setStockReason(''); setStockOperation('adjustment'); setStockError('');
+  };
+
+  const submitStock = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!stockTarget || stockBusy || !permissions.canEdit) return;
+    setStockBusy(true); setStockError('');
     try {
-      const product = inventory.find(
-        (item) => item.id === id
-      );
-
-      const response = await fetch(
-        `${API_URL}/inventario/${id}/stock`,
-        {
-          method: 'PATCH',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            adjustment,
-            reason:
-              adjustment > 0
-                ? 'Entrada manual desde inventario'
-                : 'Salida manual desde inventario',
-          }),
-        }
-      );
-
+      const adjustment = stockDirection * stockQuantity;
+      const response = await fetch(`${API_URL}/inventario/${stockTarget.id}/stock`, {
+        method: 'PATCH', headers: getAuthHeaders(),
+        body: JSON.stringify({ adjustment, reason: stockReason, operation: stockOperation }),
+      });
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.message || 'Error al actualizar stock'
-        );
-      }
-
+      if (!response.ok) throw new Error(data.message || 'No se pudo registrar el movimiento');
       await loadInventory();
-
-      setStockMessage(
-        adjustment > 0
-          ? `Se agregó 1 unidad al stock de ${
-              product?.name || 'producto'
-            }.`
-          : `Se descontó 1 unidad del stock de ${
-              product?.name || 'producto'
-            }.`
-      );
-
-      setShowStockModal(true);
-    } catch (error) {
-      console.error('Error al ajustar stock:', error);
-
-      alert(
-        error instanceof Error
-          ? error.message
-          : 'No se pudo actualizar el stock.'
-      );
-    }
+      setStockMessage(`Movimiento registrado para ${stockTarget.name}. Existencia actual: ${data.stock}.`);
+      setStockTarget(null); setShowStockModal(true);
+    } catch (error) { setStockError(error instanceof Error ? error.message : 'No se pudo registrar el movimiento'); }
+    finally { setStockBusy(false); }
   };
 
   const closeStockModal = () => {
@@ -413,12 +397,18 @@ export default function Inventory() {
   const openModal = (product?: InventoryProduct) => {
     if (product) {
       setEditingProduct(product);
-      setFormData(product);
+      setFormData({
+        ...product,
+        status: normalizeText(product.status) === 'inactivo'
+          ? product.status
+          : statusOptions.find(isActiveStatus) || statusOptions[0] || '',
+      });
     } else {
       setEditingProduct(null);
 
       setFormData({
         category: '',
+        currentStock: 0,
         status: statusOptions[0] || '',
       });
     }
@@ -445,44 +435,62 @@ export default function Inventory() {
 
   return (
     <div className="w-full p-[0.825rem] md:p-[1.375rem]">
-      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="mb-1 text-xl font-bold text-foreground md:text-2xl">
-            Inventario
-          </h1>
-          <p className="hidden text-sm text-muted-foreground sm:block">
-            Consulta productos, existencias y movimientos de la clínica.
-          </p>
-        </div>
-
+      <ModuleHeader title="Inventario" description="Consulta productos, existencias y movimientos de la clínica.">
         {activeSection === 'inventory' && (
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <>
             <button
               type="button"
               onClick={openAuditDateModal}
-              className="flex items-center justify-center gap-2 rounded-xl border border-primary/25 bg-card px-4 py-2.5 text-base font-semibold text-primary shadow-sm transition-colors hover:bg-primary/10"
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-primary/25 bg-card px-4 text-base font-semibold text-primary shadow-sm transition-colors hover:bg-primary/10"
             >
               <ClipboardCheck className="w-4 h-4" />
               Auditoría
             </button>
 
             {permissions.canCreate && (
-              <button
-                type="button"
+              <CreateButton
                 onClick={() => openModal()}
                 disabled={loadingCatalogs}
-                className="flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-base font-semibold text-[#F7EFE6] shadow-lg shadow-primary/20 transition-all hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <Plus className="w-4 h-4" />
-
                 {loadingCatalogs
                   ? 'Cargando catálogos...'
                   : 'Nuevo producto'}
-              </button>
+              </CreateButton>
             )}
-          </div>
+          </>
         )}
-      </div>
+      </ModuleHeader>
+
+      {activeSection !== 'audit' && (
+        <nav aria-label="Secciones de inventario" className="mb-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          <button
+            type="button"
+            aria-pressed={activeSection === 'inventory'}
+            onClick={() => setActiveSection('inventory')}
+            className={`flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${activeSection === 'inventory' ? 'border-primary bg-primary text-[#F7EFE6]' : 'border-border bg-card text-foreground hover:bg-muted'}`}
+          >
+            <Package className="h-4 w-4 shrink-0" />
+            Productos
+          </button>
+          <button
+            type="button"
+            aria-pressed={activeSection === 'sales'}
+            onClick={() => setActiveSection('sales')}
+            className={`flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${activeSection === 'sales' ? 'border-primary bg-primary text-[#F7EFE6]' : 'border-border bg-card text-foreground hover:bg-muted'}`}
+          >
+            <ReceiptText className="h-4 w-4 shrink-0" />
+            Cierre de ventas
+          </button>
+          {([
+            ['suppliers', 'Proveedores'], ['purchases', 'Compras'], ['movements', 'Movimientos'],
+          ] as const).map(([section, label]) => (
+            <button key={section} type="button" aria-pressed={activeSection === section}
+              onClick={() => setActiveSection(section)}
+              className={`flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${activeSection === section ? 'border-primary bg-primary text-[#F7EFE6]' : 'border-border bg-card text-foreground hover:bg-muted'}`}
+            >{label}</button>
+          ))}
+        </nav>
+      )}
 
       {activeSection === 'audit' ? (
         <InventoryAudit
@@ -492,6 +500,18 @@ export default function Inventory() {
           onBack={() => setActiveSection('inventory')}
           onCompleted={loadInventory}
         />
+      ) : activeSection === 'sales' ? (
+        <SalesClosing
+          inventory={inventory}
+          permissions={permissions}
+          onInventoryChanged={loadInventory}
+        />
+      ) : activeSection === 'suppliers' ? (
+        <InventorySuppliers permissions={permissions} />
+      ) : activeSection === 'purchases' ? (
+        <InventoryPurchases inventory={inventory} permissions={permissions} onInventoryChanged={loadInventory} />
+      ) : activeSection === 'movements' ? (
+        <InventoryMovements inventory={inventory} />
       ) : (
         <>
       <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-3 [&>article:last-child]:col-span-2 md:[&>article:last-child]:col-span-1">
@@ -637,7 +657,7 @@ export default function Inventory() {
                   type="button"
                   onClick={() => adjustStock(product.id, 1)}
                   className="px-3 py-2 bg-green-100 hover:bg-green-200 text-green-800 rounded-xl text-sm"
-                  title="Entrada +1"
+                  title="Registrar ajuste de entrada"
                 >
                   +1
                 </button>}
@@ -647,7 +667,7 @@ export default function Inventory() {
                   onClick={() => adjustStock(product.id, -1)}
                   disabled={currentStock <= 0}
                   className="px-3 py-2 bg-red-100 hover:bg-red-200 disabled:opacity-50 disabled:cursor-not-allowed text-red-800 rounded-xl text-sm"
-                  title="Salida -1"
+                  title="Registrar ajuste o consumo"
                 >
                   -1
                 </button>}
@@ -816,7 +836,7 @@ export default function Inventory() {
                             adjustStock(product.id, 1)
                           }
                           className="px-2 py-1 bg-green-100 hover:bg-green-200 text-green-800 rounded text-sm"
-                          title="Entrada +1"
+                          title="Registrar ajuste de entrada"
                         >
                           +
                         </button>}
@@ -828,7 +848,7 @@ export default function Inventory() {
                           }
                           disabled={currentStock <= 0}
                           className="px-2 py-1 bg-red-100 hover:bg-red-200 disabled:opacity-50 disabled:cursor-not-allowed text-red-800 rounded text-sm"
-                          title="Salida -1"
+                          title="Registrar ajuste o consumo"
                         >
                           -
                         </button>}
@@ -988,19 +1008,8 @@ export default function Inventory() {
 
                 <FormInput
                   label="Stock actual"
-                  type="number"
-                  min="0"
-                  value={formData.currentStock ?? ''}
-                  onChange={(value) =>
-                    setFormData({
-                      ...formData,
-                      currentStock:
-                        value === ''
-                          ? 0
-                          : Number.parseInt(value, 10),
-                    })
-                  }
-                  required
+                  value={formData.currentStock ?? 0}
+                  readOnly
                 />
 
                 <FormInput
@@ -1040,27 +1049,14 @@ export default function Inventory() {
 
                 <FormInput
                   label="Fecha de vencimiento"
-                  type="date"
                   value={formData.expirationDate || ''}
-                  onChange={(value) =>
-                    setFormData({
-                      ...formData,
-                      expirationDate: value,
-                    })
-                  }
-                  required
+                  readOnly
                 />
 
                 <FormInput
                   label="Proveedor"
                   value={formData.supplier || ''}
-                  onChange={(value) =>
-                    setFormData({
-                      ...formData,
-                      supplier: value,
-                    })
-                  }
-                  required
+                  readOnly
                 />
 
                 <div>
@@ -1097,6 +1093,7 @@ export default function Inventory() {
                 </div>
               </div>
 
+              <p className="text-sm text-muted-foreground">Las existencias se registran mediante compras, ventas y movimientos. Proveedor y vencimiento se consultan desde los lotes; no se cambian al editar la ficha.</p>
               <div className="flex flex-col sm:flex-row sm:justify-start gap-4 pt-4">
                 <button
                   type="submit"
@@ -1259,12 +1256,23 @@ export default function Inventory() {
         </>
       )}
 
+      {stockTarget && <OperationModal title={`Registrar movimiento: ${stockTarget.name}`} busy={stockBusy} onClose={() => setStockTarget(null)}>
+        <OperationNotice message={stockError} error />
+        <form className="patient-form space-y-4" onSubmit={submitStock}>
+          <p className="text-sm text-muted-foreground">Existencia actual: {stockTarget.currentStock}. Para recibir productos de un proveedor, registra una compra.</p>
+          {stockDirection < 0 && <Field label="Tipo de salida"><ThemedSelect aria-label="Tipo de salida" disabled={stockBusy} className={inputClass} value={stockOperation} onChange={(event) => setStockOperation(event.target.value)}><option value="adjustment">Ajuste de existencias</option><option value="consumption">Consumo interno de la clínica</option></ThemedSelect></Field>}
+          <Field label={stockDirection > 0 ? 'Cantidad a agregar por ajuste' : 'Cantidad a descontar'}><input type="number" required min={1} max={stockDirection < 0 ? stockTarget.currentStock : 2147483647} step={1} disabled={stockBusy} className={inputClass} value={Number.isFinite(stockQuantity) ? stockQuantity : ''} onChange={(event) => setStockQuantity(event.target.valueAsNumber)} /></Field>
+          <Field label="Motivo obligatorio"><textarea required maxLength={200} disabled={stockBusy} className={inputClass} value={stockReason} onChange={(event) => setStockReason(event.target.value)} placeholder="Explica por qué cambia la existencia" /></Field>
+          <button disabled={stockBusy || !stockReason.trim()} className={primaryButton}>{stockBusy ? 'Guardando...' : 'Registrar movimiento'}</button>
+        </form>
+      </OperationModal>}
+
       {showAuditDateModal && (
         <div className="modal-backdrop fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl">
-            <div className="mb-4 flex items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <div className="rounded-full bg-primary/10 p-3 text-primary">
+          <div className="patient-form-shell max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-[30px] border border-border/80 bg-card p-6 shadow-2xl">
+            <div className="patient-form-section mb-5 flex items-start justify-between gap-4 rounded-2xl border p-4">
+              <div className="flex min-w-0 flex-1 items-start gap-3">
+                <div className="shrink-0 rounded-full bg-primary/10 p-3 text-primary">
                   <CalendarDays className="h-6 w-6" />
                 </div>
                 <div>
@@ -1277,13 +1285,14 @@ export default function Inventory() {
               <button
                 type="button"
                 onClick={() => setShowAuditDateModal(false)}
-                className="rounded-lg bg-muted p-2 text-foreground transition-colors hover:bg-border"
+                className="patient-form-close flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-xl border bg-muted p-2 text-foreground transition-colors hover:bg-border"
                 aria-label="Cerrar"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
+            <div className="patient-form">
             <label className="mb-2 block text-sm font-medium text-foreground">
               Fecha del conteo
             </label>
@@ -1292,10 +1301,10 @@ export default function Inventory() {
               value={auditDate}
               max={getCurrentGuatemalaDate()}
               onChange={(event) => setAuditDate(event.target.value)}
-              className="w-full rounded-lg border border-border bg-secondary px-4 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              className="min-w-0 w-full max-w-full rounded-xl border border-border bg-secondary/80 px-4 py-2.5 text-foreground shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
 
-            <p className="mt-5 rounded-xl bg-muted p-4 text-center text-foreground">
+            <p className="patient-form-section mt-5 rounded-2xl border border-border bg-muted p-4 text-center text-foreground">
               ¿Quiere realizar la auditoría del mes de{' '}
               <span className="font-bold">{formatAuditMonth(auditDate)}</span>?
             </p>
@@ -1305,17 +1314,18 @@ export default function Inventory() {
                 type="button"
                 onClick={startAudit}
                 disabled={!auditDate}
-                className="flex-1 rounded-lg bg-primary px-4 py-2 text-[#F7EFE6] transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                className="patient-form-primary min-h-[44px] flex-1 rounded-xl px-4 py-2.5 font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
               >
                 Sí, iniciar auditoría
               </button>
               <button
                 type="button"
                 onClick={() => setShowAuditDateModal(false)}
-                className="flex-1 rounded-lg bg-muted px-4 py-2 text-foreground transition-colors hover:bg-border"
+                className="patient-form-secondary min-h-[44px] flex-1 rounded-xl border px-4 py-2.5 font-semibold transition-colors"
               >
                 Cancelar
               </button>
+            </div>
             </div>
           </div>
         </div>
@@ -1332,14 +1342,16 @@ function FormInput({
   step,
   min,
   required = false,
+  readOnly = false,
 }: {
   label: string;
   value: string | number;
-  onChange: (value: string) => void;
+  onChange?: (value: string) => void;
   type?: string;
   step?: string;
   min?: string;
   required?: boolean;
+  readOnly?: boolean;
 }) {
   return (
     <div>
@@ -1353,10 +1365,11 @@ function FormInput({
         min={min}
         value={value}
         onChange={(event) =>
-          onChange(event.target.value)
+          onChange?.(event.target.value)
         }
         className="w-full rounded-xl border border-border bg-secondary/80 px-4 py-2.5 text-foreground shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
         required={required}
+        readOnly={readOnly}
       />
     </div>
   );

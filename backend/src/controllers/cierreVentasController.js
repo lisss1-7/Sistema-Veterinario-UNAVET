@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { listSalesShifts, closeSalesShift } = require('../utils/salesShift');
 const {
   getProductAndLots,
   consumeLots,
@@ -51,6 +52,9 @@ const mapVenta = (row) => ({
   invoiceName: row.factura_nombre || '',
   total: Number(row.total || 0),
   items: row.items || [],
+  canceled: Boolean(row.anulada),
+  cancellationReason: row.motivo_anulacion || '',
+  canceledAt: row.anulada_en || null,
 });
 
 const listarVentas = async (req, res) => {
@@ -209,6 +213,7 @@ const finalizarDia = async (req, res) => {
       });
     }
 
+    await closeSalesShift(connection, { date, userId: req.user?.id, onlyIfPending: true });
     await connection.query(
       `UPDATE cierre_venta_dia
        SET finalizado = 1,
@@ -232,6 +237,40 @@ const finalizarDia = async (req, res) => {
   } finally {
     connection.release();
   }
+};
+
+const listarTurnos = async (req, res) => {
+  try {
+    const date = req.query.fecha;
+    if (!isValidDate(date)) return res.status(400).json({ message: 'La fecha seleccionada no es válida' });
+    const shifts = await listSalesShifts(pool, date);
+    const latest = shifts.at(-1);
+    res.json({ shifts, currentNumber: (latest?.number || 0) + 1, afterSaleId: latest?.throughSaleId || '0' });
+  } catch (error) {
+    res.status(500).json({ message: 'No se pudieron cargar los cierres de turno', error: error.message });
+  }
+};
+
+const finalizarTurno = async (req, res) => {
+  const connection = await pool.getConnection();
+  let started = false;
+  try {
+    const { date, number } = req.body;
+    const label = String(req.body.label || '').trim();
+    if (!isValidDate(date) || !Number.isSafeInteger(number) || number < 1 || label.length > 80) {
+      return res.status(400).json({ message: 'Indique una fecha, un turno válido y un nombre de hasta 80 caracteres' });
+    }
+    await connection.beginTransaction();
+    started = true;
+    const day = await lockSalesDay(connection, date);
+    throwIfSalesDayIsClosed(day);
+    const shift = await closeSalesShift(connection, { date, userId: req.user?.id, expectedNumber: number, label });
+    await connection.commit();
+    res.status(201).json({ message: 'Turno cerrado. El día sigue abierto para registrar más ventas.', shift });
+  } catch (error) {
+    if (started) await connection.rollback();
+    res.status(error.statusCode || 500).json({ message: error.message || 'No se pudo cerrar el turno' });
+  } finally { connection.release(); }
 };
 
 const crearVenta = async (req, res) => {
@@ -489,7 +528,7 @@ const eliminarVenta = async (req, res) => {
     throwIfSalesDayIsClosed(salesDay);
 
     const [sales] = await connection.query(
-      `SELECT venta_id
+      `SELECT venta_id, anulada
        FROM cierre_venta
        WHERE venta_id = ?
        LIMIT 1
@@ -501,6 +540,18 @@ const eliminarVenta = async (req, res) => {
       return res.status(404).json({
         message: 'Venta no encontrada',
       });
+    }
+
+    if (sales[0].anulada) {
+      const error = new Error('La venta ya fue anulada');
+      error.statusCode = 409;
+      throw error;
+    }
+    const reason = String(req.body?.reason || '').trim();
+    if (!reason || reason.length > 200) {
+      const error = new Error('Indique un motivo de anulación de hasta 200 caracteres');
+      error.statusCode = 400;
+      throw error;
     }
 
     const [allocations] = await connection.query(
@@ -519,25 +570,25 @@ const eliminarVenta = async (req, res) => {
       connection,
       allocations,
       userId: req.user?.id,
-      reason: 'Anulación de venta del cierre diario',
+      reason: `Anulación de venta: ${reason}`,
       referenceType: 'Venta',
       referenceId: req.params.id,
     });
 
     await connection.query(
-      `DELETE FROM cierre_venta
-       WHERE venta_id = ?`,
-      [req.params.id]
+      `UPDATE cierre_venta SET anulada = 1, motivo_anulacion = ?,
+         anulada_por = ?, anulada_en = NOW() WHERE venta_id = ?`,
+      [reason, req.user?.id || null, req.params.id]
     );
     await connection.commit();
     res.json({
       message:
-        'Venta eliminada y lotes reintegrados correctamente',
+        'Venta anulada y lotes reintegrados; se conservó el documento',
     });
   } catch (error) {
     await connection.rollback();
     res.status(error.statusCode || 500).json({
-      message: error.message || 'Error al eliminar la venta',
+      message: error.message || 'Error al anular la venta',
     });
   } finally {
     connection.release();
@@ -545,6 +596,8 @@ const eliminarVenta = async (req, res) => {
 };
 
 module.exports = {
+  listarTurnos,
+  finalizarTurno,
   listarVentas,
   obtenerEstadoDia,
   finalizarDia,

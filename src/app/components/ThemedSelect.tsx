@@ -136,7 +136,7 @@ export default function ThemedSelect({
         data-has-selectable-options={options.some(
           (option) => option.value.trim() !== '' && !option.disabled
         )}
-        className={`themed-select-trigger inline-flex items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
+        className={`themed-select-trigger inline-flex min-w-0 max-w-full items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60 [&>span:first-child]:min-w-0 [&>span:first-child]:truncate ${className}`}
       >
         <SelectPrimitive.Value />
         <SelectPrimitive.Icon asChild>
@@ -152,6 +152,7 @@ export default function ThemedSelect({
           className="themed-select-content z-[100] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-xl"
           style={{
             minWidth: 'var(--radix-select-trigger-width)',
+            maxWidth: 'var(--radix-select-content-available-width)',
             maxHeight: 'var(--radix-select-content-available-height)',
           }}
         >
@@ -165,7 +166,7 @@ export default function ThemedSelect({
                 key={option.key}
                 value={optionValue(option.value)}
                 disabled={option.disabled}
-                className="themed-select-option relative flex w-full cursor-default select-none items-center rounded-md py-2 pl-3 pr-9 text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-45"
+                className="themed-select-option relative flex min-h-[44px] min-w-0 w-full cursor-default select-none items-center rounded-md py-2 pl-3 pr-9 text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-45 [&>span:first-child]:min-w-0 [&>span:first-child]:break-words"
               >
                 <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
                 <SelectPrimitive.ItemIndicator className="absolute right-3 inline-flex items-center">
