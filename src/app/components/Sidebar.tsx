@@ -1,3 +1,4 @@
+import { apiFetch as fetch } from '../utils/apiFetch';
 import { useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router';
 import {
@@ -25,6 +26,7 @@ import {
   type SystemModule,
 } from '../config/deliveryScope';
 import { preloadPatientsModule } from '../utils/patientsModuleData';
+import { preloadModuleData } from '../utils/apiFetch';
 import { API_URL } from '../config/api';
 import { useAuth } from '../context/AuthContext';
 import { isAdministratorRole } from '../config/roles';
@@ -334,6 +336,8 @@ export function Sidebar({
               key={module.codigo}
               to={module.ruta}
               onClick={onNavigate}
+              onPointerEnter={() => preloadModuleData(module.codigo)}
+              onFocus={() => preloadModuleData(module.codigo)}
               className={({ isActive }) =>
                 `${navClass(isActive)} mb-0.5 ${isCollapsed ? 'justify-center px-[0.425rem]' : ''}`
               }
@@ -363,6 +367,8 @@ export function Sidebar({
           <NavLink
             to="/maintenance"
             onClick={onNavigate}
+            onPointerEnter={() => preloadModuleData('maintenance')}
+            onFocus={() => preloadModuleData('maintenance')}
             className={({ isActive }) =>
               `${navClass(isActive)} mb-0.5 ${isCollapsed ? 'justify-center px-[0.425rem]' : ''}`
             }

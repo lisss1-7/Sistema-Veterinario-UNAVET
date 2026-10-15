@@ -1,3 +1,4 @@
+import { apiFetch as fetch } from '../utils/apiFetch';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import type { LucideIcon } from 'lucide-react';

@@ -1,3 +1,4 @@
+import { apiFetch as fetch } from './apiFetch';
 import { API_URL } from '../config/api';
 
 export const getAuthHeaders = () => {
