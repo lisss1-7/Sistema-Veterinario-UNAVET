@@ -797,13 +797,13 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
       </div>
 
       <div className="hidden max-w-full overflow-x-auto rounded-xl border border-border bg-card shadow-lg lg:block">
-        <table className="w-full min-w-[1250px] table-fixed">
+        <table className="w-full table-fixed" style={{ minWidth: 830 + (permissions.canDelete ? 100 : 0) + paymentOptions.length * 110 }}>
           <thead className="bg-muted text-foreground text-sm">
             <tr>
               <th className="w-[180px] px-4 py-3 text-left">Cliente</th>
-              <th className="w-[300px] px-4 py-3 text-left">Descripción</th>
+              <th className="px-4 py-3 text-left">Descripción</th>
               {paymentOptions.map((payment) => (
-                <th key={payment.id} className="w-[150px] break-words px-4 py-3 text-right">
+                <th key={payment.id} className="w-[110px] break-words px-2 py-3 text-right text-[13px] leading-snug">
                   {payment.nombre}
                 </th>
               ))}
@@ -1124,7 +1124,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
 }
 
 function PaymentCell({ value }: { value: number }) {
-  return <td className="px-4 py-3 text-right">{value ? money(value) : '—'}</td>;
+  return <td className="break-words px-2 py-3 text-right tabular-nums">{value ? money(value) : '—'}</td>;
 }
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
