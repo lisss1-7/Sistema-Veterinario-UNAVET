@@ -1,0 +1,14 @@
+[Unit]
+Description=UNAVET verified database and application backup
+After=mysql.service docker.service
+Requires=mysql.service docker.service
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/usr/bin/python3 /usr/local/sbin/unavet-backup.py
+Nice=10
+CPUWeight=10
+IOWeight=10
+TimeoutStartSec=45min

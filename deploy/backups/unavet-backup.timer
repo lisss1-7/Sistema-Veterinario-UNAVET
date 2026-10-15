@@ -1,0 +1,10 @@
+[Unit]
+Description=UNAVET backup Monday and Thursday at 02 Guatemala time
+
+[Timer]
+OnCalendar=Mon,Thu *-*-* 02:00:00 America/Guatemala
+Persistent=true
+Unit=unavet-backup.service
+
+[Install]
+WantedBy=timers.target
