@@ -28,6 +28,7 @@ import ThemedSelect from '../components/ThemedSelect';
 import { CreateButton } from '../components/ModuleHeader';
 import PdfPreviewModal from '../components/PdfPreviewModal';
 import PatientDeceasedModal from '../components/PatientDeceasedModal';
+import CameraCaptureModal from '../components/CameraCaptureModal';
 import { useModulePermissions } from '../hooks/useModulePermissions';
 import { requestJson } from '../utils/apiClient';
 import { appendTreatmentPdfAttachment, isPdfAttachment, loadPdfAttachment, readTreatmentAttachment } from '../utils/treatmentAttachment';
@@ -122,6 +123,8 @@ export default function PatientDetail() {
   } | null>(null);
 
   const [formData, setFormData] = useState<any>({});
+  const attachmentCameraInputRef = useRef<HTMLInputElement>(null);
+  const [showAttachmentCamera, setShowAttachmentCamera] = useState(false);
 
   const [vaccineOptions, setVaccineOptions] = useState<string[]>([]);
   const [labTestOptions, setLabTestOptions] = useState<string[]>([]);
@@ -295,6 +298,7 @@ export default function PatientDetail() {
   };
 
   const closeFormModal = () => {
+    setShowAttachmentCamera(false);
     setVaccinationError(null);
     setShowModal(null);
     setFormData({});
@@ -317,6 +321,16 @@ export default function PatientDetail() {
       });
     } catch (error) {
       alert(error instanceof Error ? error.message : 'No fue posible procesar el archivo adjunto');
+    }
+  };
+
+  const openAttachmentCamera = () => {
+    const usesNativeCamera = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (usesNativeCamera) {
+      attachmentCameraInputRef.current?.click();
+    } else {
+      setShowAttachmentCamera(true);
     }
   };
 
@@ -2267,23 +2281,30 @@ export default function PatientDetail() {
                     {formData.attachmentPhoto ? (
                       renderAttachment(formData.attachmentPhoto, 'w-32 h-24 rounded-xl object-cover border-4 border-border')
                     ) : (
-                      <div className="w-32 h-24 rounded-xl bg-secondary border-4 border-border flex items-center justify-center">
+                      <button
+                        type="button"
+                        onClick={openAttachmentCamera}
+                        aria-label="Tomar foto del tratamiento o servicio"
+                        title="Tomar foto"
+                        className="w-32 h-24 shrink-0 rounded-xl bg-secondary border-4 border-border flex items-center justify-center cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-card"
+                      >
                         <Camera className="w-9 h-9 text-primary" />
-                      </div>
+                      </button>
                     )}
 
-                    <div className="flex-1">
+                    <div className="min-w-0 flex-1">
                       <p className="text-muted-foreground text-sm mb-3">
                         Puedes tomar una fotografía o subir una imagen o PDF del resultado,
                         laboratorio o evidencia del servicio. PDF de hasta 5 MB.
                       </p>
 
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <label className="patient-form-primary flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm transition-colors">
+                      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
+                        <button type="button" onClick={openAttachmentCamera} className="patient-form-primary flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm transition-colors">
                           <Camera className="w-4 h-4" />
                           Tomar foto
-
+                        </button>
                           <input
+                            ref={attachmentCameraInputRef}
                             type="file"
                             accept="image/*"
                             capture="environment"
@@ -2293,9 +2314,8 @@ export default function PatientDetail() {
                             }}
                             className="hidden"
                           />
-                        </label>
 
-                        <label className="patient-form-secondary flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm transition-colors">
+                        <label className="patient-form-secondary flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm transition-colors">
                           <Upload className="w-4 h-4" />
                           Subir imagen o PDF
 
@@ -2370,6 +2390,13 @@ export default function PatientDetail() {
           </AlertDialog.Content>
         </AlertDialog.Portal>
       </AlertDialog.Root>
+
+      {showAttachmentCamera && (
+        <CameraCaptureModal
+          onClose={() => setShowAttachmentCamera(false)}
+          onCapture={handleAttachmentPhoto}
+        />
+      )}
 
       {showSuccessModal && (
         <div className="modal-backdrop fixed inset-0 flex items-center justify-center p-4 z-[60]">
