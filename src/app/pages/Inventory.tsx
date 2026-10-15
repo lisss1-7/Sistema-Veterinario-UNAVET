@@ -7,7 +7,6 @@
 
 import {
   Search,
-  Plus,
   Edit,
   Trash2,
   AlertTriangle,
@@ -15,14 +14,17 @@ import {
   CheckCircle,
   CalendarDays,
   ClipboardCheck,
+  ReceiptText,
   X,
 } from 'lucide-react';
 
 import type { InventoryProduct } from '../utils/types';
 import InventoryAudit from '../components/InventoryAudit';
+import SalesClosing from '../components/SalesClosing';
 import ThemedSelect from '../components/ThemedSelect';
 import { useModulePermissions } from '../hooks/useModulePermissions';
 import InformationCard from '../components/InformationCard';
+import ModuleHeader, { CreateButton } from '../components/ModuleHeader';
 import { API_URL } from '../config/api';
 import { getAuthHeaders } from '../utils/apiClient';
 
@@ -66,7 +68,7 @@ export default function Inventory() {
   const { permissions } = useModulePermissions('inventory');
   const [inventory, setInventory] = useState<InventoryProduct[]>([]);
   const [activeSection, setActiveSection] =
-    useState<'inventory' | 'audit'>('inventory');
+    useState<'inventory' | 'audit' | 'sales'>('inventory');
   const [showAuditDateModal, setShowAuditDateModal] = useState(false);
   const [auditDate, setAuditDate] = useState(getCurrentGuatemalaDate);
 
@@ -445,44 +447,54 @@ export default function Inventory() {
 
   return (
     <div className="w-full p-[0.825rem] md:p-[1.375rem]">
-      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="mb-1 text-xl font-bold text-foreground md:text-2xl">
-            Inventario
-          </h1>
-          <p className="hidden text-sm text-muted-foreground sm:block">
-            Consulta productos, existencias y movimientos de la clínica.
-          </p>
-        </div>
-
+      <ModuleHeader title="Inventario" description="Consulta productos, existencias y movimientos de la clínica.">
         {activeSection === 'inventory' && (
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <>
             <button
               type="button"
               onClick={openAuditDateModal}
-              className="flex items-center justify-center gap-2 rounded-xl border border-primary/25 bg-card px-4 py-2.5 text-base font-semibold text-primary shadow-sm transition-colors hover:bg-primary/10"
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-primary/25 bg-card px-4 text-base font-semibold text-primary shadow-sm transition-colors hover:bg-primary/10"
             >
               <ClipboardCheck className="w-4 h-4" />
               Auditoría
             </button>
 
             {permissions.canCreate && (
-              <button
-                type="button"
+              <CreateButton
                 onClick={() => openModal()}
                 disabled={loadingCatalogs}
-                className="flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-base font-semibold text-[#F7EFE6] shadow-lg shadow-primary/20 transition-all hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <Plus className="w-4 h-4" />
-
                 {loadingCatalogs
                   ? 'Cargando catálogos...'
                   : 'Nuevo producto'}
-              </button>
+              </CreateButton>
             )}
-          </div>
+          </>
         )}
-      </div>
+      </ModuleHeader>
+
+      {activeSection !== 'audit' && (
+        <nav aria-label="Secciones de inventario" className="mb-4 grid grid-cols-2 gap-2 sm:inline-flex">
+          <button
+            type="button"
+            aria-pressed={activeSection === 'inventory'}
+            onClick={() => setActiveSection('inventory')}
+            className={`flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${activeSection === 'inventory' ? 'border-primary bg-primary text-[#F7EFE6]' : 'border-border bg-card text-foreground hover:bg-muted'}`}
+          >
+            <Package className="h-4 w-4 shrink-0" />
+            Productos
+          </button>
+          <button
+            type="button"
+            aria-pressed={activeSection === 'sales'}
+            onClick={() => setActiveSection('sales')}
+            className={`flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${activeSection === 'sales' ? 'border-primary bg-primary text-[#F7EFE6]' : 'border-border bg-card text-foreground hover:bg-muted'}`}
+          >
+            <ReceiptText className="h-4 w-4 shrink-0" />
+            Cierre de ventas
+          </button>
+        </nav>
+      )}
 
       {activeSection === 'audit' ? (
         <InventoryAudit
@@ -491,6 +503,12 @@ export default function Inventory() {
           canFinalize={permissions.canEdit}
           onBack={() => setActiveSection('inventory')}
           onCompleted={loadInventory}
+        />
+      ) : activeSection === 'sales' ? (
+        <SalesClosing
+          inventory={inventory}
+          permissions={permissions}
+          onInventoryChanged={loadInventory}
         />
       ) : (
         <>
@@ -1261,10 +1279,10 @@ export default function Inventory() {
 
       {showAuditDateModal && (
         <div className="modal-backdrop fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl">
-            <div className="mb-4 flex items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <div className="rounded-full bg-primary/10 p-3 text-primary">
+          <div className="patient-form-shell max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-[30px] border border-border/80 bg-card p-6 shadow-2xl">
+            <div className="patient-form-section mb-5 flex items-start justify-between gap-4 rounded-2xl border p-4">
+              <div className="flex min-w-0 flex-1 items-start gap-3">
+                <div className="shrink-0 rounded-full bg-primary/10 p-3 text-primary">
                   <CalendarDays className="h-6 w-6" />
                 </div>
                 <div>
@@ -1277,13 +1295,14 @@ export default function Inventory() {
               <button
                 type="button"
                 onClick={() => setShowAuditDateModal(false)}
-                className="rounded-lg bg-muted p-2 text-foreground transition-colors hover:bg-border"
+                className="patient-form-close flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-xl border bg-muted p-2 text-foreground transition-colors hover:bg-border"
                 aria-label="Cerrar"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
+            <div className="patient-form">
             <label className="mb-2 block text-sm font-medium text-foreground">
               Fecha del conteo
             </label>
@@ -1292,10 +1311,10 @@ export default function Inventory() {
               value={auditDate}
               max={getCurrentGuatemalaDate()}
               onChange={(event) => setAuditDate(event.target.value)}
-              className="w-full rounded-lg border border-border bg-secondary px-4 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              className="min-w-0 w-full max-w-full rounded-xl border border-border bg-secondary/80 px-4 py-2.5 text-foreground shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
 
-            <p className="mt-5 rounded-xl bg-muted p-4 text-center text-foreground">
+            <p className="patient-form-section mt-5 rounded-2xl border border-border bg-muted p-4 text-center text-foreground">
               ¿Quiere realizar la auditoría del mes de{' '}
               <span className="font-bold">{formatAuditMonth(auditDate)}</span>?
             </p>
@@ -1305,17 +1324,18 @@ export default function Inventory() {
                 type="button"
                 onClick={startAudit}
                 disabled={!auditDate}
-                className="flex-1 rounded-lg bg-primary px-4 py-2 text-[#F7EFE6] transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                className="patient-form-primary min-h-[44px] flex-1 rounded-xl px-4 py-2.5 font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
               >
                 Sí, iniciar auditoría
               </button>
               <button
                 type="button"
                 onClick={() => setShowAuditDateModal(false)}
-                className="flex-1 rounded-lg bg-muted px-4 py-2 text-foreground transition-colors hover:bg-border"
+                className="patient-form-secondary min-h-[44px] flex-1 rounded-xl border px-4 py-2.5 font-semibold transition-colors"
               >
                 Cancelar
               </button>
+            </div>
             </div>
           </div>
         </div>
