@@ -281,3 +281,7 @@ When modifying selects, dropdowns, autocomplete fields, filters, or lists:
 Do not convert database-driven fields into hardcoded arrays unless explicitly requested.
 
 When a list is not displaying values, investigate the complete data flow before changing the UI.
+
+## GitHub delivery preference
+
+The user requests that each completed and validated project change be committed and pushed to the existing GitHub repository. After finishing a task, review the diff, run the relevant checks, commit only the task's files, push to the current intended branch, and verify the remote commit. Do not include secrets, private environment files, backups, clinical data, temporary documents, or unrelated changes. Preserve remote history and other contributors' work. If authentication, branch protection, or another error prevents the push, report it clearly. Publishing to GitHub does not by itself authorize database migrations or deployment changes.
