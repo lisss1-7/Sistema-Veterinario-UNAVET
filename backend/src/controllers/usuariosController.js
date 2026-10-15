@@ -61,6 +61,11 @@ const obtenerEstadoUsuario = async (connection, status) => {
 const listarUsuarios = async (req, res) => {
   try {
     const includeDeleted = req.query?.includeDeleted === 'true';
+    // Ocultar del directorio no modifica la cuenta ni su acceso al sistema.
+    const hiddenUserIds = String(process.env.USER_DIRECTORY_HIDDEN_IDS || '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter((id) => /^[1-9]\d*$/.test(id));
     const [rows] = await pool.query(
       `
       SELECT
@@ -84,9 +89,10 @@ const listarUsuarios = async (req, res) => {
       INNER JOIN estado_usuario estado
         ON estado.estado_usuario_id = u.estado_usuario_id
       WHERE (? = 1 OR u.eliminado_en IS NULL)
+        ${hiddenUserIds.length ? `AND u.usuario_id NOT IN (${hiddenUserIds.map(() => '?').join(', ')})` : ''}
       ORDER BY u.usuario_id ASC
       `,
-      [includeDeleted ? 1 : 0]
+      [includeDeleted ? 1 : 0, ...hiddenUserIds]
     );
 
     res.json(rows.map(mapUsuarioToFrontend));

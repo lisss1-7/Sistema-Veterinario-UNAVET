@@ -72,6 +72,25 @@ test('incluye usuarios dados de baja cuando el módulo lo solicita', async () =>
   assert.deepEqual(queryValues, [1]);
 });
 
+test('oculta cuentas configuradas en el directorio incluso al incluir bajas', async () => {
+  const previous = process.env.USER_DIRECTORY_HIDDEN_IDS;
+  process.env.USER_DIRECTORY_HIDDEN_IDS = '1, 7, invalid, 0, 1 OR 1=1';
+  try {
+    db.query = async (sql, values) => {
+      assert.match(sql, /u\.usuario_id NOT IN \(\?, \?\)/);
+      assert.deepEqual(values, [1, '1', '7']);
+      return [[{ usuario_id: 2, nombre_completo: 'Otra persona' }]];
+    };
+    const res = createResponse();
+    await listarUsuarios({ query: { includeDeleted: 'true' } }, res);
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.body.map((user) => user.id), ['2']);
+  } finally {
+    if (previous === undefined) delete process.env.USER_DIRECTORY_HIDDEN_IDS;
+    else process.env.USER_DIRECTORY_HIDDEN_IDS = previous;
+  }
+});
+
 test('elimina un usuario con una marca lógica y conserva su registro', async () => {
   const calls = [];
   const connection = {

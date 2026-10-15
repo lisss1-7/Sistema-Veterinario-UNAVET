@@ -9,6 +9,7 @@ services:
       NODE_ENV: production
       PORT: 3001
       SERVE_FRONTEND: 'true'
+      USER_DIRECTORY_HIDDEN_IDS: '${USER_DIRECTORY_HIDDEN_IDS:-}'
       MEDIA_STORAGE_PATH: /app/backend/storage/media
     ports:
       - '${APP_BIND_ADDRESS:-127.0.0.1}:${APP_HTTP_PORT:-8080}:3001'
