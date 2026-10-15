@@ -159,6 +159,7 @@ export interface Prescription {
   createdBy?: string;
   createdByName?: string;
   diagnosis: string;
+  reason?: string;
   observations: string;
   medications: PrescriptionMedication[];
 }

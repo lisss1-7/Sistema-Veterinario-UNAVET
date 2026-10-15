@@ -27,6 +27,7 @@
     "migrate:user-soft-delete": "node src/scripts/addUserSoftDelete.js",
     "migrate:sales-day-closing": "node src/scripts/addSalesDayClosing.js",
     "migrate:inventory-audit": "node src/scripts/addInventoryAudit.js",
+    "migrate:prescription-reason": "node src/scripts/addPrescriptionConsultationReason.js",
     "migrate:diet-options": "node src/scripts/addDietOptions.js",
     "migrate:patient-deceased": "node src/scripts/addPatientDeceasedDate.js",
     "migrate:admin-veterinarians": "node src/scripts/syncAdministratorVeterinarians.js",

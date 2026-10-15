@@ -43,6 +43,8 @@ type ClinicalRecordExtended = ClinicalRecord & {
   sourceType?: string;
   appointmentId?: string;
   clinicalStatus?: 'Pendiente' | 'Completado';
+  prescriptionId?: string;
+  prescriptionStatus?: string;
 };
 
 type VaccinationExtended = Vaccination & {
@@ -636,7 +638,50 @@ export default function PatientDetail() {
   };
 
   const createClinicalPdf = async (record: ClinicalRecordExtended) => {
-    const { doc } = await createPdfBase('Registro Clínico');
+    const { doc, logoBase64 } = await createPdfBase(record.sourceType === 'prescription' ? 'Receta en historial clínico' : 'Registro Clínico');
+
+    if (record.sourceType === 'prescription') {
+      let textY = 96;
+      const sections = [
+        ['Fecha / estado', `${formatDateForDisplay(record.date)} · ${record.prescriptionStatus || ''}`],
+        ['Veterinario', record.veterinarian || 'No asignado'],
+        ['Registrado por', record.createdByName || 'No disponible'],
+        ['Motivo de consulta', record.reason || 'No registrado'],
+        ...(record.diagnosis ? [['Diagnóstico', record.diagnosis]] : []),
+        ['Medicamentos e indicaciones', record.treatment || 'Sin medicamentos'],
+        ...(record.observations ? [['Observaciones', record.observations]] : []),
+      ];
+      const nextPage = () => {
+        addPdfFooter(doc);
+        doc.addPage();
+        drawUnavetPdfHeader(doc, logoBase64, 'Sistema de Gestión Veterinaria');
+        textY = 43;
+      };
+      for (const [label, value] of sections) {
+        if (textY > 240) nextPage();
+        doc.setTextColor('#2F2924');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.text(label, 16, textY);
+        textY += 7;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        const lines: string[] = doc.splitTextToSize(value, 178);
+        for (const line of lines) {
+          if (textY > 260) {
+            nextPage();
+            doc.setTextColor('#2F2924');
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10);
+          }
+          doc.text(line, 16, textY);
+          textY += 5;
+        }
+        textY += 8;
+      }
+      addPdfFooter(doc);
+      return doc;
+    }
 
     let y = 96;
 
@@ -764,23 +809,44 @@ export default function PatientDetail() {
         y += 9;
       }
 
-      doc.setDrawColor('#D8D2C8');
-      doc.rect(16, y, 178, 22);
-
       doc.setTextColor('#2F2924');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
-      const titleLine = doc.splitTextToSize(`${record.date || 'N/A'} • ${record.consultationType || 'Consulta'}`, 72);
-      doc.text(titleLine, 18, y + 6);
+      const titleLine: string[] = doc.splitTextToSize(`${record.date || 'N/A'} • ${record.consultationType || 'Consulta'}${record.sourceType === 'prescription' ? `\nEstado: ${record.prescriptionStatus}\nMotivo: ${record.reason || 'No registrado'}` : ''}`, 72);
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7.5);
-      const diagnosis = doc.splitTextToSize(`Diagnóstico: ${record.diagnosis || 'N/A'}`, 48);
-      const treatment = doc.splitTextToSize(`Tratamiento: ${record.treatment || 'N/A'}`, 48);
-      doc.text(diagnosis, 98, y + 6);
-      doc.text(treatment, 152, y + 6);
-
-      y += 22;
+      const diagnosis: string[] = doc.splitTextToSize(`Diagnóstico: ${record.diagnosis || 'No registrado'}`, 48);
+      const treatment: string[] = doc.splitTextToSize(`Tratamiento: ${record.treatment || 'N/A'}`, 40);
+      const lineCount = Math.max(titleLine.length, diagnosis.length, treatment.length);
+      let offset = 0;
+      while (offset < lineCount) {
+        const availableLines = Math.floor((265 - y - 8) / 4);
+        if (availableLines < 1) {
+          addPdfFooter(doc);
+          doc.addPage();
+          drawUnavetPdfHeader(doc, logoBase64, 'Sistema de Gestión Veterinaria');
+          y = 43;
+          continue;
+        }
+        const count = Math.min(availableLines, lineCount - offset);
+        const height = Math.max(22, count * 4 + 8);
+        doc.setDrawColor('#D8D2C8');
+        doc.rect(16, y, 178, height);
+        doc.setTextColor('#2F2924');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        const titleChunk = titleLine.slice(offset, offset + count);
+        if (titleChunk.length) doc.text(titleChunk, 18, y + 6, { lineHeightFactor: 1.4 });
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        const diagnosisChunk = diagnosis.slice(offset, offset + count);
+        const treatmentChunk = treatment.slice(offset, offset + count);
+        if (diagnosisChunk.length) doc.text(diagnosisChunk, 98, y + 6, { lineHeightFactor: 1.5 });
+        if (treatmentChunk.length) doc.text(treatmentChunk, 152, y + 6, { lineHeightFactor: 1.5 });
+        y += height;
+        offset += count;
+      }
     });
 
     addPdfFooter(doc);
@@ -1470,6 +1536,9 @@ export default function PatientDetail() {
                               Desde grooming
                             </span>
                           )}
+                          {record.sourceType === 'prescription' && (
+                            <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-1 text-xs text-primary">Desde receta</span>
+                          )}
 
                           <span
                             className={`px-2 py-1 rounded-full text-xs ${
@@ -1478,7 +1547,7 @@ export default function PatientDetail() {
                                 : 'border border-accent/30 bg-accent/10 text-foreground'
                             }`}
                           >
-                            {record.clinicalStatus === 'Completado'
+                            {record.sourceType === 'prescription' ? record.prescriptionStatus : record.clinicalStatus === 'Completado'
                               ? record.sourceType === 'grooming' ? 'Servicio completado' : 'Evaluación completada'
                               : record.sourceType === 'grooming' ? 'Servicio pendiente' : 'Pendiente de evaluación'}
                           </span>
@@ -1508,7 +1577,7 @@ export default function PatientDetail() {
                           Ver
                         </button>
 
-                        {permissions.canEdit && <button
+                        {permissions.canEdit && record.sourceType !== 'prescription' && <button
                           onClick={() => openEditClinicalModal(record)}
                           className="flex items-center justify-center gap-2 px-3 py-2 bg-muted hover:bg-border text-foreground rounded-lg text-sm transition-colors"
                         >
@@ -1535,7 +1604,7 @@ export default function PatientDetail() {
                           PDF
                         </button>
 
-                        {permissions.canDelete && <button
+                        {permissions.canDelete && record.sourceType !== 'prescription' && <button
                           onClick={() =>
                             openDeleteModal(
                               record.id,
@@ -1554,8 +1623,13 @@ export default function PatientDetail() {
                     <RecordLine label="Motivo" value={record.reason} />
                     {record.previousSurgeries && <RecordLine label="Cirugías previas" value={record.previousSurgeries} />}
                     {record.visibleMasses && <RecordLine label="Masas visibles" value={record.visibleMasses} />}
-                    <RecordLine label="Diagnóstico" value={record.diagnosis} />
-                    <RecordLine label="Tratamiento" value={record.treatment} />
+                    {(record.sourceType !== 'prescription' || record.diagnosis) && <RecordLine label="Diagnóstico" value={record.diagnosis} />}
+                    {record.sourceType === 'prescription' ? (
+                      <div className="mt-3 text-sm text-foreground">
+                        <p className="font-semibold">Medicamentos e indicaciones</p>
+                        <p className="mt-1 whitespace-pre-wrap break-words">{record.treatment || 'Sin medicamentos'}</p>
+                      </div>
+                    ) : <RecordLine label="Tratamiento" value={record.treatment} />}
 
                     {(record.examSkin || record.examEyes || record.examRespiratory || record.examEars || record.examNervous || record.examGenitourinary || record.examNodules || record.examPressure) && (
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 p-3 bg-card rounded-lg border border-border text-xs">
@@ -2451,7 +2525,7 @@ export default function PatientDetail() {
                   <InfoItem label="Tipo de consulta" value={(viewTarget.item as ClinicalRecordExtended).consultationType} />
                   <InfoItem label="Atendido por" value={(viewTarget.item as ClinicalRecordExtended).veterinarian || 'Pendiente de asignar'} />
                   <InfoItem label="Registro creado por" value={(viewTarget.item as ClinicalRecordExtended).createdByName || 'No disponible'} />
-                  <InfoItem label="Estado" value={(viewTarget.item as ClinicalRecordExtended).clinicalStatus} />
+                  <InfoItem label="Estado" value={(viewTarget.item as ClinicalRecordExtended).prescriptionStatus || (viewTarget.item as ClinicalRecordExtended).clinicalStatus} />
                 </div>
                 <InfoItem label="Motivo" value={(viewTarget.item as ClinicalRecordExtended).reason} />
                 <InfoItem label="Cirugías previas" value={(viewTarget.item as ClinicalRecordExtended).previousSurgeries} />
