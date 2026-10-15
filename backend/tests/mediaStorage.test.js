@@ -70,6 +70,34 @@ test('rechaza contenido que finge ser una imagen', async () => {
   );
 });
 
+test('reutiliza enlaces firmados para caché y conserva caducidad y validación', (t) => {
+  const now = Date.now;
+  const secret = process.env.MEDIA_SIGNING_SECRET;
+  const ttl = process.env.MEDIA_URL_TTL_SECONDS;
+  process.env.MEDIA_SIGNING_SECRET = 'test-cache-media-secret';
+  process.env.MEDIA_URL_TTL_SECONDS = '3600';
+  t.after(() => {
+    Date.now = now;
+    if (secret === undefined) delete process.env.MEDIA_SIGNING_SECRET; else process.env.MEDIA_SIGNING_SECRET = secret;
+    if (ttl === undefined) delete process.env.MEDIA_URL_TTL_SECONDS; else process.env.MEDIA_URL_TTL_SECONDS = ttl;
+  });
+  const reference = 'media:patients/00000000-0000-4000-8000-000000000000.jpg';
+  Date.now = () => 1800000001000;
+  const first = toClientMediaReference(reference);
+  Date.now = () => 1800000020000;
+  assert.equal(toClientMediaReference(reference), first);
+  const url = new URL(first, 'http://local/');
+  const args = { bucket: 'patients', filename: reference.split('/').at(-1), expires: url.searchParams.get('expires'), signature: url.searchParams.get('signature') };
+  assert.ok(verifySignedMediaRequest(args));
+  assert.equal(verifySignedMediaRequest({ ...args, signature: 'x'.repeat(args.signature.length) }), false);
+  assert.ok(Number(args.expires) <= Math.floor(Date.now() / 1000) + 3600);
+  Date.now = () => (Number(args.expires) + 1) * 1000;
+  assert.equal(verifySignedMediaRequest(args), false);
+  process.env.MEDIA_URL_TTL_SECONDS = '10';
+  const short = new URL(toClientMediaReference(reference), 'http://local/');
+  assert.ok(Number(short.searchParams.get('expires')) > Math.floor(Date.now() / 1000));
+});
+
 test('guarda PDF solo en tratamientos, sirve los bytes con firma y permite eliminarlos', async (t) => {
   const storageRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'unavet-pdf-'));
   const previousRoot = process.env.MEDIA_STORAGE_PATH;

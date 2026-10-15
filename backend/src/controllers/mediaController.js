@@ -31,7 +31,7 @@ const servirImagen = async (req, res) => {
     }
 
     res.set({
-      'Cache-Control': 'private, max-age=300',
+      'Cache-Control': `private, max-age=${Math.max(0, Math.min(300, Number(req.query.expires) - Math.floor(Date.now() / 1000)))}`,
       'Content-Length': String(stat.size),
       'Content-Type': media.contentType,
       'Content-Disposition': media.contentType === 'application/pdf'
