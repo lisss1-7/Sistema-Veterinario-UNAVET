@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ChevronDown,
   CheckCircle,
+  Clock3,
   Lock,
   ReceiptText,
   Search,
@@ -40,7 +41,23 @@ type Sale = {
   invoiceNit: string;
   invoiceName: string;
   total: number;
+  canceled?: boolean;
   items: Array<SaleItem & { id: string; subtotal: number }>;
+};
+
+type SalesShift = {
+  id: string;
+  number: number;
+  label: string;
+  throughSaleId: string;
+  closedAt: string;
+  responsible: string;
+  summary: {
+    saleCount: number;
+    total: number;
+    productQuantity: number;
+    payments: Array<{ code: string; name: string; amount: number }>;
+  };
 };
 
 type Props = {
@@ -205,6 +222,18 @@ const money = (value: number) =>
 
 export default function SalesClosing({ inventory, permissions, onInventoryChanged }: Props) {
   const [date, setDate] = useState(today());
+  const dateRef = useRef(date);
+  dateRef.current = date;
+  const [shifts, setShifts] = useState<SalesShift[]>([]);
+  const [currentShiftNumber, setCurrentShiftNumber] = useState(1);
+  const [afterSaleId, setAfterSaleId] = useState('0');
+  const [loadingShifts, setLoadingShifts] = useState(false);
+  const [shiftsKnown, setShiftsKnown] = useState(false);
+  const [showShiftConfirm, setShowShiftConfirm] = useState(false);
+  const [shiftLabel, setShiftLabel] = useState('');
+  const [closingShift, setClosingShift] = useState(false);
+  const [shiftSuccess, setShiftSuccess] = useState<{ number: number; total: number } | null>(null);
+  const [finalizingDay, setFinalizingDay] = useState(false);
   const [sales, setSales] = useState<Sale[]>([]);
   const [services, setServices] = useState<ServiceOption[]>([]);
   const [paymentOptions, setPaymentOptions] = useState<PaymentOption[]>([]);
@@ -239,12 +268,12 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
       );
       const data = await response.json();
       if (!response.ok) throw new Error(data.message);
-      setSales(Array.isArray(data) ? data : []);
+      if (dateRef.current === date) setSales(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error al cargar cierre de ventas:', error);
-      setSales([]);
+      if (dateRef.current === date) setSales([]);
     } finally {
-      setLoading(false);
+      if (dateRef.current === date) setLoading(false);
     }
   };
 
@@ -257,8 +286,9 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
       );
       const data = await response.json();
       if (!response.ok) throw new Error(data.message);
-      setIsDayClosed(Boolean(data.isClosed));
+      if (dateRef.current === date) setIsDayClosed(Boolean(data.isClosed));
     } catch (error) {
+      if (dateRef.current !== date) return;
       setIsDayClosed(false);
       setNotice({
         title: 'No se pudo consultar el estado del día',
@@ -269,13 +299,37 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
         type: 'error',
       });
     } finally {
-      setLoadingDayStatus(false);
+      if (dateRef.current === date) setLoadingDayStatus(false);
+    }
+  };
+
+  const loadShifts = async () => {
+    setLoadingShifts(true);
+    setShiftsKnown(false);
+    try {
+      const response = await fetch(`${API_URL}/cierre-ventas/turnos?fecha=${encodeURIComponent(date)}`, { headers: getAuthHeaders() });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'No se pudieron consultar los turnos.');
+      if (dateRef.current !== date) return;
+      setShifts(data.shifts);
+      setCurrentShiftNumber(data.currentNumber);
+      setAfterSaleId(data.afterSaleId);
+      setShiftsKnown(true);
+    } catch (error) {
+      if (dateRef.current === date) setNotice({ title: 'No se pudieron cargar los turnos', message: error instanceof Error ? error.message : 'Intente consultar la fecha nuevamente.', type: 'error' });
+    } finally {
+      if (dateRef.current === date) setLoadingShifts(false);
     }
   };
 
   useEffect(() => {
     setIsDayClosed(false);
-    void Promise.all([loadSales(), loadDayStatus()]);
+    setShifts([]);
+    setShiftsKnown(false);
+    setShowShiftConfirm(false);
+    setShowFinalizeConfirm(false);
+    setShiftLabel('');
+    void Promise.all([loadSales(), loadDayStatus(), loadShifts()]);
   }, [date]);
 
   useEffect(() => {
@@ -330,6 +384,21 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
       ),
     [sales]
   );
+
+  const currentShiftTotals = useMemo(() => {
+    const active = sales.filter((sale) => Number(sale.id) > Number(afterSaleId) && !sale.canceled);
+    const payments = new Map<string, { code: string; name: string; amount: number }>();
+    for (const sale of active) for (const payment of sale.payments) {
+      const previous = payments.get(payment.code);
+      payments.set(payment.code, { code: payment.code, name: payment.name, amount: (previous?.amount || 0) + Number(payment.amount) });
+    }
+    return {
+      saleCount: active.length,
+      total: active.reduce((sum, sale) => sum + Number(sale.total), 0),
+      productQuantity: active.reduce((sum, sale) => sum + sale.items.reduce((quantity, item) => quantity + (item.type === 'Producto' ? Number(item.quantity) : 0), 0), 0),
+      payments: [...payments.values()],
+    };
+  }, [sales, afterSaleId]);
 
   const saleTotal = items.reduce(
     (sum, item) => sum + item.quantity * item.unitPrice,
@@ -513,7 +582,8 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
   };
 
   const finalizeDay = async () => {
-    if (!permissions.canEdit) return;
+    if (!permissions.canEdit || finalizingDay || closingShift || !shiftsKnown) return;
+    setFinalizingDay(true);
     try {
       const response = await fetch(`${API_URL}/cierre-ventas/finalizar`, {
         method: 'POST',
@@ -524,6 +594,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
       if (!response.ok) throw new Error(data.message);
 
       setIsDayClosed(true);
+      await loadShifts();
       setShowFinalizeConfirm(false);
       setShowForm(false);
       setDeleteTarget(null);
@@ -540,7 +611,28 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
             : 'Ocurrió un error inesperado al finalizar el día.',
         type: 'error',
       });
-    }
+    } finally { setFinalizingDay(false); }
+  };
+
+  const finalizeShift = async () => {
+    if (!permissions.canEdit || closingShift || finalizingDay || !shiftsKnown || isDayClosed) return;
+    setClosingShift(true);
+    try {
+      const response = await fetch(`${API_URL}/cierre-ventas/turnos/finalizar`, {
+        method: 'POST', headers: getAuthHeaders(),
+        body: JSON.stringify({ date, number: currentShiftNumber, label: shiftLabel.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'No se pudo cerrar el turno.');
+      setShowShiftConfirm(false);
+      setShiftLabel('');
+      await Promise.all([loadSales(), loadDayStatus(), loadShifts()]);
+      setShiftSuccess({ number: data.shift.number, total: data.shift.summary.total });
+    } catch (error) {
+      setShowShiftConfirm(false);
+      await Promise.all([loadDayStatus(), loadShifts()]);
+      setNotice({ title: 'No se pudo cerrar el turno', message: error instanceof Error ? error.message : 'Intente nuevamente.', type: 'error' });
+    } finally { setClosingShift(false); }
   };
 
   const description = (sale: Sale) =>
@@ -565,14 +657,20 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
               id="sales-closing-date"
               type="date"
               value={date}
+              disabled={closingShift || finalizingDay}
               onChange={(event) => setDate(event.target.value)}
               className="h-11 min-w-0 w-full px-4 py-2 bg-secondary border border-border rounded-xl text-foreground"
             />
           </div>
+          {permissions.canEdit && <button type="button" onClick={() => setShowShiftConfirm(true)}
+            disabled={loading || loadingDayStatus || loadingShifts || !shiftsKnown || isDayClosed || closingShift || finalizingDay}
+            className="flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-primary px-4 text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50">
+            <Clock3 className="h-4 w-4 shrink-0" />Cerrar turno
+          </button>}
           {permissions.canEdit && <button
             type="button"
             onClick={() => setShowFinalizeConfirm(true)}
-            disabled={loadingDayStatus || isDayClosed}
+            disabled={loadingDayStatus || isDayClosed || !shiftsKnown || closingShift || finalizingDay}
             className="flex h-11 items-center justify-center gap-2 rounded-xl px-4 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white"
           >
             <Lock className="w-4 h-4 shrink-0" />
@@ -580,7 +678,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
           </button>}
           {permissions.canCreate && <CreateButton
             onClick={() => setShowForm(true)}
-            disabled={loadingDayStatus || isDayClosed}
+            disabled={loadingDayStatus || isDayClosed || closingShift || finalizingDay}
           >
             Registrar venta
           </CreateButton>}
@@ -611,6 +709,41 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
           )}
         />
       </div>
+
+      <section className="mb-4 min-w-0 rounded-2xl border border-border bg-card p-4 shadow-sm" aria-label="Cierres de turno">
+        <div className="mb-3 flex items-start gap-3">
+          <div className="rounded-xl bg-primary/15 p-2 text-primary"><Clock3 className="h-5 w-5" /></div>
+          <div className="min-w-0">
+            <h3 className="font-semibold text-foreground">{isDayClosed ? 'Cierres de turno del día' : `Turno ${currentShiftNumber} en curso`}</h3>
+            <p className="text-sm text-muted-foreground">Cerrar turno permite continuar vendiendo en el siguiente. Finalizar día cierra toda la jornada.</p>
+          </div>
+        </div>
+        {(loading || loadingShifts) && <p role="status" className="text-sm text-muted-foreground">Actualizando resumen de turnos…</p>}
+        {!isDayClosed && shiftsKnown && !loading && !loadingShifts && <>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <SummaryCard label="Ventas de este turno" value={String(currentShiftTotals.saleCount)} />
+            <SummaryCard label="Total de este turno" value={money(currentShiftTotals.total)} />
+            <SummaryCard label="Productos de este turno" value={String(currentShiftTotals.productQuantity)} />
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {currentShiftTotals.payments.map((payment) => <span key={payment.code} className="rounded-lg bg-muted px-3 py-2 text-sm text-foreground">{payment.name}: {money(payment.amount)}</span>)}
+          </div>
+        </>}
+        <h4 className="mb-2 mt-4 text-sm font-semibold text-foreground">Turnos cerrados · {shifts.length}</h4>
+        {shiftsKnown && !shifts.length && <p className="text-sm text-muted-foreground">Todavía no hay turnos cerrados para esta fecha.</p>}
+        <div className="grid gap-3 xl:grid-cols-2">
+          {shifts.map((shift) => <article key={shift.id} className="min-w-0 rounded-xl border border-border bg-muted/40 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h5 className="min-w-0 break-words font-semibold text-foreground">{shift.label}{shift.label !== `Turno ${shift.number}` ? ` · Turno ${shift.number}` : ''}</h5>
+              <span className="font-semibold text-primary">{money(shift.summary.total)}</span>
+            </div>
+            <p className="mt-1 break-words text-xs text-muted-foreground">Cerrado por {shift.responsible} · {new Intl.DateTimeFormat('es-GT', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Guatemala' }).format(new Date(shift.closedAt))}</p>
+            <p className="mt-2 text-sm text-foreground">{shift.summary.saleCount} ventas · {shift.summary.productQuantity} productos</p>
+            <div className="mt-2 flex flex-wrap gap-2">{shift.summary.payments.map((payment) => <span key={payment.code} className="rounded-lg bg-card px-2 py-1 text-xs text-foreground">{payment.name}: {money(payment.amount)}</span>)}</div>
+          </article>)}
+        </div>
+        {!!shifts.length && <p className="mt-3 text-xs text-muted-foreground">Los cierres conservan el resumen del momento. Los cambios posteriores en ventas se reflejan en el total del día.</p>}
+      </section>
 
       <div className="space-y-2 lg:hidden">
         {sales.map((sale) => (
@@ -878,6 +1011,32 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
         </div>
       )}
 
+      {showShiftConfirm && permissions.canEdit && !isDayClosed && (
+        <div className="modal-backdrop fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="shift-confirm-title" className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <Clock3 className="mx-auto mb-3 h-12 w-12 text-primary" />
+            <h3 id="shift-confirm-title" className="text-center text-xl font-semibold text-foreground">¿Cerrar el turno {currentShiftNumber}?</h3>
+            <p className="mt-2 text-center text-sm text-muted-foreground">Se guardará el resumen de este turno. El día seguirá abierto y las nuevas ventas pertenecerán al siguiente turno.</p>
+            <div className="my-4 rounded-xl bg-muted p-3 text-center text-foreground">{currentShiftTotals.saleCount} ventas · <strong>{money(currentShiftTotals.total)}</strong></div>
+            <label htmlFor="sales-shift-label" className="text-sm text-foreground">Nombre del turno (opcional)</label>
+            <input id="sales-shift-label" value={shiftLabel} onChange={(event) => setShiftLabel(event.target.value)} maxLength={80} disabled={closingShift} placeholder="Ejemplo: Mañana" className="mt-1 mb-5 min-h-11 w-full rounded-xl border border-border bg-secondary px-3 text-foreground" />
+            <div className="flex flex-wrap gap-3">
+              <button type="button" disabled={closingShift} onClick={() => setShowShiftConfirm(false)} className="min-h-11 flex-1 rounded-xl bg-muted px-3 text-foreground disabled:opacity-50">Cancelar</button>
+              <button type="button" disabled={closingShift || loading || loadingShifts || !shiftsKnown} onClick={finalizeShift} className="min-h-11 flex-1 rounded-xl bg-primary px-3 text-primary-foreground disabled:opacity-50">{closingShift ? 'Cerrando…' : 'Sí, cerrar turno'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {shiftSuccess && <div className="modal-backdrop fixed inset-0 z-[80] flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" aria-labelledby="shift-success-title" className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 text-center shadow-2xl">
+          <CheckCircle className="mx-auto mb-3 h-12 w-12 text-primary" />
+          <h3 id="shift-success-title" className="text-xl font-semibold text-foreground">Turno {shiftSuccess.number} cerrado</h3>
+          <p className="my-3 text-muted-foreground">Total registrado: {money(shiftSuccess.total)}. El día sigue abierto para el siguiente turno.</p>
+          <button type="button" onClick={() => setShiftSuccess(null)} className="min-h-11 w-full rounded-xl bg-primary text-primary-foreground">Continuar</button>
+        </div>
+      </div>}
+
       {showFinalizeConfirm && permissions.canEdit && !isDayClosed && (
         <div className="modal-backdrop fixed inset-0 z-[80] flex items-center justify-center p-4">
           <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] max-h-[90dvh] overflow-y-auto p-6 text-center">
@@ -885,11 +1044,13 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
             <h3 className="text-foreground text-xl mb-2">¿Finalizar el día?</h3>
             <p className="text-muted-foreground text-sm mb-5">
               Después de finalizar el {formatDisplayDate(date)} ya no será posible registrar ni eliminar ventas de esa fecha.
+              {' '}También se cerrará automáticamente el último turno pendiente.
             </p>
             <div className="flex gap-3">
               <button
                 type="button"
                 onClick={() => setShowFinalizeConfirm(false)}
+                disabled={finalizingDay}
                 className="flex-1 px-4 py-2 bg-muted text-foreground rounded-lg"
               >
                 Cancelar
@@ -897,9 +1058,10 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
               <button
                 type="button"
                 onClick={finalizeDay}
+                disabled={finalizingDay || closingShift || !shiftsKnown}
                 className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg"
               >
-                Sí, finalizar
+                {finalizingDay ? 'Finalizando…' : 'Sí, finalizar'}
               </button>
             </div>
           </div>

@@ -26,6 +26,7 @@
     "migrate:remove-profile-module": "node src/scripts/removeProfileModule.js",
     "migrate:user-soft-delete": "node src/scripts/addUserSoftDelete.js",
     "migrate:sales-day-closing": "node src/scripts/addSalesDayClosing.js",
+    "migrate:sales-shifts": "node src/scripts/addSalesShifts.js",
     "migrate:inventory-audit": "node src/scripts/addInventoryAudit.js",
     "migrate:prescription-reason": "node src/scripts/addPrescriptionConsultationReason.js",
     "migrate:diet-options": "node src/scripts/addDietOptions.js",
