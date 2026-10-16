@@ -5,6 +5,7 @@ import {
   ChevronDown,
   CheckCircle,
   Clock3,
+  Eye,
   Lock,
   ReceiptText,
   Search,
@@ -19,6 +20,7 @@ import { API_URL } from '../config/api';
 import { getAuthHeaders } from '../utils/apiClient';
 import { calculateSalesTotals } from '../utils/inventoryOperations';
 import type { ModulePermissions } from '../hooks/useModulePermissions';
+import SaleDetailsModal from './SaleDetailsModal';
 
 type SaleItem = {
   type: 'Producto' | 'Servicio';
@@ -237,6 +239,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
   const [shiftSuccess, setShiftSuccess] = useState<{ number: number; total: number } | null>(null);
   const [finalizingDay, setFinalizingDay] = useState(false);
   const [sales, setSales] = useState<Sale[]>([]);
+  const [viewSale, setViewSale] = useState<Sale | null>(null);
   const [services, setServices] = useState<ServiceOption[]>([]);
   const [paymentOptions, setPaymentOptions] = useState<PaymentOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -327,6 +330,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
   };
 
   useEffect(() => {
+    setViewSale(null);
     setIsDayClosed(false);
     setShifts([]);
     setShiftsKnown(false);
@@ -755,7 +759,9 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
                 Factura: {sale.invoiceNit || 'Sin NIT'} · {sale.invoiceName || 'Sin nombre'}
               </p>
             )}
-            {permissions.canDelete && <div className="mt-2 flex justify-end">
+            <div className="mt-2 flex flex-wrap justify-end gap-2">
+              <button type="button" disabled={loading} onClick={() => setViewSale(sale)} aria-label={`Ver venta ${sale.id}`} className="flex min-h-11 items-center gap-2 rounded-lg bg-primary/15 px-3 py-2 text-sm text-primary hover:bg-primary/25 disabled:opacity-50"><Eye className="h-4 w-4" />Ver</button>
+            {permissions.canDelete &&
               <button
                 type="button"
                 title="Anular venta"
@@ -765,8 +771,8 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
                 className="flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-red-100 p-2 text-red-600 hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Trash2 className="h-4 w-4" />
-              </button>
-            </div>}
+              </button>}
+            </div>
           </article>
         ))}
         {!loading && sales.length === 0 && (
@@ -785,7 +791,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
       </div>
 
       <div className="hidden max-w-full overflow-x-auto rounded-xl border border-border bg-card shadow-lg lg:block">
-        <table className="w-full table-fixed" style={{ minWidth: 830 + (permissions.canDelete ? 100 : 0) + paymentOptions.length * 110 }}>
+        <table className="w-full table-fixed" style={{ minWidth: 830 + (permissions.canDelete ? 160 : 100) + paymentOptions.length * 110 }}>
           <thead className="bg-muted text-foreground text-sm">
             <tr>
               <th className="w-[180px] px-4 py-3 text-left">Cliente</th>
@@ -797,7 +803,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
               ))}
               <th className="w-[150px] px-4 py-3 text-left">Factura NIT</th>
               <th className="w-[200px] px-4 py-3 text-left">Nombre</th>
-              {permissions.canDelete && <th className="w-[100px] px-4 py-3 text-center">Acciones</th>}
+              <th className={`${permissions.canDelete ? 'w-[160px]' : 'w-[100px]'} px-4 py-3 text-center`}>Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -817,7 +823,9 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
                 ))}
                 <td className="break-words px-4 py-3">{sale.invoiceNit || '—'}</td>
                 <td className="break-words px-4 py-3">{sale.invoiceName || '—'}</td>
-                {permissions.canDelete && <td className="px-4 py-3 text-center">
+                <td className="px-3 py-3 text-center"><div className="flex items-center justify-center gap-2">
+                  <button type="button" disabled={loading} onClick={() => setViewSale(sale)} aria-label={`Ver venta ${sale.id}`} className="flex min-h-11 items-center gap-1.5 rounded-lg bg-primary/15 px-3 py-2 text-primary hover:bg-primary/25 disabled:opacity-50"><Eye className="h-4 w-4" />Ver</button>
+                  {permissions.canDelete &&
                   <button
                     type="button"
                     title="Anular venta"
@@ -826,13 +834,13 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
                     className="p-2 bg-red-100 hover:bg-red-200 disabled:opacity-40 disabled:cursor-not-allowed text-red-600 rounded-lg"
                   >
                     <Trash2 className="w-4 h-4" />
-                  </button>
-                </td>}
+                  </button>}
+                </div></td>
               </tr>
             ))}
             {!loading && sales.length === 0 && (
               <tr>
-                <td colSpan={paymentOptions.length + (permissions.canDelete ? 5 : 4)} className="px-6 py-10 text-center text-muted-foreground">
+                <td colSpan={paymentOptions.length + 5} className="px-6 py-10 text-center text-muted-foreground">
                   No hay ventas registradas para esta fecha.
                 </td>
               </tr>
@@ -847,11 +855,13 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
                   value={totals.byMethod[payment.codigo] || 0}
                 />
               ))}
-              <td className="px-4 py-3" colSpan={permissions.canDelete ? 3 : 2}>Total: {money(totals.total)}</td>
+              <td className="px-4 py-3" colSpan={3}>Total: {money(totals.total)}</td>
             </tr>
           </tfoot>
         </table>
       </div>
+
+      {viewSale && <SaleDetailsModal sale={viewSale} onClose={() => setViewSale(null)} />}
 
       {showForm && permissions.canCreate && !isDayClosed && (
         <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4">
