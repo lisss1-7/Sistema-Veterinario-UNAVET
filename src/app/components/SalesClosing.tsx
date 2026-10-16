@@ -6,6 +6,7 @@ import {
   CheckCircle,
   Clock3,
   Eye,
+  FileText,
   Lock,
   ReceiptText,
   Search,
@@ -21,6 +22,9 @@ import { getAuthHeaders } from '../utils/apiClient';
 import { calculateSalesTotals } from '../utils/inventoryOperations';
 import type { ModulePermissions } from '../hooks/useModulePermissions';
 import SaleDetailsModal from './SaleDetailsModal';
+import PdfPreviewModal from './PdfPreviewModal';
+import { createSalesClosingPdf } from '../utils/salesClosingPdf';
+import { getUnavetLogoBase64 } from '../utils/pdfBranding';
 
 type SaleItem = {
   type: 'Producto' | 'Servicio';
@@ -239,7 +243,15 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
   const [shiftSuccess, setShiftSuccess] = useState<{ number: number; total: number } | null>(null);
   const [finalizingDay, setFinalizingDay] = useState(false);
   const [sales, setSales] = useState<Sale[]>([]);
+  const [salesKnown, setSalesKnown] = useState(false);
+  const [dayStatusKnown, setDayStatusKnown] = useState(false);
   const [viewSale, setViewSale] = useState<Sale | null>(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<{ url: string; filename: string; title: string } | null>(null);
+  const pdfGeneration = useRef(0);
+
+  useEffect(() => () => { if (pdfPreview) URL.revokeObjectURL(pdfPreview.url); }, [pdfPreview]);
+  useEffect(() => () => { pdfGeneration.current += 1; }, []);
   const [services, setServices] = useState<ServiceOption[]>([]);
   const [paymentOptions, setPaymentOptions] = useState<PaymentOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -269,13 +281,18 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
   const loadSales = async () => {
     try {
       setLoading(true);
+      setSalesKnown(false);
       const response = await fetch(
         `${API_URL}/cierre-ventas?fecha=${encodeURIComponent(date)}`,
         { headers: getAuthHeaders() }
       );
       const data = await response.json();
       if (!response.ok) throw new Error(data.message);
-      if (dateRef.current === date) setSales(Array.isArray(data) ? data : []);
+      if (dateRef.current === date) {
+        if (!Array.isArray(data)) throw new Error('La respuesta de ventas no es válida.');
+        setSales(data);
+        setSalesKnown(true);
+      }
     } catch (error) {
       console.error('Error al cargar cierre de ventas:', error);
       if (dateRef.current === date) setSales([]);
@@ -287,13 +304,17 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
   const loadDayStatus = async () => {
     try {
       setLoadingDayStatus(true);
+      setDayStatusKnown(false);
       const response = await fetch(
         `${API_URL}/cierre-ventas/estado?fecha=${encodeURIComponent(date)}`,
         { headers: getAuthHeaders() }
       );
       const data = await response.json();
       if (!response.ok) throw new Error(data.message);
-      if (dateRef.current === date) setIsDayClosed(Boolean(data.isClosed));
+      if (dateRef.current === date) {
+        setIsDayClosed(Boolean(data.isClosed));
+        setDayStatusKnown(true);
+      }
     } catch (error) {
       if (dateRef.current !== date) return;
       setIsDayClosed(false);
@@ -330,7 +351,12 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
   };
 
   useEffect(() => {
+    pdfGeneration.current += 1;
+    setPdfBusy(false);
+    setPdfPreview(null);
     setViewSale(null);
+    setSalesKnown(false);
+    setDayStatusKnown(false);
     setIsDayClosed(false);
     setShifts([]);
     setShiftsKnown(false);
@@ -377,6 +403,43 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
     void loadOptions();
   }, []);
 
+  const previewSalesPdf = async (sale?: Sale) => {
+    const generation = ++pdfGeneration.current;
+    setPdfBusy(true);
+    try {
+      // Consultar de nuevo evita exportar el estado de una pestaña abierta hace tiempo.
+      const responses = await Promise.all([
+        fetch(`${API_URL}/cierre-ventas?fecha=${encodeURIComponent(date)}`, { headers: getAuthHeaders(), cache: 'no-store' }),
+        fetch(`${API_URL}/cierre-ventas/estado?fecha=${encodeURIComponent(date)}`, { headers: getAuthHeaders(), cache: 'no-store' }),
+        fetch(`${API_URL}/cierre-ventas/turnos?fecha=${encodeURIComponent(date)}`, { headers: getAuthHeaders(), cache: 'no-store' }),
+      ]);
+      const [latestSales, latestDay, latestShifts] = await Promise.all(responses.map(response => response.json()));
+      responses.forEach((response, index) => {
+        if (!response.ok) throw new Error([latestSales, latestDay, latestShifts][index]?.message || 'No se pudo consultar el cierre actualizado.');
+      });
+      if (!Array.isArray(latestSales) || typeof latestDay.isClosed !== 'boolean' || !Array.isArray(latestShifts.shifts)) throw new Error('No se recibió un cierre completo para generar el PDF.');
+      const selectedSale: Sale | undefined = sale ? latestSales.find((item: Sale) => item.id === sale.id) : undefined;
+      if (sale && !selectedSale) throw new Error('La venta ya no está disponible. Actualiza el cierre e inténtalo nuevamente.');
+      const report = { date, sales: selectedSale ? [selectedSale] : latestSales, shifts: sale ? [] : latestShifts.shifts, isDayClosed: latestDay.isClosed, mode: sale ? 'sale' as const : 'day' as const };
+      const logo = await getUnavetLogoBase64();
+      const doc = createSalesClosingPdf(report, logo);
+      if (generation !== pdfGeneration.current) return;
+      setPdfPreview({
+        url: URL.createObjectURL(doc.output('blob')),
+        filename: sale ? `Venta-${sale.id}-${date}.pdf` : `Cierre-de-ventas-${date}.pdf`,
+        title: sale ? `PDF de venta #${sale.id}` : `PDF del cierre de ventas · ${date}`,
+      });
+    } catch (error) {
+      if (generation === pdfGeneration.current) setNotice({ title: 'No se pudo generar el PDF', message: error instanceof Error ? error.message : 'Intenta nuevamente.', type: 'error' });
+    } finally { if (generation === pdfGeneration.current) setPdfBusy(false); }
+  };
+  const downloadPreview = () => {
+    if (!pdfPreview) return;
+    const link = document.createElement('a');
+    link.href = pdfPreview.url; link.download = pdfPreview.filename;
+    document.body.appendChild(link); link.click(); link.remove();
+  };
+  const documentUnavailable = loading || loadingDayStatus || loadingShifts || !salesKnown || !dayStatusKnown || !shiftsKnown || closingShift || finalizingDay;
   const totals = useMemo(() => calculateSalesTotals(sales), [sales]);
 
   const currentShiftTotals = useMemo(() => {
@@ -652,11 +715,15 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
               id="sales-closing-date"
               type="date"
               value={date}
-              disabled={closingShift || finalizingDay}
+              disabled={closingShift || finalizingDay || pdfBusy}
               onChange={(event) => setDate(event.target.value)}
               className="h-11 min-w-0 w-full px-4 py-2 bg-secondary border border-border rounded-xl text-foreground"
             />
           </div>
+          <button type="button" disabled={documentUnavailable || pdfBusy} onClick={() => void previewSalesPdf()}
+            className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-muted px-4 py-2 text-foreground hover:bg-border disabled:cursor-not-allowed disabled:opacity-50">
+            <FileText className="h-4 w-4 shrink-0" />{pdfBusy ? 'Generando PDF…' : 'PDF del cierre'}
+          </button>
           {permissions.canEdit && <button type="button" onClick={() => setShowShiftConfirm(true)}
             disabled={loading || loadingDayStatus || loadingShifts || !shiftsKnown || isDayClosed || closingShift || finalizingDay}
             className="flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-primary px-4 text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50">
@@ -760,7 +827,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
               </p>
             )}
             <div className="mt-2 flex flex-wrap justify-end gap-2">
-              <button type="button" disabled={loading} onClick={() => setViewSale(sale)} aria-label={`Ver venta ${sale.id}`} className="flex min-h-11 items-center gap-2 rounded-lg bg-primary/15 px-3 py-2 text-sm text-primary hover:bg-primary/25 disabled:opacity-50"><Eye className="h-4 w-4" />Ver</button>
+              <button type="button" disabled={loading || !salesKnown} onClick={() => setViewSale(sale)} aria-label={`Ver venta ${sale.id}`} className="flex min-h-11 items-center gap-2 rounded-lg bg-primary/15 px-3 py-2 text-sm text-primary hover:bg-primary/25 disabled:opacity-50"><Eye className="h-4 w-4" />Ver</button>
             {permissions.canDelete &&
               <button
                 type="button"
@@ -824,7 +891,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
                 <td className="break-words px-4 py-3">{sale.invoiceNit || '—'}</td>
                 <td className="break-words px-4 py-3">{sale.invoiceName || '—'}</td>
                 <td className="px-3 py-3 text-center"><div className="flex items-center justify-center gap-2">
-                  <button type="button" disabled={loading} onClick={() => setViewSale(sale)} aria-label={`Ver venta ${sale.id}`} className="flex min-h-11 items-center gap-1.5 rounded-lg bg-primary/15 px-3 py-2 text-primary hover:bg-primary/25 disabled:opacity-50"><Eye className="h-4 w-4" />Ver</button>
+                  <button type="button" disabled={loading || !salesKnown} onClick={() => setViewSale(sale)} aria-label={`Ver venta ${sale.id}`} className="flex min-h-11 items-center gap-1.5 rounded-lg bg-primary/15 px-3 py-2 text-primary hover:bg-primary/25 disabled:opacity-50"><Eye className="h-4 w-4" />Ver</button>
                   {permissions.canDelete &&
                   <button
                     type="button"
@@ -861,7 +928,8 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
         </table>
       </div>
 
-      {viewSale && <SaleDetailsModal sale={viewSale} onClose={() => setViewSale(null)} />}
+      {viewSale && <SaleDetailsModal sale={viewSale} onClose={() => setViewSale(null)} pdfBusy={pdfBusy || documentUnavailable} onPdf={() => void previewSalesPdf(viewSale)} />}
+      {pdfPreview && <PdfPreviewModal url={pdfPreview.url} title={pdfPreview.title} onClose={() => setPdfPreview(null)} onDownload={downloadPreview} />}
 
       {showForm && permissions.canCreate && !isDayClosed && (
         <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4">

@@ -1,10 +1,12 @@
-import { Eye } from 'lucide-react';
+import { Eye, FileText } from 'lucide-react';
 import type { SalesDocumentSale } from '../utils/salesClosingPdf';
 import { formatDateForDisplay } from '../utils/dateFormat';
 import { inventoryMoney } from '../utils/inventoryOperations';
 import { OperationModal } from './inventory/OperationUi';
 
-export default function SaleDetailsModal({ sale, onClose }: { sale: SalesDocumentSale; onClose: () => void }) {
+export default function SaleDetailsModal({ sale, onClose, onPdf, pdfBusy }: {
+  sale: SalesDocumentSale; onClose: () => void; onPdf: () => void; pdfBusy: boolean;
+}) {
   return <OperationModal title={`Detalle de venta #${sale.id}`} onClose={onClose}>
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
       <p className="flex items-center gap-2 text-sm text-muted-foreground"><Eye className="h-4 w-4" />Consulta de la venta registrada</p>
@@ -35,6 +37,7 @@ export default function SaleDetailsModal({ sale, onClose }: { sale: SalesDocumen
     <p className="mt-4 flex flex-wrap justify-between gap-2 text-lg font-semibold text-foreground"><span>Importe registrado</span><span>{inventoryMoney(sale.total)}</span></p>
     {sale.canceled && <p className="mt-1 text-sm text-muted-foreground">Esta venta está excluida de los totales vigentes del día.</p>}
     <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+      <button type="button" disabled={pdfBusy} onClick={onPdf} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50"><FileText className="h-4 w-4" />{pdfBusy ? 'Generando PDF…' : 'Vista previa PDF'}</button>
       <button type="button" onClick={onClose} className="min-h-11 rounded-xl border border-border bg-muted px-4 py-2 text-foreground">Cerrar</button>
     </div>
   </OperationModal>;

@@ -41,7 +41,7 @@ El acceso a cada opción depende de los permisos de la cuenta y del estado del r
 | Citas clínicas | Agenda, búsqueda, filtros, reprogramación y cambios de estado. |
 | Grooming | Agenda de servicios, atención en clínica y coordinación de transporte. |
 | Inventario | Productos, existencias, movimientos, compras, proveedores y auditoría de conteo físico. |
-| Cierre de ventas | Registro de ventas, formas de pago, cierres consecutivos de turno y finalización del día. |
+| Cierre de ventas | Registro y consulta individual de ventas, formas de pago, cierres de turno y día, vista previa y descarga PDF de la jornada o de una venta. |
 | Recetas | Medicamentos manuales o vinculados al inventario, motivo de consulta, diagnóstico opcional y modo de entrega. |
 | Reportes IA | Consultas sobre métricas de la clínica, resúmenes, gráficas y exportación de resultados. |
 | Usuarios y mantenimiento | Cuentas, estados de acceso, roles, permisos y catálogos que alimentan los formularios. |
