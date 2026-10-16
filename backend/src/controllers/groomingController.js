@@ -7,7 +7,7 @@ const {
   getTutorNameParts,
 } = require('../utils/personName');
 const {
-  isFutureDateTime,
+  isTodayOrFuture,
   isValidAgeSpacing,
 } = require('../utils/inputValidation');
 
@@ -210,33 +210,6 @@ const obtenerOCrearTutor = async (connection, data) => {
   return result.insertId;
 };
 
-const validarHorarioDisponible = async (connection, date, time, groomingId = null) => {
-  const params = [date, time];
-
-  let query = `
-    SELECT grooming_id
-    FROM cita_grooming
-    WHERE fecha = ?
-      AND hora = ?
-      AND estado_grooming_id NOT IN (
-        SELECT estado_grooming_id
-        FROM estado_grooming
-        WHERE es_cancelado = 1
-      )
-  `;
-
-  if (groomingId) {
-    query += ' AND grooming_id <> ?';
-    params.push(groomingId);
-  }
-
-  query += ' LIMIT 1';
-
-  const [rows] = await connection.query(query, params);
-
-  return rows.length === 0;
-};
-
 const validarLimiteTransporte = async (
   connection,
   date,
@@ -437,10 +410,10 @@ const crearGrooming = async (req, res) => {
       });
     }
 
-    if (!isFutureDateTime(date, time)) {
+    if (!isTodayOrFuture(date)) {
       return res.status(400).json({
-        code: 'PAST_DATETIME',
-        message: 'La fecha y hora deben ser posteriores a la hora actual de Guatemala',
+        code: 'INVALID_DATE',
+        message: 'La fecha debe ser válida y no puede ser anterior al día actual de Guatemala',
       });
     }
 
@@ -491,17 +464,6 @@ const crearGrooming = async (req, res) => {
       await connection.rollback();
       return res.status(400).json({
         message: 'El horario seleccionado no está habilitado en la configuración',
-      });
-    }
-
-    const disponible = await validarHorarioDisponible(connection, date, time);
-
-    if (!disponible) {
-      await connection.rollback();
-
-      return res.status(409).json({
-        code: 'TIME_CONFLICT',
-        message: 'Ya existe una cita de grooming en ese horario',
       });
     }
 
@@ -697,10 +659,10 @@ const actualizarGrooming = async (req, res) => {
       });
     }
 
-    if (!isFutureDateTime(date, time)) {
+    if (!isTodayOrFuture(date)) {
       return res.status(400).json({
-        code: 'PAST_DATETIME',
-        message: 'La fecha y hora deben ser posteriores a la hora actual de Guatemala',
+        code: 'INVALID_DATE',
+        message: 'La fecha debe ser válida y no puede ser anterior al día actual de Guatemala',
       });
     }
 
@@ -772,17 +734,6 @@ const actualizarGrooming = async (req, res) => {
 
       return res.status(404).json({
         message: 'Cita de grooming no encontrada',
-      });
-    }
-
-    const disponible = await validarHorarioDisponible(connection, date, time, id);
-
-    if (!disponible) {
-      await connection.rollback();
-
-      return res.status(409).json({
-        code: 'TIME_CONFLICT',
-        message: 'Ya existe una cita de grooming en ese horario',
       });
     }
 

@@ -30,7 +30,6 @@ import { useModulePermissions } from '../hooks/useModulePermissions';
 import { formatDateForDisplay } from '../utils/dateFormat';
 import {
   getTodayLocal,
-  isClinicDateTimePastOrCurrent,
   isValidName,
   isValidPetName,
   isValidPhone,
@@ -56,7 +55,7 @@ type DeleteTarget = {
   time: string;
 };
 
-type InfoModalType = 'transportLimit' | 'timeConflict' | null;
+type InfoModalType = 'transportLimit' | null;
 
 type CatalogItem = {
   nombre: string;
@@ -127,7 +126,6 @@ export default function Grooming() {
   const [selectedBreedOption, setSelectedBreedOption] = useState('');
   const [customBreed, setCustomBreed] = useState('');
   const [currentTimeSlots, setCurrentTimeSlots] = useState<string[]>([]);
-  const [clockNow, setClockNow] = useState(() => Date.now());
   const [transportCapacity, setTransportCapacity] = useState(0);
   const [stats, setStats] = useState({
     inClinic: 0,
@@ -150,11 +148,6 @@ export default function Grooming() {
     loadGrooming();
     loadPatients();
     loadCatalogs();
-  }, []);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setClockNow(Date.now()), 30_000);
-    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -451,19 +444,6 @@ export default function Grooming() {
     setCalendarMonth((month) => new Date(month.getFullYear(), month.getMonth() + offset, 1));
   };
 
-  const isTimeUnavailable = (time: string) => {
-    return grooming.some(
-      (g: GroomingAppointment) =>
-        g.date === formData.date &&
-        g.time === time &&
-        !isCancelledStatus(g.status) &&
-        g.id !== editingGrooming?.id
-    );
-  };
-
-  const isTimePastOrCurrent = (time: string) =>
-    isClinicDateTimePastOrCurrent(formData.date, time, new Date(clockNow));
-
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -505,13 +485,6 @@ export default function Grooming() {
       setFormError({
         title: 'Falta la hora',
         message: 'Debes seleccionar una hora antes de guardar la cita de grooming.',
-      });
-      return;
-    }
-    if (isClinicDateTimePastOrCurrent(formData.date, formData.time)) {
-      setFormError({
-        title: 'Horario vencido',
-        message: 'Selecciona una fecha y hora posteriores a la hora actual de Guatemala.',
       });
       return;
     }
@@ -559,10 +532,8 @@ export default function Grooming() {
 
       const data = await response.json();
 
-      if (response.status === 409) {
-        setInfoModalType(
-          data.code === 'TRANSPORT_LIMIT' ? 'transportLimit' : 'timeConflict'
-        );
+      if (response.status === 409 && data.code === 'TRANSPORT_LIMIT') {
+        setInfoModalType('transportLimit');
         return;
       }
 
@@ -1428,20 +1399,9 @@ export default function Grooming() {
                   >
                     <option value="">Seleccionar hora</option>
 
-                    {currentTimeSlots.map((time) => {
-                      const pastOrCurrent = isTimePastOrCurrent(time);
-                      const unavailable = pastOrCurrent || isTimeUnavailable(time);
-
-                      return (
-                        <option key={time} value={time} disabled={unavailable}>
-                          {pastOrCurrent
-                            ? `${time} - Horario pasado`
-                            : unavailable
-                              ? `${time} - No disponible`
-                              : time}
-                        </option>
-                      );
-                    })}
+                    {currentTimeSlots.map((time) => (
+                      <option key={time} value={time}>{time}</option>
+                    ))}
                   </ThemedSelect>
                 </div>
 
@@ -1848,15 +1808,11 @@ export default function Grooming() {
             </div>
 
             <h3 className="text-foreground text-xl mb-2">
-              {infoModalType === 'transportLimit'
-                ? 'Límite de transporte alcanzado'
-                : 'Horario no disponible'}
+              Límite de transporte alcanzado
             </h3>
 
             <p className="text-muted-foreground text-sm mb-6">
-              {infoModalType === 'transportLimit'
-                ? `Ya se alcanzó el límite diario de ${transportCapacity} servicios de grooming con transporte. Selecciona otra fecha o cambia el tipo de cita.`
-                : 'Ya existe una cita de grooming registrada para la fecha y hora seleccionadas. Elige otro horario disponible.'}
+              {`Ya se alcanzó el límite diario de ${transportCapacity} servicios de grooming con transporte. Selecciona otra fecha o cambia el tipo de cita.`}
             </p>
 
             <button
