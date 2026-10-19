@@ -33,7 +33,7 @@ El acceso a cada opción depende de los permisos de la cuenta y del estado del r
 
 | Módulo | Alcance |
 | --- | --- |
-| Dashboard | Resumen de actividad, próximas atenciones y accesos a los módulos. |
+| Inicio | Resumen de actividad, próximas atenciones y accesos a los módulos. |
 | Pacientes y tutores | Registro de mascotas, fotografías, responsables, datos de contacto y expediente individual. |
 | Historial clínico | Consultas, evaluación, diagnóstico, tratamiento, observaciones y recetas vinculadas al paciente. |
 | Vacunación | Registro de aplicaciones y esquemas, consulta y exportación de documentos. |
@@ -287,7 +287,7 @@ Si el backend cambia de puerto, actualiza también el destino del proxy de Vite.
 
 ### Alcance de los módulos
 
-`VITE_DELIVERY_MODE=full` habilita el alcance completo del frontend. El modo `first-delivery` limita el contenido a dashboard, pacientes y usuarios, conforme a [deliveryScope.ts](src/app/config/deliveryScope.ts).
+`VITE_DELIVERY_MODE=full` habilita el alcance completo del frontend. El modo `first-delivery` limita el contenido a Inicio, pacientes y usuarios, conforme a [deliveryScope.ts](src/app/config/deliveryScope.ts).
 
 Este modo controla qué pantallas se habilitan; los permisos de cada cuenta se siguen verificando en el sistema y en las rutas protegidas de la API.
 
@@ -502,6 +502,7 @@ Ejemplos desde `backend/`:
 | Comando | Cambio específico |
 | --- | --- |
 | `npm run migrate:prescription-reason` | Incorporar el motivo de consulta en recetas. |
+| `node src/scripts/renameHomeModule.js` | Mostrar el módulo principal como Inicio en el menú y los permisos de una base existente. |
 | `npm run migrate:sales-day-closing` | Incorporar el cierre diario de ventas. |
 | `npm run migrate:sales-shifts` | Incorporar el almacenamiento de cierres de turno. |
 | `npm run migrate:inventory-audit` | Incorporar la auditoría de inventario. |

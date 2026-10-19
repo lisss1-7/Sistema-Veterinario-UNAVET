@@ -387,7 +387,7 @@ export function Header({ onMenuClick }: HeaderProps) {
           type="button"
           onClick={() => navigate('/')}
           className="hidden min-w-0 overflow-hidden rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-white/10 focus:outline-none min-[420px]:block sm:px-2"
-          aria-label="Ir al dashboard"
+          aria-label="Ir a Inicio"
         >
           <h2 className="truncate text-sm font-medium text-sidebar-foreground sm:text-base md:text-lg">
             Bienvenido, {user?.name}

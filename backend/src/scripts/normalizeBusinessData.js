@@ -262,7 +262,7 @@ const run = async () => {
 
     await connection.query(`
       INSERT IGNORE INTO modulos_sistema (codigo, nombre, ruta, orden) VALUES
-      ('dashboard', 'Dashboard', '/', 1),
+      ('dashboard', 'Inicio', '/', 1),
       ('patients', 'Pacientes', '/patients', 2),
       ('appointments', 'Citas', '/appointments', 3),
       ('grooming', 'Grooming', '/grooming', 4),
