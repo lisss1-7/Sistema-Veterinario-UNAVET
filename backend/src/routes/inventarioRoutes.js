@@ -10,6 +10,7 @@ const {
 } = require('../controllers/inventarioController');
 const { verificarToken } = require('../middleware/authMiddleware');
 const { verificarPermiso } = require('../middleware/permissionMiddleware');
+const { listarHistorial } = require('../controllers/inventarioHistorialController');
 const operaciones = require('../controllers/inventarioOperacionesController');
 
 const router = express.Router();
@@ -22,6 +23,7 @@ router.post('/compras', verificarToken, verificarPermiso('inventory', 'crear'), 
 router.post('/compras/:id/anular', verificarToken, verificarPermiso('inventory', 'eliminar'), operaciones.anularCompra);
 router.get('/movimientos', verificarToken, verificarPermiso('inventory', 'ver'), operaciones.listarMovimientos);
 
+router.get('/historial', verificarToken, verificarPermiso('inventory', 'ver'), listarHistorial);
 router.get('/', verificarToken, verificarPermiso('inventory', 'ver'), listarProductos);
 router.post('/auditorias/finalizar', verificarToken, verificarPermiso('inventory', 'editar'), finalizarAuditoria);
 router.get('/:id', verificarToken, verificarPermiso('inventory', 'ver'), obtenerProductoPorId);

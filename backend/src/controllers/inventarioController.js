@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { recordProductChange } = require('../utils/inventoryHistory');
 const { randomUUID } = require('crypto');
 const {
   recordMovement,
@@ -298,6 +299,7 @@ const crearProducto = async (req, res) => {
         status === 'Inactivo' ? 0 : 1,
       ]
     );
+    await recordProductChange(connection, req, result.insertId, 'CREAR_PRODUCTO', `Producto creado: ${String(name).trim()}`);
     await connection.commit();
     res.status(201).json({
       message: 'Producto creado sin existencias; registre una compra para recibir productos',
@@ -376,6 +378,7 @@ const actualizarProducto = async (req, res) => {
         id,
       ]
     );
+    await recordProductChange(connection, req, id, 'EDITAR_PRODUCTO', `Ficha del producto actualizada: ${String(name).trim()}`);
     await connection.commit();
     res.json({
       message: 'Ficha del producto actualizada correctamente',
@@ -678,27 +681,35 @@ const finalizarAuditoria = async (req, res) => {
 };
 
 const eliminarProducto = async (req, res) => {
+  const connection = await pool.getConnection();
   try {
-    const [result] = await pool.query(
+    await connection.beginTransaction();
+    const [result] = await connection.query(
       `UPDATE producto_inventario
        SET activo = 0
        WHERE producto_id = ? AND activo = 1`,
       [req.params.id]
     );
     if (result.affectedRows === 0) {
+      await connection.rollback();
       return res.status(404).json({
         message: 'Producto no encontrado o ya estaba inactivo',
       });
     }
+    await recordProductChange(connection, req, req.params.id, 'INACTIVAR_PRODUCTO', 'Producto inactivado; se conservaron sus lotes y movimientos históricos');
+    await connection.commit();
     res.json({
       message:
         'Producto inactivado; se conservaron sus lotes y movimientos históricos',
     });
   } catch (error) {
+    await connection.rollback();
     res.status(500).json({
       message: 'Error al inactivar producto',
       error: error.message,
     });
+  } finally {
+    connection.release();
   }
 };
 

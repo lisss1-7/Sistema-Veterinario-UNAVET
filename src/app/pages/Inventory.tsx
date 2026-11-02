@@ -21,6 +21,7 @@ import {
 
 import type { InventoryProduct } from '../utils/types';
 import InventoryAudit from '../components/InventoryAudit';
+import InventoryHistory from '../components/inventory/InventoryHistory';
 import SalesClosing from '../components/SalesClosing';
 import InventorySuppliers from '../components/inventory/InventorySuppliers';
 import InventoryPurchases from '../components/inventory/InventoryPurchases';
@@ -73,7 +74,7 @@ export default function Inventory() {
   const { permissions } = useModulePermissions('inventory');
   const [inventory, setInventory] = useState<InventoryProduct[]>([]);
   const [activeSection, setActiveSection] =
-    useState<'inventory' | 'audit' | 'sales' | 'suppliers' | 'purchases' | 'movements'>('inventory');
+    useState<'inventory' | 'audit' | 'sales' | 'suppliers' | 'purchases' | 'movements' | 'history'>('inventory');
   const [showAuditDateModal, setShowAuditDateModal] = useState(false);
   const [auditDate, setAuditDate] = useState(getCurrentGuatemalaDate);
 
@@ -483,6 +484,7 @@ export default function Inventory() {
           </button>
           {([
             ['suppliers', 'Proveedores'], ['purchases', 'Compras'], ['movements', 'Movimientos'],
+            ['history', 'Historial de cambios'],
           ] as const).map(([section, label]) => (
             <button key={section} type="button" aria-pressed={activeSection === section}
               onClick={() => setActiveSection(section)}
@@ -510,6 +512,8 @@ export default function Inventory() {
         <InventorySuppliers permissions={permissions} />
       ) : activeSection === 'purchases' ? (
         <InventoryPurchases inventory={inventory} permissions={permissions} onInventoryChanged={loadInventory} />
+      ) : activeSection === 'history' ? (
+        <InventoryHistory inventory={inventory} />
       ) : activeSection === 'movements' ? (
         <InventoryMovements inventory={inventory} />
       ) : (

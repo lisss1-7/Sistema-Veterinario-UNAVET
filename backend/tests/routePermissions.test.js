@@ -34,6 +34,7 @@ const expectedPermissions = {
     ['post', '/compras', 'inventory', 'crear'],
     ['post', '/compras/:id/anular', 'inventory', 'eliminar'],
     ['get', '/movimientos', 'inventory', 'ver'],
+    ['get', '/historial', 'inventory', 'ver'],
     ['get', '/', 'inventory', 'ver'],
     ['post', '/auditorias/finalizar', 'inventory', 'editar'],
     ['get', '/:id', 'inventory', 'ver'],
