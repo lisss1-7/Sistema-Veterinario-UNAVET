@@ -194,20 +194,22 @@ export default function Login() {
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label className="mb-2 block font-medium text-foreground">
-                Correo electrónico
+                Usuario o correo electrónico
               </label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
                 <input
-                  type="email"
+                  type="text"
                   value={email}
                   onChange={(event) => {
                     setEmail(event.target.value);
                     setRecoveryEmail(event.target.value);
                   }}
                   className="w-full rounded-lg border border-border bg-input-background py-3 pl-11 pr-4 text-foreground shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="usuario@unavet.com"
-                  autoComplete="email"
+                  placeholder="Usuario o correo electrónico"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
                   required
                 />
               </div>

@@ -14,6 +14,7 @@ const NON_NEGATIVE_FIELDS = [
   'currentStock', 'minStock', 'price', 'purchasePrice',
 ];
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const LOGIN_USERNAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,149}$/;
 const MAX_TEXT_LENGTH = 10000;
 const PHOTO_FIELDS = new Set(['photo', 'attachmentPhoto']);
 // Patient and treatment photos arrive as temporary base64 data URLs and are
@@ -98,6 +99,10 @@ const validateRequest = (req, res, next) => {
 
   for (const field of EMAIL_FIELDS) {
     const value = req.body[field];
+    const isUsernameLogin = req.method === 'POST' &&
+      req.path === '/api/auth/login' && field === 'correo' &&
+      typeof value === 'string' && LOGIN_USERNAME_PATTERN.test(value.trim());
+    if (isUsernameLogin) continue;
     if (value !== undefined && value !== '' && !EMAIL_PATTERN.test(String(value))) {
       return reject(res, `El campo ${field} no contiene un correo válido`);
     }
