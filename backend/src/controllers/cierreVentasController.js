@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const { listSalesShifts, closeSalesShift } = require('../utils/salesShift');
+const { cashFundCondition, roundMoney, splitCashFundPayments } = require('../utils/salesAccounting');
 const {
   getProductAndLots,
   consumeLots,
@@ -43,19 +44,26 @@ const throwIfSalesDayIsClosed = (day) => {
   throw error;
 };
 
-const mapVenta = (row) => ({
-  id: String(row.venta_id),
-  date: row.fecha,
-  client: row.cliente || '',
-  payments: row.payments || [],
-  invoiceNit: row.factura_nit || '',
-  invoiceName: row.factura_nombre || '',
-  total: Number(row.total || 0),
-  items: row.items || [],
-  canceled: Boolean(row.anulada),
-  cancellationReason: row.motivo_anulacion || '',
-  canceledAt: row.anulada_en || null,
-});
+const mapVenta = (row) => {
+  const items = row.items || [];
+  const total = Number(row.total || 0);
+  const cashFundTotal = roundMoney(items.reduce((sum, item) => sum + (item.isCashFund ? item.subtotal : 0), 0));
+  return {
+    id: String(row.venta_id),
+    date: row.fecha,
+    client: row.cliente || '',
+    payments: splitCashFundPayments(row.payments || [], total, cashFundTotal),
+    invoiceNit: row.factura_nit || '',
+    invoiceName: row.factura_nombre || '',
+    total,
+    cashFundTotal,
+    hasSales: items.some((item) => !item.isCashFund),
+    items,
+    canceled: Boolean(row.anulada),
+    cancellationReason: row.motivo_anulacion || '',
+    canceledAt: row.anulada_en || null,
+  };
+};
 
 const listarVentas = async (req, res) => {
   const connection = await pool.getConnection();
@@ -88,8 +96,9 @@ const listarVentas = async (req, res) => {
          descripcion,
          cantidad,
          precio_unitario,
-         subtotal
-       FROM cierre_venta_detalle
+         subtotal,
+         ${cashFundCondition('detalle')} AS es_fondo_caja
+       FROM cierre_venta_detalle detalle
        WHERE venta_id IN (?)
        ORDER BY detalle_id`,
       [ids]
@@ -125,6 +134,7 @@ const listarVentas = async (req, res) => {
         quantity: Number(item.cantidad),
         unitPrice: Number(item.precio_unitario),
         subtotal: Number(item.subtotal),
+        isCashFund: Boolean(item.es_fondo_caja),
       });
       return result;
     }, {});

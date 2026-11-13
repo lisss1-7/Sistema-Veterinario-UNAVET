@@ -10,9 +10,11 @@ export type SalesDocumentSale = {
   invoiceNit: string;
   invoiceName: string;
   total: number;
+  cashFundTotal?: number;
+  hasSales?: boolean;
   canceled?: boolean;
   cancellationReason?: string;
-  payments: Array<{ code: string; name: string; amount: number }>;
+  payments: Array<{ code: string; name: string; amount: number; cashFundAmount?: number }>;
   items: Array<{ type: string; description: string; quantity: number; unitPrice: number; subtotal: number }>;
 };
 
@@ -21,7 +23,7 @@ export type SalesDocumentShift = {
   label: string;
   closedAt: string;
   responsible: string;
-  summary: { saleCount: number; total: number; productQuantity: number; payments: Array<{ name: string; amount: number }> };
+  summary: { saleCount: number; total: number; cashFundTotal?: number; receivedTotal?: number; productQuantity: number; payments: Array<{ name: string; amount: number }> };
 };
 
 type SalesDocument = {
@@ -70,16 +72,15 @@ export function createSalesClosingPdf(report: SalesDocument, logo: string) {
   text(`Ventas vigentes: ${totals.saleCount} | Anuladas: ${report.sales.filter(sale => sale.canceled).length}`);
   text(`Unidades de productos vendidas: ${totals.productQuantity}`);
   text(`Total vigente: ${money(totals.total)}`, true);
-  const payments = new Map<string, { name: string; amount: number }>();
-  for (const sale of report.sales.filter(sale => !sale.canceled)) {
-    for (const payment of sale.payments) {
-      const entry = payments.get(payment.code) || { name: payment.name, amount: 0 };
-      entry.amount += Number(payment.amount); payments.set(payment.code, entry);
-    }
+  if (totals.cashFundTotal > 0) {
+    text(`Fondo de caja: ${money(totals.cashFundTotal)} | Total recibido: ${money(totals.receivedTotal)}`);
+    text('El fondo de caja no se contabiliza como ingreso por ventas.');
   }
+  const names = new Map(report.sales.flatMap(sale => sale.payments.map(payment => [payment.code, payment.name] as const)));
+  const payments = Object.entries(totals.byMethod);
   section('Desglose de pagos vigentes');
-  if (!payments.size) text('Sin pagos vigentes registrados.');
-  for (const payment of payments.values()) text(`${payment.name}: ${money(payment.amount)}`);
+  if (!payments.length) text('Sin pagos de ventas vigentes registrados.');
+  for (const [code, amount] of payments) text(`${names.get(code) || code}: ${money(amount)}`);
 
   if (!individual) {
     section('Turnos cerrados');
@@ -89,6 +90,7 @@ export function createSalesClosingPdf(report: SalesDocument, logo: string) {
       text(`Turno ${shift.number}: ${shift.label}`, true);
       text(`Responsable: ${shift.responsible || 'No registrado'} | Cierre: ${time(new Date(shift.closedAt))}`);
       text(`${shift.summary.saleCount} ventas | ${shift.summary.productQuantity} unidades | Total: ${money(shift.summary.total)}`);
+      if (shift.summary.cashFundTotal) text(`Fondo de caja: ${money(shift.summary.cashFundTotal)} | Total recibido: ${money(shift.summary.receivedTotal ?? shift.summary.total + shift.summary.cashFundTotal)}`);
       for (const payment of shift.summary.payments) text(`${payment.name}: ${money(payment.amount)}`);
       y += 2;
     }
@@ -116,6 +118,7 @@ export function createSalesClosingPdf(report: SalesDocument, logo: string) {
       `NIT: ${sale.invoiceNit || 'No registrado'} | Nombre para factura: ${sale.invoiceName || 'No registrado'}`,
       ...(sale.canceled ? [`Motivo de anulación: ${sale.cancellationReason || 'No registrado'}`] : []),
       ...sale.payments.map(payment => `Pago registrado: ${payment.name} - ${money(payment.amount)}`),
+      ...(sale.cashFundTotal ? [`Fondo de caja: ${money(sale.cashFundTotal)} | Ingreso por ventas: ${money(sale.total - sale.cashFundTotal)}`] : []),
     ];
     const metadataHeight = metadata.reduce((height, value) => height + doc.splitTextToSize(value, width).length * 5, 0);
     font(false, 8);
@@ -129,6 +132,7 @@ export function createSalesClosingPdf(report: SalesDocument, logo: string) {
     text(`NIT: ${sale.invoiceNit || 'No registrado'} | Nombre para factura: ${sale.invoiceName || 'No registrado'}`);
     if (sale.canceled) text(`Motivo de anulación: ${sale.cancellationReason || 'No registrado'}`);
     for (const payment of sale.payments) text(`Pago registrado: ${payment.name} - ${money(payment.amount)}`);
+    if (sale.cashFundTotal) text(`Fondo de caja: ${money(sale.cashFundTotal)} | Ingreso por ventas: ${money(sale.total - sale.cashFundTotal)}`);
     ensure(17); tableHeader();
     for (const [itemIndex, item] of sale.items.entries()) {
       font(false, 8);

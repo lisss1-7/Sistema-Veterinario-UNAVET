@@ -79,7 +79,7 @@ test('finaliza el día y registra al usuario responsable', async () => {
     if (sql.includes('MAX(venta_id)')) return [[{ hasta_venta_id: 15 }]];
     if (sql.includes('information_schema')) return [[]];
     if (sql.includes('AS sale_count')) return [[{ sale_count: 1, total: 50, product_quantity: 0 }]];
-    if (sql.includes('SUM(pago.monto)')) return [[]];
+    if (sql.includes('FROM venta_pago')) return [[]];
     return [{ affectedRows: 1 }];
   });
   db.getConnection = async () => connection;
@@ -110,7 +110,7 @@ test('cerrar turno deja abierto el día y no modifica ventas ni inventario', asy
     if (sql.includes('MAX(venta_id)')) return [[{ hasta_venta_id: 15 }]];
     if (sql.includes('information_schema')) return [[]];
     if (sql.includes('AS sale_count')) return [[{ sale_count: 1, total: 50, product_quantity: 2 }]];
-    if (sql.includes('SUM(pago.monto)')) return [[{ codigo: 'efectivo', nombre: 'Efectivo', amount: 50 }]];
+    if (sql.includes('FROM venta_pago')) return [[{ codigo: 'efectivo', nombre: 'Efectivo', amount: 50 }]];
     return [{ affectedRows: 1, insertId: 3 }];
   });
   db.getConnection = async () => connection;

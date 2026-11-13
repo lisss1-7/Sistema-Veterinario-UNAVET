@@ -2,15 +2,21 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { closeSalesShift, listSalesShifts } = require('../src/utils/salesShift');
 
-function fixture({ latest = null, max = 20, canceledColumn = true } = {}) {
+function fixture({ latest = null, max = 20, canceledColumn = true, sales = [
+  { venta_id: 11, sale_count: 1, total: '75.50', cash_fund_total: '0', product_quantity: '2' },
+  { venta_id: 12, sale_count: 1, total: '50', cash_fund_total: '0', product_quantity: '1' },
+], payments = [
+  { venta_id: 11, codigo: 'efectivo', nombre: 'Efectivo', amount: '75.50' },
+  { venta_id: 12, codigo: 'efectivo', nombre: 'Efectivo', amount: '50' },
+] } = {}) {
   const calls = [];
   return { calls, query: async (sql, values) => {
     calls.push({ sql, values });
     if (sql.includes('SELECT numero')) return [latest ? [latest] : []];
     if (sql.includes('MAX(venta_id)')) return [[{ hasta_venta_id: max }]];
     if (sql.includes('information_schema')) return [canceledColumn ? [{ exists: 1 }] : []];
-    if (sql.includes('AS sale_count')) return [[{ sale_count: '2', total: '125.50', product_quantity: '3' }]];
-    if (sql.includes('SUM(pago.monto)')) return [[{ codigo: 'efectivo', nombre: 'Efectivo', amount: '125.50' }]];
+    if (sql.includes('AS sale_count')) return [sales];
+    if (sql.includes('FROM venta_pago')) return [payments];
     if (sql.includes('INSERT INTO')) return [{ insertId: 8 }];
     throw Error('Unexpected query');
   } };
@@ -21,11 +27,30 @@ test('turno sucesivo incluye únicamente ventas posteriores al límite anterior'
   assert.equal(result.number, 5);
   assert.equal(result.summary.total, 125.5);
   assert.deepEqual(result.summary.payments, [{ code: 'efectivo', name: 'Efectivo', amount: 125.5 }]);
-  for (const query of db.calls.filter(call => /AS sale_count|SUM\(pago/.test(call.sql))) {
+  for (const query of db.calls.filter(call => /AS sale_count|FROM venta_pago/.test(call.sql))) {
     assert.deepEqual(query.values, ['2026-10-13', 10, '20']);
     assert.match(query.sql, /venta\.venta_id > \? AND venta\.venta_id <= \?/);
     assert.match(query.sql, /COALESCE\(venta\.anulada, 0\) = 0/);
   }
+});
+test('fondo y comprobantes mixtos se separan de ingresos y pagos del turno', async () => {
+  const db = fixture({ sales: [
+    { venta_id: 11, sale_count: 0, total: '100', cash_fund_total: '100', product_quantity: 0 },
+    { venta_id: 12, sale_count: 1, total: '90', cash_fund_total: '30', product_quantity: 2 },
+  ], payments: [
+    { venta_id: 11, codigo: 'efectivo', nombre: 'Efectivo', amount: '100' },
+    { venta_id: 12, codigo: 'efectivo', nombre: 'Efectivo', amount: '60' },
+    { venta_id: 12, codigo: 'tarjeta', nombre: 'Tarjeta', amount: '30' },
+  ] });
+  const { summary } = await closeSalesShift(db, { date: '2026-11-13', expectedNumber: 1 });
+  assert.deepEqual(summary, { saleCount: 1, total: 60, cashFundTotal: 130, receivedTotal: 190, productQuantity: 2, payments: [
+    { code: 'efectivo', name: 'Efectivo', amount: 40 },
+    { code: 'tarjeta', name: 'Tarjeta', amount: 20 },
+  ] });
+});
+test('un turno sin movimientos conserva sus totales en cero', async () => {
+  const { summary } = await closeSalesShift(fixture({ sales: [], payments: [], max: 0 }), { date: '2026-11-13', expectedNumber: 1 });
+  assert.deepEqual(summary, { saleCount: 0, total: 0, cashFundTotal: 0, receivedTotal: 0, productQuantity: 0, payments: [] });
 });
 test('rechaza un cierre repetido o desactualizado, incluso si el turno está vacío', async () => {
   const db = fixture({ latest: { numero: 2, hasta_venta_id: 20 }, max: 20 });

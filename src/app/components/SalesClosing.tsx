@@ -44,10 +44,13 @@ type Sale = {
     code: string;
     name: string;
     amount: number;
+    cashFundAmount?: number;
   }>;
   invoiceNit: string;
   invoiceName: string;
   total: number;
+  cashFundTotal: number;
+  hasSales: boolean;
   canceled: boolean;
   cancellationReason: string;
   items: Array<SaleItem & { id: string; subtotal: number }>;
@@ -63,6 +66,8 @@ type SalesShift = {
   summary: {
     saleCount: number;
     total: number;
+    cashFundTotal?: number;
+    receivedTotal?: number;
     productQuantity: number;
     payments: Array<{ code: string; name: string; amount: number }>;
   };
@@ -444,16 +449,11 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
 
   const currentShiftTotals = useMemo(() => {
     const active = sales.filter((sale) => Number(sale.id) > Number(afterSaleId) && !sale.canceled);
-    const payments = new Map<string, { code: string; name: string; amount: number }>();
-    for (const sale of active) for (const payment of sale.payments) {
-      const previous = payments.get(payment.code);
-      payments.set(payment.code, { code: payment.code, name: payment.name, amount: (previous?.amount || 0) + Number(payment.amount) });
-    }
+    const summary = calculateSalesTotals(active);
+    const names = new Map(active.flatMap((sale) => sale.payments.map((payment) => [payment.code, payment.name] as const)));
     return {
-      saleCount: active.length,
-      total: active.reduce((sum, sale) => sum + Number(sale.total), 0),
-      productQuantity: active.reduce((sum, sale) => sum + sale.items.reduce((quantity, item) => quantity + (item.type === 'Producto' ? Number(item.quantity) : 0), 0), 0),
-      payments: [...payments.values()],
+      ...summary,
+      payments: Object.entries(summary.byMethod).map(([code, amount]) => ({ code, name: names.get(code) || code, amount })),
     };
   }, [sales, afterSaleId]);
 
@@ -761,12 +761,14 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
 
       <div className="mb-4 grid grid-cols-1 gap-2 min-[400px]:grid-cols-2 lg:grid-cols-3 min-[400px]:[&>div:last-child]:col-span-2 lg:[&>div:last-child]:col-span-1">
         <SummaryCard label="Ventas registradas" value={String(totals.saleCount)} />
-        <SummaryCard label="Total del día" value={money(totals.total)} />
+        <SummaryCard label="Ingresos por ventas" value={money(totals.total)} />
         <SummaryCard
           label="Productos vendidos"
           value={String(totals.productQuantity)}
         />
       </div>
+
+      {totals.cashFundTotal > 0 && <p className="mb-4 text-sm text-muted-foreground">Fondo de caja: {money(totals.cashFundTotal)} · Total recibido: {money(totals.receivedTotal)}. El fondo no se contabiliza como ingreso por ventas.</p>}
 
       <section className="mb-4 min-w-0 rounded-2xl border border-border bg-card p-4 shadow-sm" aria-label="Cierres de turno">
         <div className="mb-3 flex items-start gap-3">
@@ -780,9 +782,10 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
         {!isDayClosed && shiftsKnown && !loading && !loadingShifts && <>
           <div className="grid gap-2 sm:grid-cols-3">
             <SummaryCard label="Ventas de este turno" value={String(currentShiftTotals.saleCount)} />
-            <SummaryCard label="Total de este turno" value={money(currentShiftTotals.total)} />
+            <SummaryCard label="Ventas de este turno (Q)" value={money(currentShiftTotals.total)} />
             <SummaryCard label="Productos de este turno" value={String(currentShiftTotals.productQuantity)} />
           </div>
+          {currentShiftTotals.cashFundTotal > 0 && <p className="mt-2 text-sm text-muted-foreground">Fondo de caja: {money(currentShiftTotals.cashFundTotal)} · Total recibido: {money(currentShiftTotals.receivedTotal)}</p>}
           <div className="mt-2 flex flex-wrap gap-2">
             {currentShiftTotals.payments.map((payment) => <span key={payment.code} className="rounded-lg bg-muted px-3 py-2 text-sm text-foreground">{payment.name}: {money(payment.amount)}</span>)}
           </div>
@@ -797,6 +800,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
             </div>
             <p className="mt-1 break-words text-xs text-muted-foreground">Cerrado por {shift.responsible} · {new Intl.DateTimeFormat('es-GT', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Guatemala' }).format(new Date(shift.closedAt))}</p>
             <p className="mt-2 text-sm text-foreground">{shift.summary.saleCount} ventas · {shift.summary.productQuantity} productos</p>
+            {!!shift.summary.cashFundTotal && <p className="mt-2 text-sm text-muted-foreground">Fondo de caja: {money(shift.summary.cashFundTotal)} · Total recibido: {money(shift.summary.receivedTotal ?? shift.summary.total + shift.summary.cashFundTotal)}</p>}
             <div className="mt-2 flex flex-wrap gap-2">{shift.summary.payments.map((payment) => <span key={payment.code} className="rounded-lg bg-card px-2 py-1 text-xs text-foreground">{payment.name}: {money(payment.amount)}</span>)}</div>
           </article>)}
         </div>
@@ -848,7 +852,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
           </p>
         )}
         <div className="rounded-xl border border-border bg-muted p-3 text-sm text-foreground">
-          <p className="font-bold">Total: {money(totals.total)}</p>
+          <p className="font-bold">Total ventas: {money(totals.total)}</p>
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
             {paymentOptions.map((payment) => (
               <span key={payment.id}>{payment.nombre}: {money(totals.byMethod[payment.codigo] || 0)}</span>
@@ -922,7 +926,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
                   value={totals.byMethod[payment.codigo] || 0}
                 />
               ))}
-              <td className="px-4 py-3" colSpan={3}>Total: {money(totals.total)}</td>
+              <td className="px-4 py-3" colSpan={3}>Total ventas: {money(totals.total)}</td>
             </tr>
           </tfoot>
         </table>
@@ -1101,7 +1105,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
         <div role="dialog" aria-modal="true" aria-labelledby="shift-success-title" className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 text-center shadow-2xl">
           <CheckCircle className="mx-auto mb-3 h-12 w-12 text-primary" />
           <h3 id="shift-success-title" className="text-xl font-semibold text-foreground">Turno {shiftSuccess.number} cerrado</h3>
-          <p className="my-3 text-muted-foreground">Total registrado: {money(shiftSuccess.total)}. El día sigue abierto para el siguiente turno.</p>
+          <p className="my-3 text-muted-foreground">Ingresos por ventas: {money(shiftSuccess.total)}. El día sigue abierto para el siguiente turno.</p>
           <button type="button" onClick={() => setShiftSuccess(null)} className="min-h-11 w-full rounded-xl bg-primary text-primary-foreground">Continuar</button>
         </div>
       </div>}

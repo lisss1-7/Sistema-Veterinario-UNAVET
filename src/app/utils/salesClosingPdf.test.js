@@ -66,6 +66,32 @@ test('día abierto sin ventas genera un reporte válido de cero', async t => {
   assert.match(text, /Abierta - resumen/); assert.match(text, /Total vigente: Q 0\.00/); assert.match(text, /No hay ventas registradas/);
 });
 
+test('PDF separa fondo de ingresos y pagos incluso con comprobantes mixtos', async t => {
+  const fund = { ...sale, id: 'fund', total: 100, cashFundTotal: 100, hasSales: false,
+    payments: [{ code: 'cash', name: 'Efectivo', amount: 100, cashFundAmount: 100 }],
+    items: [{ type: 'Servicio', description: 'Caja', quantity: 1, unitPrice: 100, subtotal: 100 }] };
+  const mixed = { ...sale, id: 'mixed', total: 90, cashFundTotal: 30, hasSales: true,
+    payments: [{ code: 'cash', name: 'Efectivo', amount: 60, cashFundAmount: 20 }, { code: 'retired', name: 'Forma histórica', amount: 30, cashFundAmount: 10 }],
+    items: [{ ...sale.items[0], unitPrice: 30, subtotal: 60 }, { type: 'Servicio', description: 'Caja', quantity: 1, unitPrice: 30, subtotal: 30 }] };
+  const { text } = await inspectPdf(createPdf({ ...report, sales: [fund, mixed, { ...fund, id: 'canceled-fund', canceled: true }], shifts: [{ ...report.shifts[0], summary: { saleCount: 1, total: 60, cashFundTotal: 130, receivedTotal: 190, productQuantity: 2, payments: [{ name: 'Efectivo', amount: 40 }, { name: 'Forma histórica', amount: 20 }] } }] }, logo), 'fondos', t);
+  assert.match(text, /Ventas vigentes: 1 \| Anuladas: 1/);
+  assert.match(text, /Total vigente: Q 60\.00/);
+  assert.match(text, /Fondo de caja: Q 130\.00 \| Total recibido: Q 190\.00/);
+  assert.match(text, /Efectivo: Q 40\.00/);
+  assert.match(text, /Forma histórica: Q 20\.00/);
+  assert.match(text, /Importe registrado: Q 100\.00/);
+  const individual = await inspectPdf(createPdf({ ...report, sales: [fund], shifts: [], mode: 'sale' }, logo), 'fondo-individual', t);
+  assert.match(individual.text, /Ventas vigentes: 0/);
+  assert.match(individual.text, /Total vigente: Q 0\.00/);
+  assert.match(individual.text, /Fondo de caja: Q 100\.00 \| Total recibido: Q 100\.00/);
+  assert.match(individual.text, /Pago registrado: Efectivo - Q 100\.00/);
+});
+
+test('ficha de comprobante mantiene el importe y distingue el fondo del ingreso', () => {
+  const html = renderToStaticMarkup(createElement(Details, { sale: { ...sale, total: 150, cashFundTotal: 100 }, onClose() {}, onPdf() {}, pdfBusy: false }));
+  for (const value of ['Importe registrado', '150.00', 'Fondo de caja:', '100.00', 'Ingreso por ventas:', '50.00']) assert.ok(html.includes(value));
+});
+
 test('venta individual con descripción extensa y muchos conceptos conserva todas las páginas', async t => {
   const longSale = { ...sale, total: 5600, payments: [{ code: 'cash', name: 'Efectivo', amount: 5600 }], client: 'Nombre extenso '.repeat(35), items: [
     { ...sale.items[0], description: 'Descripción extensa del producto con presentación y recomendaciones. '.repeat(190) + ' FIN DESCRIPCIÓN' },

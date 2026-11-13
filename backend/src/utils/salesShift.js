@@ -1,3 +1,5 @@
+const { cashFundCondition, roundMoney, splitCashFundPayments } = require('./salesAccounting');
+
 const mapShift = (row) => ({
   id: String(row.turno_id),
   number: Number(row.numero),
@@ -46,23 +48,45 @@ const closeSalesShift = async (connection, { date, userId, expectedNumber, label
   const activeCondition = columns.length ? 'AND COALESCE(venta.anulada, 0) = 0' : '';
   const values = [date, afterSaleId, throughSaleId];
   const [totals] = await connection.query(`
-    SELECT COUNT(DISTINCT venta.venta_id) AS sale_count,
+    SELECT venta.venta_id,
+      MAX(CASE WHEN detalle.detalle_id IS NOT NULL AND NOT ${cashFundCondition('detalle')} THEN 1 ELSE 0 END) AS sale_count,
       COALESCE(SUM(detalle.subtotal), 0) AS total,
+      COALESCE(SUM(CASE WHEN ${cashFundCondition('detalle')} THEN detalle.subtotal ELSE 0 END), 0) AS cash_fund_total,
       COALESCE(SUM(CASE WHEN detalle.tipo = 'Producto' THEN detalle.cantidad ELSE 0 END), 0) AS product_quantity
     FROM cierre_venta venta
     LEFT JOIN cierre_venta_detalle detalle ON detalle.venta_id = venta.venta_id
-    WHERE venta.fecha = ? AND venta.venta_id > ? AND venta.venta_id <= ? ${activeCondition}`, values);
+    WHERE venta.fecha = ? AND venta.venta_id > ? AND venta.venta_id <= ? ${activeCondition}
+    GROUP BY venta.venta_id ORDER BY venta.venta_id`, values);
   const [payments] = await connection.query(`
-    SELECT forma.codigo, forma.nombre, SUM(pago.monto) AS amount
+    SELECT pago.venta_id, forma.codigo, forma.nombre, pago.monto AS amount
     FROM venta_pago pago
     INNER JOIN cierre_venta venta ON venta.venta_id = pago.venta_id
     INNER JOIN forma_pago forma ON forma.forma_pago_id = pago.forma_pago_id
     WHERE venta.fecha = ? AND venta.venta_id > ? AND venta.venta_id <= ? ${activeCondition}
-    GROUP BY forma.forma_pago_id, forma.codigo, forma.nombre ORDER BY forma.orden, forma.nombre`, values);
+    ORDER BY forma.orden, forma.nombre, pago.venta_id`, values);
+  const paymentsBySale = new Map();
+  for (const payment of payments) {
+    const id = String(payment.venta_id);
+    if (!paymentsBySale.has(id)) paymentsBySale.set(id, []);
+    paymentsBySale.get(id).push({ code: payment.codigo, name: payment.nombre, amount: Number(payment.amount) });
+  }
+  const byMethod = new Map();
+  for (const sale of totals) {
+    const split = splitCashFundPayments(paymentsBySale.get(String(sale.venta_id)) || [], Number(sale.total), Number(sale.cash_fund_total || 0));
+    for (const payment of split) {
+      const amount = roundMoney(payment.amount - payment.cashFundAmount);
+      if (amount === 0 && payment.cashFundAmount > 0) continue;
+      const previous = byMethod.get(payment.code);
+      byMethod.set(payment.code, { code: payment.code, name: payment.name, amount: roundMoney((previous?.amount || 0) + amount) });
+    }
+  }
   const summary = {
-    saleCount: Number(totals[0].sale_count), total: Number(totals[0].total),
-    productQuantity: Number(totals[0].product_quantity),
-    payments: payments.map(row => ({ code: row.codigo, name: row.nombre, amount: Number(row.amount) })),
+    saleCount: totals.reduce((sum, row) => sum + Number(row.sale_count), 0),
+    total: roundMoney(totals.reduce((sum, row) => sum + Number(row.total) - Number(row.cash_fund_total || 0), 0)),
+    cashFundTotal: roundMoney(totals.reduce((sum, row) => sum + Number(row.cash_fund_total || 0), 0)),
+    receivedTotal: roundMoney(totals.reduce((sum, row) => sum + Number(row.total), 0)),
+    productQuantity: totals.reduce((sum, row) => sum + Number(row.product_quantity), 0),
+    payments: [...new Set(payments.map(row => row.codigo))].filter(code => byMethod.has(code)).map(code => byMethod.get(code)),
   };
   const [result] = await connection.query(`
     INSERT INTO cierre_venta_turno

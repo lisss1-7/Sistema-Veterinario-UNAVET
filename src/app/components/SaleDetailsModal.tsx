@@ -35,6 +35,7 @@ export default function SaleDetailsModal({ sale, onClose, onPdf, pdfBusy }: {
     <h3 className="mb-2 mt-5 font-semibold text-foreground">Formas de pago</h3>
     <div className="space-y-2">{sale.payments.map((payment, index) => <div key={`${payment.code}-${index}`} className="flex flex-wrap justify-between gap-2 rounded-xl bg-muted p-3 text-sm text-foreground"><span className="min-w-0 flex-1 break-words">{payment.name}</span><span className="shrink-0 font-semibold">{inventoryMoney(payment.amount)}</span></div>)}</div>
     <p className="mt-4 flex flex-wrap justify-between gap-2 text-lg font-semibold text-foreground"><span>Importe registrado</span><span>{inventoryMoney(sale.total)}</span></p>
+    {!!sale.cashFundTotal && <p className="mt-2 text-sm text-muted-foreground">Fondo de caja: {inventoryMoney(sale.cashFundTotal)} · Ingreso por ventas: {inventoryMoney(sale.total - sale.cashFundTotal)}. El fondo no se contabiliza como ingreso por ventas.</p>}
     {sale.canceled && <p className="mt-1 text-sm text-muted-foreground">Esta venta está excluida de los totales vigentes del día.</p>}
     <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
       <button type="button" disabled={pdfBusy} onClick={onPdf} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50"><FileText className="h-4 w-4" />{pdfBusy ? 'Generando PDF…' : 'Vista previa PDF'}</button>
