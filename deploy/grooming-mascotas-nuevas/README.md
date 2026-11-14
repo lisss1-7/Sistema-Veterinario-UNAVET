@@ -1,6 +1,6 @@
 # Grooming: mascotas nuevas en una misma ruta
 
-Implementado y probado localmente en `6ae4a32`. La entrega actual coordina su publicación con la búsqueda de servicios de Recetas descrita en `../recetas-busqueda/README.md`; el acta de esa ventana registra el estado efectivo en AWS.
+Implementado y probado localmente en `6ae4a32`. **Publicado en AWS junto con la búsqueda de servicios de Recetas el 14 de noviembre de 2026.** Ver `../actualizacion-controlada/ACTA-EXTENSIONES-2026-11-14.md` para el estado verificado y las pruebas finales.
 
 ## Uso
 
