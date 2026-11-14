@@ -93,10 +93,18 @@ const closeSalesShift = async (connection, { date, userId, expectedNumber, label
       paymentsBySale.get(id).push({ code: payment.codigo, name: payment.nombre, amount: Number(payment.amount) });
     }
     const byMethod = new Map();
+    const paymentBreakdown = new Map();
     for (const sale of totals) {
       const split = splitCashFundPayments(paymentsBySale.get(String(sale.venta_id)) || [], Number(sale.total), Number(sale.cash_fund_total || 0));
       for (const payment of split) {
         const amount = roundMoney(payment.amount - payment.cashFundAmount);
+        const breakdown = paymentBreakdown.get(payment.code) || {
+          code: payment.code, name: payment.name, salesAmount: 0, cashFundAmount: 0, receivedAmount: 0,
+        };
+        breakdown.salesAmount = roundMoney(breakdown.salesAmount + amount);
+        breakdown.cashFundAmount = roundMoney(breakdown.cashFundAmount + payment.cashFundAmount);
+        breakdown.receivedAmount = roundMoney(breakdown.receivedAmount + payment.amount);
+        paymentBreakdown.set(payment.code, breakdown);
         if (amount === 0 && payment.cashFundAmount > 0) continue;
         const previous = byMethod.get(payment.code);
         byMethod.set(payment.code, { code: payment.code, name: payment.name, amount: roundMoney((previous?.amount || 0) + amount) });
@@ -104,19 +112,23 @@ const closeSalesShift = async (connection, { date, userId, expectedNumber, label
     }
     summary = {
       accountingVersion: 2, accountingStartAfterSaleId: cutoff,
+      // Se escribe solo en cierres nuevos; ningún snapshot anterior se adapta.
+      shiftDocumentVersion: 1,
+      shiftPeriod: number === 1 ? 'diurno' : number === 2 ? 'nocturno' : null,
       saleCount: totals.reduce((sum, row) => sum + Number(row.sale_count), 0),
       total: roundMoney(totals.reduce((sum, row) => sum + Number(row.total) - Number(row.cash_fund_total || 0), 0)),
       cashFundTotal: roundMoney(totals.reduce((sum, row) => sum + Number(row.cash_fund_total || 0), 0)),
       receivedTotal: roundMoney(totals.reduce((sum, row) => sum + Number(row.total), 0)),
       productQuantity: totals.reduce((sum, row) => sum + Number(row.product_quantity), 0),
       payments: [...new Set(payments.map(row => row.codigo))].filter(code => byMethod.has(code)).map(code => byMethod.get(code)),
+      paymentBreakdown: [...new Set(payments.map(row => row.codigo))].map(code => paymentBreakdown.get(code)),
     };
   }
   const [result] = await connection.query(`
     INSERT INTO cierre_venta_turno
       (fecha, numero, nombre, desde_venta_id, hasta_venta_id, finalizado_por, resumen)
     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  [date, number, label || null, afterSaleId, throughSaleId, userId || null, JSON.stringify(summary)]);
+  [date, number, label || (summary.shiftPeriod === 'diurno' ? 'Diurno' : summary.shiftPeriod === 'nocturno' ? 'Nocturno' : null), afterSaleId, throughSaleId, userId || null, JSON.stringify(summary)]);
   return { id: String(result.insertId), number, summary };
 };
 

@@ -45,7 +45,7 @@ test('MySQL local: fondo separado en registros, turnos y cierre diario', {
     const controller = require('../src/controllers/cierreVentasController');
     const [[cashService]] = await connection.query('SELECT servicio_id FROM servicio WHERE nombre = ? AND activo = 1', ['Caja']);
     const [[clinicService]] = await connection.query('SELECT servicio_id FROM servicio WHERE nombre = ? AND activo = 1', ['Consulta']);
-    const [methods] = await connection.query('SELECT forma_pago_id, codigo FROM forma_pago WHERE activo = 1 ORDER BY orden, forma_pago_id');
+    const [methods] = await connection.query('SELECT forma_pago_id, codigo, nombre FROM forma_pago WHERE activo = 1 ORDER BY orden, forma_pago_id');
     const cash = methods.find(method => method.codigo === 'efectivo');
     const other = methods.find(method => method.codigo !== 'efectivo');
     const [[user]] = await connection.query('SELECT usuario_id FROM usuario LIMIT 1');
@@ -120,7 +120,11 @@ test('MySQL local: fondo separado en registros, turnos y cierre diario', {
 
     const first = await call(controller.finalizarTurno, { body: { date, number: 2, label: 'Nuevo con pendientes anteriores' } }, 201);
     const expected = { accountingVersion: 2, accountingStartAfterSaleId: cutoff, saleCount: 4, total: 215,
-      cashFundTotal: 120, receivedTotal: 335, productQuantity: 2, payments: [] };
+      cashFundTotal: 120, receivedTotal: 335, productQuantity: 2, payments: [], shiftDocumentVersion: 1, shiftPeriod: 'nocturno',
+      paymentBreakdown: [
+        { code: cash.codigo, name: 'Efectivo', salesAmount: 197, cashFundAmount: 108, receivedAmount: 305 },
+        { code: other.codigo, name: other.nombre, salesAmount: 18, cashFundAmount: 12, receivedAmount: 30 },
+      ].sort((a, b) => methods.findIndex(method => method.codigo === a.code) - methods.findIndex(method => method.codigo === b.code)) };
     assert.deepEqual({ ...first.shift.summary, payments: [] }, expected);
     assert.equal(first.shift.summary.payments.find(payment => payment.code === cash.codigo).amount, 197);
     assert.equal(first.shift.summary.payments.find(payment => payment.code === other.codigo).amount, 18);
@@ -129,7 +133,8 @@ test('MySQL local: fondo separado en registros, turnos y cierre diario', {
     await create([fundItem(60)]);
     const second = await call(controller.finalizarTurno, { body: { date, number: 3 } }, 201);
     assert.deepEqual(second.shift.summary, { accountingVersion: 2, accountingStartAfterSaleId: cutoff,
-      saleCount: 0, total: 0, cashFundTotal: 60, receivedTotal: 60, productQuantity: 0, payments: [] });
+      saleCount: 0, total: 0, cashFundTotal: 60, receivedTotal: 60, productQuantity: 0, payments: [], shiftDocumentVersion: 1, shiftPeriod: null,
+      paymentBreakdown: [{ code: cash.codigo, name: 'Efectivo', salesAmount: 0, cashFundAmount: 60, receivedAmount: 60 }] });
     await create([clinicItem(0)]);
     await call(controller.finalizarDia, { body: { date } });
     const { shifts } = await call(controller.listarTurnos);
@@ -143,6 +148,39 @@ test('MySQL local: fondo separado en registros, turnos y cierre diario', {
     await call(controller.finalizarDia, { body: { date: historicalDate } }); // Idempotencia del cierre antiguo.
     assert.equal(await historicalRows(), storedBefore, '42 snapshots y todos los comprobantes antiguos deben permanecer identicos');
     assert.deepEqual(await call(controller.listarVentas, { query: { fecha: historicalDate } }), oldApiBefore);
+
+    // Jornada nueva: dos cierres, ventas posteriores al diurno y ningún duplicado.
+    const namedDate = '2000-03-01';
+    await create([fundItem(200)], cash, namedDate);
+    const daytimeSale = await create([clinicItem(120)], cash, namedDate);
+    const daytime = await call(controller.finalizarTurno, { body: { date: namedDate, number: 1 } }, 201);
+    assert.equal(daytime.shift.summary.shiftPeriod, 'diurno');
+    assert.equal(daytime.shift.summary.total, 120);
+    assert.equal(daytime.shift.summary.cashFundTotal, 200);
+    assert.equal(daytime.shift.summary.receivedTotal, 320);
+    assert.equal(daytime.shift.summary.saleCount, 1);
+    assert.equal((await call(controller.obtenerEstadoDia, { query: { fecha: namedDate } })).isClosed, false);
+    await call(controller.finalizarTurno, { body: { date: namedDate, number: 1 } }, 409);
+    await create([fundItem(50)], cash, namedDate);
+    await create([clinicItem(75)], other, namedDate);
+    const nighttime = await call(controller.finalizarTurno, { body: { date: namedDate, number: 2 } }, 201);
+    assert.equal(nighttime.shift.summary.shiftPeriod, 'nocturno');
+    assert.equal(nighttime.shift.summary.total, 75);
+    assert.equal(nighttime.shift.summary.cashFundTotal, 50);
+    assert.equal(nighttime.shift.summary.receivedTotal, 125);
+    assert.equal(nighttime.shift.summary.saleCount, 1);
+    await call(controller.finalizarTurno, { body: { date: namedDate, number: 2 } }, 409);
+    const named = (await call(controller.listarTurnos, { query: { fecha: namedDate } })).shifts;
+    assert.deepEqual(named.map(shift => shift.label), ['Diurno', 'Nocturno']);
+    assert.equal(named[1].afterSaleId, named[0].throughSaleId);
+    assert.deepEqual(named[0].summary, daytime.shift.summary);
+    assert.deepEqual(named[1].summary, nighttime.shift.summary);
+    // Se conserva DELETE en días abiertos; los snapshots no se reconstruyen.
+    await call(controller.eliminarVenta, { params: { id: daytimeSale.id } });
+    await call(controller.finalizarDia, { body: { date: namedDate } });
+    assert.deepEqual((await call(controller.listarTurnos, { query: { fecha: namedDate } })).shifts, named);
+    assert.equal((await call(controller.obtenerEstadoDia, { query: { fecha: namedDate } })).isClosed, true);
+    assert.equal(await historicalRows(), storedBefore);
   } finally {
     delete process.env.CASH_FUND_ACCOUNTING_START_AFTER_SALE_ID;
     pool.query = originalQuery;

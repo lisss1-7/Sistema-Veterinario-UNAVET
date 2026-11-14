@@ -15,7 +15,7 @@ test('el parche entregado coincide con las fuentes verificadas y solo contiene c
     assert.equal(match[1], match[2]); return match[1];
   });
   assert.deepEqual(files.sort(), Object.entries(manifest.files).filter(([, value]) => value.before !== value.after).map(([name]) => name).sort());
-  assert.equal(files.length, 7);
+  assert.equal(files.length, 8);
   const additions = patch.split('\n').filter(line => line.startsWith('+') && !line.startsWith('+++')).join('\n');
   assert.doesNotMatch(additions, /\b(?:ALTER TABLE|CREATE TABLE|DROP TABLE|UPDATE cierre_venta_turno|DELETE FROM cierre_venta_turno)\b/i);
 });

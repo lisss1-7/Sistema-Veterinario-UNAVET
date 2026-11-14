@@ -48,11 +48,14 @@ test('fondo y comprobantes mixtos se separan de ingresos y pagos del turno', asy
   assert.deepEqual(summary, { accountingVersion: 2, accountingStartAfterSaleId: '0', saleCount: 1, total: 60, cashFundTotal: 130, receivedTotal: 190, productQuantity: 2, payments: [
     { code: 'efectivo', name: 'Efectivo', amount: 40 },
     { code: 'tarjeta', name: 'Tarjeta', amount: 20 },
+  ], shiftDocumentVersion: 1, shiftPeriod: 'diurno', paymentBreakdown: [
+    { code: 'efectivo', name: 'Efectivo', salesAmount: 40, cashFundAmount: 120, receivedAmount: 160 },
+    { code: 'tarjeta', name: 'Tarjeta', salesAmount: 20, cashFundAmount: 10, receivedAmount: 30 },
   ] });
 });
 test('un turno sin movimientos conserva sus totales en cero', async () => {
   const { summary } = await closeSalesShift(fixture({ sales: [], payments: [], max: 0 }), { date: '2026-11-13', expectedNumber: 1 });
-  assert.deepEqual(summary, { accountingVersion: 2, accountingStartAfterSaleId: '0', saleCount: 0, total: 0, cashFundTotal: 0, receivedTotal: 0, productQuantity: 0, payments: [] });
+  assert.deepEqual(summary, { accountingVersion: 2, accountingStartAfterSaleId: '0', shiftDocumentVersion: 1, shiftPeriod: 'diurno', paymentBreakdown: [], saleCount: 0, total: 0, cashFundTotal: 0, receivedTotal: 0, productQuantity: 0, payments: [] });
 });
 test('rechaza un cierre repetido o desactualizado, incluso si el turno está vacío', async () => {
   const db = fixture({ latest: { numero: 2, hasta_venta_id: 20 }, max: 20 });
@@ -92,7 +95,33 @@ test('un cierre nuevo conserva importes antiguos pendientes del mismo turno', as
   ] }), { date: '2026-11-13' });
   assert.deepEqual(summary, { accountingVersion: 2, accountingStartAfterSaleId: '11', saleCount: 1,
     total: 100, cashFundTotal: 50, receivedTotal: 150, productQuantity: 0,
-    payments: [{ code: 'efectivo', name: 'Efectivo', amount: 100 }] });
+    payments: [{ code: 'efectivo', name: 'Efectivo', amount: 100 }], shiftDocumentVersion: 1, shiftPeriod: 'diurno',
+    paymentBreakdown: [{ code: 'efectivo', name: 'Efectivo', salesAmount: 100, cashFundAmount: 50, receivedAmount: 150 }] });
+});
+
+test('el primer cierre se identifica Diurno y el segundo Nocturno sin reutilizar su rango', async () => {
+  const day = fixture({ max: 12 });
+  const first = await closeSalesShift(day, { date: '2026-11-13', expectedNumber: 1 });
+  assert.equal(first.summary.shiftPeriod, 'diurno');
+  assert.equal(day.calls.find(call => call.sql.includes('INSERT INTO')).values[2], 'Diurno');
+  const night = fixture({ latest: { numero: 1, hasta_venta_id: 12 }, max: 14, sales: [
+    { venta_id: 13, sale_count: 0, total: 50, cash_fund_total: 50, product_quantity: 0 },
+    { venta_id: 14, sale_count: 1, total: 80, cash_fund_total: 0, product_quantity: 0 },
+  ], payments: [
+    { venta_id: 13, codigo: 'efectivo', nombre: 'Efectivo', amount: 50 },
+    { venta_id: 14, codigo: 'tarjeta', nombre: 'Tarjeta', amount: 80 },
+  ] });
+  const second = await closeSalesShift(night, { date: '2026-11-13', expectedNumber: 2 });
+  assert.equal(second.summary.shiftPeriod, 'nocturno');
+  assert.equal(second.summary.total, 80);
+  assert.equal(second.summary.cashFundTotal, 50);
+  const insert = night.calls.find(call => call.sql.includes('INSERT INTO'));
+  assert.equal(insert.values[2], 'Nocturno');
+  assert.deepEqual(insert.values.slice(3, 5), [12, '14']);
+  assert.deepEqual(second.summary.paymentBreakdown, [
+    { code: 'efectivo', name: 'Efectivo', salesAmount: 0, cashFundAmount: 50, receivedAmount: 50 },
+    { code: 'tarjeta', name: 'Tarjeta', salesAmount: 80, cashFundAmount: 0, receivedAmount: 80 },
+  ]);
 });
 
 test('sin activacion el cierre nuevo mantiene exactamente el formato y calculo anterior', async t => {

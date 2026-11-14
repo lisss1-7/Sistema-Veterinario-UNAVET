@@ -92,7 +92,7 @@ diff --git a/backend/src/utils/salesShift.js b/backend/src/utils/salesShift.js
  const mapShift = (row) => ({
    id: String(row.turno_id),
    number: Number(row.numero),
-@@ -39,31 +41,77 @@
+@@ -39,36 +41,94 @@
    const throughSaleId = String(Math.max(Number(bounds[0]?.hasta_venta_id || 0), Number(afterSaleId)));
    if (onlyIfPending && latest && String(throughSaleId) === String(afterSaleId)) return null;
 
@@ -172,10 +172,18 @@ diff --git a/backend/src/utils/salesShift.js b/backend/src/utils/salesShift.js
 +      paymentsBySale.get(id).push({ code: payment.codigo, name: payment.nombre, amount: Number(payment.amount) });
 +    }
 +    const byMethod = new Map();
++    const paymentBreakdown = new Map();
 +    for (const sale of totals) {
 +      const split = splitCashFundPayments(paymentsBySale.get(String(sale.venta_id)) || [], Number(sale.total), Number(sale.cash_fund_total || 0));
 +      for (const payment of split) {
 +        const amount = roundMoney(payment.amount - payment.cashFundAmount);
++        const breakdown = paymentBreakdown.get(payment.code) || {
++          code: payment.code, name: payment.name, salesAmount: 0, cashFundAmount: 0, receivedAmount: 0,
++        };
++        breakdown.salesAmount = roundMoney(breakdown.salesAmount + amount);
++        breakdown.cashFundAmount = roundMoney(breakdown.cashFundAmount + payment.cashFundAmount);
++        breakdown.receivedAmount = roundMoney(breakdown.receivedAmount + payment.amount);
++        paymentBreakdown.set(payment.code, breakdown);
 +        if (amount === 0 && payment.cashFundAmount > 0) continue;
 +        const previous = byMethod.get(payment.code);
 +        byMethod.set(payment.code, { code: payment.code, name: payment.name, amount: roundMoney((previous?.amount || 0) + amount) });
@@ -183,21 +191,31 @@ diff --git a/backend/src/utils/salesShift.js b/backend/src/utils/salesShift.js
 +    }
 +    summary = {
 +      accountingVersion: 2, accountingStartAfterSaleId: cutoff,
++      // Se escribe solo en cierres nuevos; ningún snapshot anterior se adapta.
++      shiftDocumentVersion: 1,
++      shiftPeriod: number === 1 ? 'diurno' : number === 2 ? 'nocturno' : null,
 +      saleCount: totals.reduce((sum, row) => sum + Number(row.sale_count), 0),
 +      total: roundMoney(totals.reduce((sum, row) => sum + Number(row.total) - Number(row.cash_fund_total || 0), 0)),
 +      cashFundTotal: roundMoney(totals.reduce((sum, row) => sum + Number(row.cash_fund_total || 0), 0)),
 +      receivedTotal: roundMoney(totals.reduce((sum, row) => sum + Number(row.total), 0)),
 +      productQuantity: totals.reduce((sum, row) => sum + Number(row.product_quantity), 0),
 +      payments: [...new Set(payments.map(row => row.codigo))].filter(code => byMethod.has(code)).map(code => byMethod.get(code)),
++      paymentBreakdown: [...new Set(payments.map(row => row.codigo))].map(code => paymentBreakdown.get(code)),
 +    };
 +  }
    const [result] = await connection.query(`
      INSERT INTO cierre_venta_turno
        (fecha, numero, nombre, desde_venta_id, hasta_venta_id, finalizado_por, resumen)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+-  [date, number, label || null, afterSaleId, throughSaleId, userId || null, JSON.stringify(summary)]);
++  [date, number, label || (summary.shiftPeriod === 'diurno' ? 'Diurno' : summary.shiftPeriod === 'nocturno' ? 'Nocturno' : null), afterSaleId, throughSaleId, userId || null, JSON.stringify(summary)]);
+   return { id: String(result.insertId), number, summary };
+ };
+
 diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosing.tsx
 --- a/src/app/components/SalesClosing.tsx
 +++ b/src/app/components/SalesClosing.tsx
-@@ -19,6 +19,7 @@
+@@ -19,10 +19,12 @@
  import { CreateButton } from './ModuleHeader';
  import { API_URL } from '../config/api';
  import { getAuthHeaders } from '../utils/apiClient';
@@ -205,7 +223,12 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
  import type { ModulePermissions } from '../hooks/useModulePermissions';
  import SaleDetailsModal from './SaleDetailsModal';
  import PdfPreviewModal from './PdfPreviewModal';
-@@ -43,10 +44,14 @@
+ import { createSalesClosingPdf } from '../utils/salesClosingPdf';
++import { createSalesShiftPdf, salesShiftTitle } from '../utils/salesShiftPdf';
+ import { getUnavetLogoBase64 } from '../utils/pdfBranding';
+
+ type SaleItem = {
+@@ -43,10 +45,14 @@
      code: string;
      name: string;
      amount: number;
@@ -220,19 +243,59 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
    canceled?: boolean;
    items: Array<SaleItem & { id: string; subtotal: number }>;
  };
-@@ -61,6 +66,9 @@
+@@ -55,14 +61,21 @@
+   id: string;
+   number: number;
+   label: string;
++  afterSaleId: string;
+   throughSaleId: string;
+   closedAt: string;
+   responsible: string;
    summary: {
      saleCount: number;
      total: number;
 +    accountingVersion?: number;
++    shiftDocumentVersion?: number;
++    shiftPeriod?: 'diurno' | 'nocturno' | null;
 +    cashFundTotal?: number;
 +    receivedTotal?: number;
      productQuantity: number;
      payments: Array<{ code: string; name: string; amount: number }>;
++    paymentBreakdown?: Array<{ code: string; name: string; salesAmount: number; cashFundAmount: number; receivedAmount: number }>;
    };
-@@ -436,35 +444,15 @@
+ };
+
+@@ -238,7 +251,7 @@
+   const [showShiftConfirm, setShowShiftConfirm] = useState(false);
+   const [shiftLabel, setShiftLabel] = useState('');
+   const [closingShift, setClosingShift] = useState(false);
+-  const [shiftSuccess, setShiftSuccess] = useState<{ number: number; total: number } | null>(null);
++  const [shiftSuccess, setShiftSuccess] = useState<{ number: number; name: string; total: number } | null>(null);
+   const [finalizingDay, setFinalizingDay] = useState(false);
+   const [sales, setSales] = useState<Sale[]>([]);
+   const [salesKnown, setSalesKnown] = useState(false);
+@@ -435,36 +448,35 @@
+     link.href = pdfPreview.url; link.download = pdfPreview.filename;
      document.body.appendChild(link); link.click(); link.remove();
    };
++  const previewShiftPdf = async (shift: SalesShift) => {
++    const generation = ++pdfGeneration.current;
++    setPdfBusy(true);
++    try {
++      const response = await fetch(`${API_URL}/cierre-ventas/turnos?fecha=${encodeURIComponent(date)}`, { headers: getAuthHeaders(), cache: 'no-store' });
++      const data = await response.json();
++      if (!response.ok) throw new Error(data.message || 'No se pudo consultar el cierre guardado.');
++      if (!Array.isArray(data.shifts)) throw new Error('No se recibió un cierre de turno válido.');
++      const saved: SalesShift | undefined = data.shifts.find((item: SalesShift) => item.id === shift.id);
++      if (!saved) throw new Error('El cierre de turno ya no está disponible.');
++      const logo = await getUnavetLogoBase64();
++      const doc = createSalesShiftPdf({ date, shift: saved }, logo);
++      if (generation !== pdfGeneration.current) return;
++      setPdfPreview({ url: URL.createObjectURL(doc.output('blob')), filename: `Cierre-turno-${saved.number}-${date}.pdf`, title: `Cierre de caja · ${salesShiftTitle(saved)}` });
++    } catch (error) {
++      if (generation === pdfGeneration.current) setNotice({ title: 'No se pudo generar el PDF del turno', message: error instanceof Error ? error.message : 'Intente nuevamente.', type: 'error' });
++    } finally { if (generation === pdfGeneration.current) setPdfBusy(false); }
++  };
    const documentUnavailable = loading || loadingDayStatus || loadingShifts || !salesKnown || !dayStatusKnown || !shiftsKnown || closingShift || finalizingDay;
 -  const totals = useMemo(
 -    () =>
@@ -251,6 +314,7 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
 -  );
 +  const totals = useMemo(() => calculateSalesTotals(sales), [sales]);
 +  const hasNewAccounting = sales.some(sale => sale.accountingVersion === 2) || shifts.some(shift => shift.summary.accountingVersion === 2);
++  const currentShiftName = hasNewAccounting && currentShiftNumber <= 2 ? (currentShiftNumber === 1 ? 'Diurno' : 'Nocturno') : String(currentShiftNumber);
 
    const currentShiftTotals = useMemo(() => {
      const active = sales.filter((sale) => Number(sale.id) > Number(afterSaleId) && !sale.canceled);
@@ -272,7 +336,16 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
    }, [sales, afterSaleId]);
 
    const saleTotal = items.reduce(
-@@ -769,8 +757,8 @@
+@@ -694,7 +706,7 @@
+       setShowShiftConfirm(false);
+       setShiftLabel('');
+       await Promise.all([loadSales(), loadDayStatus(), loadShifts()]);
+-      setShiftSuccess({ number: data.shift.number, total: data.shift.summary.total });
++      setShiftSuccess({ number: data.shift.number, name: currentShiftName, total: data.shift.summary.total });
+     } catch (error) {
+       setShowShiftConfirm(false);
+       await Promise.all([loadDayStatus(), loadShifts()]);
+@@ -769,8 +781,8 @@
        )}
 
        <div className="mb-4 grid grid-cols-1 gap-2 min-[400px]:grid-cols-2 lg:grid-cols-3 min-[400px]:[&>div:last-child]:col-span-2 lg:[&>div:last-child]:col-span-1">
@@ -283,7 +356,7 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
          <SummaryCard
            label="Productos vendidos"
            value={String(
-@@ -781,6 +769,8 @@
+@@ -781,11 +793,13 @@
          />
        </div>
 
@@ -292,7 +365,13 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
        <section className="mb-4 min-w-0 rounded-2xl border border-border bg-card p-4 shadow-sm" aria-label="Cierres de turno">
          <div className="mb-3 flex items-start gap-3">
            <div className="rounded-xl bg-primary/15 p-2 text-primary"><Clock3 className="h-5 w-5" /></div>
-@@ -793,7 +783,11 @@
+           <div className="min-w-0">
+-            <h3 className="font-semibold text-foreground">{isDayClosed ? 'Cierres de turno del día' : `Turno ${currentShiftNumber} en curso`}</h3>
++            <h3 className="font-semibold text-foreground">{isDayClosed ? 'Cierres de turno del día' : `Turno ${currentShiftName} en curso`}</h3>
+             <p className="text-sm text-muted-foreground">Cerrar turno permite continuar vendiendo en el siguiente. Finalizar día cierra toda la jornada.</p>
+           </div>
+         </div>
+@@ -793,7 +807,11 @@
          {!isDayClosed && shiftsKnown && !loading && !loadingShifts && <>
            <div className="grid gap-2 sm:grid-cols-3">
              <SummaryCard label="Ventas de este turno" value={String(currentShiftTotals.saleCount)} />
@@ -305,15 +384,23 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
              <SummaryCard label="Productos de este turno" value={String(currentShiftTotals.productQuantity)} />
            </div>
            <div className="mt-2 flex flex-wrap gap-2">
-@@ -810,6 +804,7 @@
+@@ -805,12 +823,14 @@
+         <div className="grid gap-3 xl:grid-cols-2">
+           {shifts.map((shift) => <article key={shift.id} className="min-w-0 rounded-xl border border-border bg-muted/40 p-3">
+             <div className="flex flex-wrap items-center justify-between gap-2">
+-              <h5 className="min-w-0 break-words font-semibold text-foreground">{shift.label}{shift.label !== `Turno ${shift.number}` ? ` · Turno ${shift.number}` : ''}</h5>
++              <h5 className="min-w-0 break-words font-semibold text-foreground">{salesShiftTitle(shift)}{shift.label !== `Turno ${shift.number}` ? ` · Turno ${shift.number}` : ''}</h5>
+               <span className="font-semibold text-primary">{money(shift.summary.total)}</span>
              </div>
              <p className="mt-1 break-words text-xs text-muted-foreground">Cerrado por {shift.responsible} · {new Intl.DateTimeFormat('es-GT', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Guatemala' }).format(new Date(shift.closedAt))}</p>
              <p className="mt-2 text-sm text-foreground">{shift.summary.saleCount} ventas · {shift.summary.productQuantity} productos</p>
 +            {shift.summary.accountingVersion === 2 && <p className="mt-2 text-sm text-foreground">Ingresos por ventas: {money(shift.summary.total)} · Fondos agregados: {money(shift.summary.cashFundTotal || 0)} · Total recibido: {money(shift.summary.receivedTotal || 0)}</p>}
              <div className="mt-2 flex flex-wrap gap-2">{shift.summary.payments.map((payment) => <span key={payment.code} className="rounded-lg bg-card px-2 py-1 text-xs text-foreground">{payment.name}: {money(payment.amount)}</span>)}</div>
++            {shift.summary.shiftDocumentVersion === 1 && <button type="button" disabled={documentUnavailable || pdfBusy} onClick={() => void previewShiftPdf(shift)} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50"><FileText className="h-4 w-4" />PDF del turno</button>}
            </article>)}
          </div>
-@@ -860,7 +855,7 @@
+         {!!shifts.length && <p className="mt-3 text-xs text-muted-foreground">Los cierres conservan el resumen del momento. Los cambios posteriores en ventas se reflejan en el total del día.</p>}
+@@ -860,7 +880,7 @@
            </p>
          )}
          <div className="rounded-xl border border-border bg-muted p-3 text-sm text-foreground">
@@ -322,7 +409,7 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
              {paymentOptions.map((payment) => (
                <span key={payment.id}>{payment.nombre}: {money(totals.byMethod[payment.codigo] || 0)}</span>
-@@ -934,7 +929,7 @@
+@@ -934,7 +954,7 @@
                    value={totals.byMethod[payment.codigo] || 0}
                  />
                ))}
@@ -331,6 +418,30 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
              </tr>
            </tfoot>
          </table>
+@@ -1093,11 +1113,11 @@
+         <div className="modal-backdrop fixed inset-0 z-[80] flex items-center justify-center p-4">
+           <div role="dialog" aria-modal="true" aria-labelledby="shift-confirm-title" className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl">
+             <Clock3 className="mx-auto mb-3 h-12 w-12 text-primary" />
+-            <h3 id="shift-confirm-title" className="text-center text-xl font-semibold text-foreground">¿Cerrar el turno {currentShiftNumber}?</h3>
++            <h3 id="shift-confirm-title" className="text-center text-xl font-semibold text-foreground">¿Cerrar el turno {currentShiftName}?</h3>
+             <p className="mt-2 text-center text-sm text-muted-foreground">Se guardará el resumen de este turno. El día seguirá abierto y las nuevas ventas pertenecerán al siguiente turno.</p>
+             <div className="my-4 rounded-xl bg-muted p-3 text-center text-foreground">{currentShiftTotals.saleCount} ventas · <strong>{money(currentShiftTotals.total)}</strong></div>
+-            <label htmlFor="sales-shift-label" className="text-sm text-foreground">Nombre del turno (opcional)</label>
+-            <input id="sales-shift-label" value={shiftLabel} onChange={(event) => setShiftLabel(event.target.value)} maxLength={80} disabled={closingShift} placeholder="Ejemplo: Mañana" className="mt-1 mb-5 min-h-11 w-full rounded-xl border border-border bg-secondary px-3 text-foreground" />
++            <label htmlFor="sales-shift-label" className="text-sm text-foreground">Referencia del turno (opcional)</label>
++            <input id="sales-shift-label" value={shiftLabel} onChange={(event) => setShiftLabel(event.target.value)} maxLength={80} disabled={closingShift} placeholder="Ejemplo: Caja principal" className="mt-1 mb-5 min-h-11 w-full rounded-xl border border-border bg-secondary px-3 text-foreground" />
+             <div className="flex flex-wrap gap-3">
+               <button type="button" disabled={closingShift} onClick={() => setShowShiftConfirm(false)} className="min-h-11 flex-1 rounded-xl bg-muted px-3 text-foreground disabled:opacity-50">Cancelar</button>
+               <button type="button" disabled={closingShift || loading || loadingShifts || !shiftsKnown} onClick={finalizeShift} className="min-h-11 flex-1 rounded-xl bg-primary px-3 text-primary-foreground disabled:opacity-50">{closingShift ? 'Cerrando…' : 'Sí, cerrar turno'}</button>
+@@ -1109,7 +1129,7 @@
+       {shiftSuccess && <div className="modal-backdrop fixed inset-0 z-[80] flex items-center justify-center p-4">
+         <div role="dialog" aria-modal="true" aria-labelledby="shift-success-title" className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 text-center shadow-2xl">
+           <CheckCircle className="mx-auto mb-3 h-12 w-12 text-primary" />
+-          <h3 id="shift-success-title" className="text-xl font-semibold text-foreground">Turno {shiftSuccess.number} cerrado</h3>
++          <h3 id="shift-success-title" className="text-xl font-semibold text-foreground">Turno {shiftSuccess.name} cerrado</h3>
+           <p className="my-3 text-muted-foreground">Total registrado: {money(shiftSuccess.total)}. El día sigue abierto para el siguiente turno.</p>
+           <button type="button" onClick={() => setShiftSuccess(null)} className="min-h-11 w-full rounded-xl bg-primary text-primary-foreground">Continuar</button>
+         </div>
 diff --git a/src/app/components/SaleDetailsModal.tsx b/src/app/components/SaleDetailsModal.tsx
 --- a/src/app/components/SaleDetailsModal.tsx
 +++ b/src/app/components/SaleDetailsModal.tsx
@@ -520,3 +631,153 @@ new file mode 100644
 +};
 +
 +module.exports = { cashFundCondition, roundMoney, splitCashFundPayments, parseCutoff, getAccountingCutoff, saleAccountingVersion };
+diff --git a/src/app/utils/salesShiftPdf.ts b/src/app/utils/salesShiftPdf.ts
+new file mode 100644
+--- /dev/null
++++ b/src/app/utils/salesShiftPdf.ts
+@@ -0,0 +1,145 @@
++import { jsPDF } from 'jspdf';
++import { drawUnavetPdfHeader } from './pdfBranding';
++import { formatDateForDisplay } from './dateFormat';
++import type { SalesDocumentShift } from './salesClosingPdf';
++
++export type SavedSalesShift = SalesDocumentShift & {
++  id: string;
++  afterSaleId: string;
++  throughSaleId: string;
++  summary: SalesDocumentShift['summary'] & {
++    shiftDocumentVersion?: number;
++    shiftPeriod?: 'diurno' | 'nocturno' | null;
++    paymentBreakdown?: Array<{
++      code: string; name: string; salesAmount: number; cashFundAmount: number; receivedAmount: number;
++    }>;
++  };
++};
++
++export const salesShiftTitle = (shift: SalesDocumentShift & { summary: SavedSalesShift['summary'] }) => {
++  if (shift.summary.shiftDocumentVersion !== 1) return shift.label;
++  const period = shift.summary.shiftPeriod === 'diurno' ? 'Diurno' : shift.summary.shiftPeriod === 'nocturno' ? 'Nocturno' : '';
++  return period && shift.label !== period ? `${period} - ${shift.label}` : shift.label;
++};
++
++const money = (value: number) => `Q ${value.toFixed(2)}`;
++const dateTime = (value: Date) => new Intl.DateTimeFormat('es-GT', {
++  timeZone: 'America/Guatemala', dateStyle: 'short', timeStyle: 'short',
++}).format(value);
++
++// Este documento no recibe ventas: imprime exclusivamente el snapshot guardado.
++export function createSalesShiftPdf(report: { date: string; shift: SavedSalesShift; generatedAt?: Date }, logo: string) {
++  const { shift } = report;
++  const summary = shift.summary;
++  if (summary.accountingVersion !== 2 || summary.shiftDocumentVersion !== 1 || !Array.isArray(summary.paymentBreakdown)) {
++    throw new Error('Este cierre conserva su formato anterior. Utilice el PDF original del día.');
++  }
++  const payments = summary.paymentBreakdown;
++  const values = [summary.total, summary.cashFundTotal, summary.receivedTotal, summary.saleCount, summary.productQuantity,
++    ...payments.flatMap(payment => [payment.salesAmount, payment.cashFundAmount, payment.receivedAmount])];
++  if (values.some(value => typeof value !== 'number' || !Number.isFinite(value) || value < 0)) {
++    throw new Error('El cierre guardado no contiene un resumen financiero válido.');
++  }
++  // Comprobar integridad sin reemplazar ni reconstruir los importes guardados.
++  const cents = (value: number) => Math.round(value * 100);
++  const columnsToCheck = [
++    ['salesAmount', summary.total], ['cashFundAmount', summary.cashFundTotal!], ['receivedAmount', summary.receivedTotal!],
++  ] as const;
++  if (cents(summary.total) + cents(summary.cashFundTotal!) !== cents(summary.receivedTotal!) ||
++      payments.some(payment => cents(payment.salesAmount) + cents(payment.cashFundAmount) !== cents(payment.receivedAmount)) ||
++      columnsToCheck.some(([key, total]) => payments.reduce((sum, payment) => sum + cents(payment[key]), 0) !== cents(total))) {
++    throw new Error('El desglose del cierre guardado no coincide con sus totales.');
++  }
++
++  const doc = new jsPDF();
++  const margin = 16, width = 178, bottom = 264;
++  const title = salesShiftTitle(shift);
++  const font = (bold = false, size = 10, color = '#2F2924') => {
++    doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(size); doc.setTextColor(color);
++  };
++  let y = 0;
++  const write = (value: string, bold = false, size = 9) => {
++    font(bold, size);
++    const lines = doc.splitTextToSize(value, width - 2) as string[];
++    doc.text(lines, margin, y); y += lines.length * 4.6 + 2;
++  };
++  const header = (continued = false) => {
++    drawUnavetPdfHeader(doc, logo, 'Cierre de caja por turno');
++    font(true, 17); doc.text(continued ? 'Cierre de caja - continuación' : 'Cierre de caja', margin, 47);
++    y = 55;
++    write(`Turno ${title} | N.º ${shift.number} | Cierre #${shift.id}`, true, 11);
++    write(`Fecha: ${formatDateForDisplay(report.date)} | Cerrado: ${dateTime(new Date(shift.closedAt))}`);
++    write(`Responsable: ${shift.responsible || 'No registrado'}`);
++    doc.setDrawColor('#D8C1A1'); doc.line(margin, y, margin + width, y); y += 8;
++  };
++  const columns = [73, 35, 35, 35];
++  const tableHeader = () => {
++    doc.setFillColor('#6B5039'); doc.rect(margin, y, width, 9, 'F');
++    font(true, 9, '#FFFFFF');
++    let x = margin;
++    ['Forma de pago', 'Ventas', 'Fondos', 'Recibido'].forEach((text, index) => {
++      doc.text(text, index ? x + columns[index] - 3 : x + 3, y + 6, index ? { align: 'right' } : {}); x += columns[index];
++    });
++    y += 9;
++  };
++  const ensure = (height: number) => {
++    if (y + height <= bottom) return;
++    if (doc.getNumberOfPages() === 2) throw new Error('El desglose supera dos páginas. Revise las formas de pago antes de imprimir.');
++    doc.addPage(); header(true); tableHeader();
++    if (y + height > bottom) throw new Error('Los datos del cierre exceden el espacio de impresión.');
++  };
++  header();
++  const cardWidth = (width - 8) / 3;
++  [
++    ['Ingresos por ventas', summary.total], ['Fondos agregados', summary.cashFundTotal!], ['Total recibido', summary.receivedTotal!],
++  ].forEach(([label, amount], index) => {
++    const x = margin + index * (cardWidth + 4);
++    doc.setFillColor(index === 2 ? '#EDE0CD' : '#F8F3ED');
++    doc.roundedRect(x, y, cardWidth, 26, 2, 2, 'F');
++    font(false, 9); doc.text(String(label), x + 3, y + 8);
++    const value = money(Number(amount));
++    font(true, 15);
++    const size = Math.min(15, 15 * (cardWidth - 6) / doc.getTextWidth(value));
++    font(true, size); doc.text(value, x + 3, y + 19);
++  });
++  y += 34;
++  write(`Ventas realizadas: ${summary.saleCount} | Unidades de productos: ${summary.productQuantity}`, true);
++  write(`Comprobantes: posteriores a #${shift.afterSaleId} y hasta #${shift.throughSaleId}`, false, 8);
++  y += 3;
++  write('Desglose por formas de pago', true, 11);
++  tableHeader();
++  if (!payments.length) { ensure(10); y += 6; write('Sin movimientos registrados.'); }
++  for (const [index, payment] of payments.entries()) {
++    font(false, 9);
++    const cells = [payment.name, money(payment.salesAmount), money(payment.cashFundAmount), money(payment.receivedAmount)]
++      .map((value, column) => doc.splitTextToSize(value, columns[column] - 8) as string[]);
++    const height = Math.max(...cells.map(cell => cell.length)) * 4.4 + 5;
++    ensure(height + (index === payments.length - 1 ? 14 : 0));
++    doc.setFillColor(index % 2 ? '#FFFFFF' : '#F8F3ED'); doc.rect(margin, y, width, height, 'F');
++    let x = margin;
++    cells.forEach((cell, column) => {
++      font(false, 9); doc.text(cell, column ? x + columns[column] - 3 : x + 3, y + 5, column ? { align: 'right', lineHeightFactor: 1.38 } : { lineHeightFactor: 1.38 });
++      x += columns[column];
++    });
++    y += height;
++  }
++  ensure(13);
++  doc.setFillColor('#EDE0CD'); doc.rect(margin, y, width, 10, 'F'); font(true, 9);
++  let x = margin;
++  ['Total', money(summary.total), money(summary.cashFundTotal!), money(summary.receivedTotal!)].forEach((value, column) => {
++    doc.text(value, column ? x + columns[column] - 3 : x + 3, y + 6, column ? { align: 'right' } : {}); x += columns[column];
++  });
++  y += 18;
++  if (y + 15 <= bottom) {
++    write('Resumen guardado al cerrar el turno. Los fondos no son ingresos por ventas.', false, 8);
++    write('El total recibido incluye todas las formas de pago; no representa solo efectivo.', false, 8);
++  }
++  const pages = doc.getNumberOfPages();
++  for (let page = 1; page <= pages; page++) {
++    doc.setPage(page); font(false, 7);
++    doc.setDrawColor('#D8C1A1'); doc.line(margin, 277, margin + width, 277);
++    doc.text(`UNAVET | Cierre #${shift.id} | Generado: ${dateTime(report.generatedAt || new Date())}`, margin, 283);
++    doc.text(`Página ${page} de ${pages}`, margin + width, 283, { align: 'right' });
++  }
++  return doc;
++}

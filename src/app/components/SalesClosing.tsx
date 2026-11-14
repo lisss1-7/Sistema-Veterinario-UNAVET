@@ -24,6 +24,7 @@ import type { ModulePermissions } from '../hooks/useModulePermissions';
 import SaleDetailsModal from './SaleDetailsModal';
 import PdfPreviewModal from './PdfPreviewModal';
 import { createSalesClosingPdf } from '../utils/salesClosingPdf';
+import { createSalesShiftPdf, salesShiftTitle } from '../utils/salesShiftPdf';
 import { getUnavetLogoBase64 } from '../utils/pdfBranding';
 
 type SaleItem = {
@@ -60,6 +61,7 @@ type SalesShift = {
   id: string;
   number: number;
   label: string;
+  afterSaleId: string;
   throughSaleId: string;
   closedAt: string;
   responsible: string;
@@ -67,10 +69,13 @@ type SalesShift = {
     saleCount: number;
     total: number;
     accountingVersion?: number;
+    shiftDocumentVersion?: number;
+    shiftPeriod?: 'diurno' | 'nocturno' | null;
     cashFundTotal?: number;
     receivedTotal?: number;
     productQuantity: number;
     payments: Array<{ code: string; name: string; amount: number }>;
+    paymentBreakdown?: Array<{ code: string; name: string; salesAmount: number; cashFundAmount: number; receivedAmount: number }>;
   };
 };
 
@@ -246,7 +251,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
   const [showShiftConfirm, setShowShiftConfirm] = useState(false);
   const [shiftLabel, setShiftLabel] = useState('');
   const [closingShift, setClosingShift] = useState(false);
-  const [shiftSuccess, setShiftSuccess] = useState<{ number: number; total: number } | null>(null);
+  const [shiftSuccess, setShiftSuccess] = useState<{ number: number; name: string; total: number } | null>(null);
   const [finalizingDay, setFinalizingDay] = useState(false);
   const [sales, setSales] = useState<Sale[]>([]);
   const [salesKnown, setSalesKnown] = useState(false);
@@ -443,9 +448,28 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
     link.href = pdfPreview.url; link.download = pdfPreview.filename;
     document.body.appendChild(link); link.click(); link.remove();
   };
+  const previewShiftPdf = async (shift: SalesShift) => {
+    const generation = ++pdfGeneration.current;
+    setPdfBusy(true);
+    try {
+      const response = await fetch(`${API_URL}/cierre-ventas/turnos?fecha=${encodeURIComponent(date)}`, { headers: getAuthHeaders(), cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'No se pudo consultar el cierre guardado.');
+      if (!Array.isArray(data.shifts)) throw new Error('No se recibió un cierre de turno válido.');
+      const saved: SalesShift | undefined = data.shifts.find((item: SalesShift) => item.id === shift.id);
+      if (!saved) throw new Error('El cierre de turno ya no está disponible.');
+      const logo = await getUnavetLogoBase64();
+      const doc = createSalesShiftPdf({ date, shift: saved }, logo);
+      if (generation !== pdfGeneration.current) return;
+      setPdfPreview({ url: URL.createObjectURL(doc.output('blob')), filename: `Cierre-turno-${saved.number}-${date}.pdf`, title: `Cierre de caja · ${salesShiftTitle(saved)}` });
+    } catch (error) {
+      if (generation === pdfGeneration.current) setNotice({ title: 'No se pudo generar el PDF del turno', message: error instanceof Error ? error.message : 'Intente nuevamente.', type: 'error' });
+    } finally { if (generation === pdfGeneration.current) setPdfBusy(false); }
+  };
   const documentUnavailable = loading || loadingDayStatus || loadingShifts || !salesKnown || !dayStatusKnown || !shiftsKnown || closingShift || finalizingDay;
   const totals = useMemo(() => calculateSalesTotals(sales), [sales]);
   const hasNewAccounting = sales.some(sale => sale.accountingVersion === 2) || shifts.some(shift => shift.summary.accountingVersion === 2);
+  const currentShiftName = hasNewAccounting && currentShiftNumber <= 2 ? (currentShiftNumber === 1 ? 'Diurno' : 'Nocturno') : String(currentShiftNumber);
 
   const currentShiftTotals = useMemo(() => {
     const active = sales.filter((sale) => Number(sale.id) > Number(afterSaleId) && !sale.canceled);
@@ -682,7 +706,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
       setShowShiftConfirm(false);
       setShiftLabel('');
       await Promise.all([loadSales(), loadDayStatus(), loadShifts()]);
-      setShiftSuccess({ number: data.shift.number, total: data.shift.summary.total });
+      setShiftSuccess({ number: data.shift.number, name: currentShiftName, total: data.shift.summary.total });
     } catch (error) {
       setShowShiftConfirm(false);
       await Promise.all([loadDayStatus(), loadShifts()]);
@@ -775,7 +799,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
         <div className="mb-3 flex items-start gap-3">
           <div className="rounded-xl bg-primary/15 p-2 text-primary"><Clock3 className="h-5 w-5" /></div>
           <div className="min-w-0">
-            <h3 className="font-semibold text-foreground">{isDayClosed ? 'Cierres de turno del día' : `Turno ${currentShiftNumber} en curso`}</h3>
+            <h3 className="font-semibold text-foreground">{isDayClosed ? 'Cierres de turno del día' : `Turno ${currentShiftName} en curso`}</h3>
             <p className="text-sm text-muted-foreground">Cerrar turno permite continuar vendiendo en el siguiente. Finalizar día cierra toda la jornada.</p>
           </div>
         </div>
@@ -799,13 +823,14 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
         <div className="grid gap-3 xl:grid-cols-2">
           {shifts.map((shift) => <article key={shift.id} className="min-w-0 rounded-xl border border-border bg-muted/40 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h5 className="min-w-0 break-words font-semibold text-foreground">{shift.label}{shift.label !== `Turno ${shift.number}` ? ` · Turno ${shift.number}` : ''}</h5>
+              <h5 className="min-w-0 break-words font-semibold text-foreground">{salesShiftTitle(shift)}{shift.label !== `Turno ${shift.number}` ? ` · Turno ${shift.number}` : ''}</h5>
               <span className="font-semibold text-primary">{money(shift.summary.total)}</span>
             </div>
             <p className="mt-1 break-words text-xs text-muted-foreground">Cerrado por {shift.responsible} · {new Intl.DateTimeFormat('es-GT', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Guatemala' }).format(new Date(shift.closedAt))}</p>
             <p className="mt-2 text-sm text-foreground">{shift.summary.saleCount} ventas · {shift.summary.productQuantity} productos</p>
             {shift.summary.accountingVersion === 2 && <p className="mt-2 text-sm text-foreground">Ingresos por ventas: {money(shift.summary.total)} · Fondos agregados: {money(shift.summary.cashFundTotal || 0)} · Total recibido: {money(shift.summary.receivedTotal || 0)}</p>}
             <div className="mt-2 flex flex-wrap gap-2">{shift.summary.payments.map((payment) => <span key={payment.code} className="rounded-lg bg-card px-2 py-1 text-xs text-foreground">{payment.name}: {money(payment.amount)}</span>)}</div>
+            {shift.summary.shiftDocumentVersion === 1 && <button type="button" disabled={documentUnavailable || pdfBusy} onClick={() => void previewShiftPdf(shift)} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50"><FileText className="h-4 w-4" />PDF del turno</button>}
           </article>)}
         </div>
         {!!shifts.length && <p className="mt-3 text-xs text-muted-foreground">Los cierres conservan el resumen del momento. Los cambios posteriores en ventas se reflejan en el total del día.</p>}
@@ -1088,11 +1113,11 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
         <div className="modal-backdrop fixed inset-0 z-[80] flex items-center justify-center p-4">
           <div role="dialog" aria-modal="true" aria-labelledby="shift-confirm-title" className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl">
             <Clock3 className="mx-auto mb-3 h-12 w-12 text-primary" />
-            <h3 id="shift-confirm-title" className="text-center text-xl font-semibold text-foreground">¿Cerrar el turno {currentShiftNumber}?</h3>
+            <h3 id="shift-confirm-title" className="text-center text-xl font-semibold text-foreground">¿Cerrar el turno {currentShiftName}?</h3>
             <p className="mt-2 text-center text-sm text-muted-foreground">Se guardará el resumen de este turno. El día seguirá abierto y las nuevas ventas pertenecerán al siguiente turno.</p>
             <div className="my-4 rounded-xl bg-muted p-3 text-center text-foreground">{currentShiftTotals.saleCount} ventas · <strong>{money(currentShiftTotals.total)}</strong></div>
-            <label htmlFor="sales-shift-label" className="text-sm text-foreground">Nombre del turno (opcional)</label>
-            <input id="sales-shift-label" value={shiftLabel} onChange={(event) => setShiftLabel(event.target.value)} maxLength={80} disabled={closingShift} placeholder="Ejemplo: Mañana" className="mt-1 mb-5 min-h-11 w-full rounded-xl border border-border bg-secondary px-3 text-foreground" />
+            <label htmlFor="sales-shift-label" className="text-sm text-foreground">Referencia del turno (opcional)</label>
+            <input id="sales-shift-label" value={shiftLabel} onChange={(event) => setShiftLabel(event.target.value)} maxLength={80} disabled={closingShift} placeholder="Ejemplo: Caja principal" className="mt-1 mb-5 min-h-11 w-full rounded-xl border border-border bg-secondary px-3 text-foreground" />
             <div className="flex flex-wrap gap-3">
               <button type="button" disabled={closingShift} onClick={() => setShowShiftConfirm(false)} className="min-h-11 flex-1 rounded-xl bg-muted px-3 text-foreground disabled:opacity-50">Cancelar</button>
               <button type="button" disabled={closingShift || loading || loadingShifts || !shiftsKnown} onClick={finalizeShift} className="min-h-11 flex-1 rounded-xl bg-primary px-3 text-primary-foreground disabled:opacity-50">{closingShift ? 'Cerrando…' : 'Sí, cerrar turno'}</button>
@@ -1104,7 +1129,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
       {shiftSuccess && <div className="modal-backdrop fixed inset-0 z-[80] flex items-center justify-center p-4">
         <div role="dialog" aria-modal="true" aria-labelledby="shift-success-title" className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 text-center shadow-2xl">
           <CheckCircle className="mx-auto mb-3 h-12 w-12 text-primary" />
-          <h3 id="shift-success-title" className="text-xl font-semibold text-foreground">Turno {shiftSuccess.number} cerrado</h3>
+          <h3 id="shift-success-title" className="text-xl font-semibold text-foreground">Turno {shiftSuccess.name} cerrado</h3>
           <p className="my-3 text-muted-foreground">Total registrado: {money(shiftSuccess.total)}. El día sigue abierto para el siguiente turno.</p>
           <button type="button" onClick={() => setShiftSuccess(null)} className="min-h-11 w-full rounded-xl bg-primary text-primary-foreground">Continuar</button>
         </div>

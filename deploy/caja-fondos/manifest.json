@@ -7,7 +7,7 @@
     },
     "backend/src/utils/salesShift.js": {
       "before": "dc18f741909efa539f861d46c33c2dbf6e10a7617849da0eb3bb56689b5194b4",
-      "after": "e34543052f92770957e62ea476076070b03ef6b2905db3c0be120eab55b03093"
+      "after": "1423737b7c01d31f2669dff9bdb209d0f6ccaa3df4d2d9b3e82f2ccd0e4dd60d"
     },
     "backend/src/routes/cierreVentasRoutes.js": {
       "before": "3f57bfe53bac46d5f85445dfb943c4df6c13a6039fe68338695b947cf74cdf9c",
@@ -15,7 +15,7 @@
     },
     "src/app/components/SalesClosing.tsx": {
       "before": "97c49f8e4ff371a0e7009db4620667b74a880f91bf75993c18375a9f955b5c10",
-      "after": "60f766baa3a7fc86e137dd87e827e37aeb052b160f9f381ac59bf6d179aae707"
+      "after": "4b674c373d57a94767cc4959284af5fd506fb0ca0fabd641bd5003c4c5cdf76a"
     },
     "src/app/components/SaleDetailsModal.tsx": {
       "before": "c64be08fa1d31e1e7581c11682640a6a42956ea0732dff7c3c91ad75e0c403db",
@@ -32,6 +32,10 @@
     "backend/src/utils/salesAccounting.js": {
       "before": null,
       "after": "fc799342cc494085bde6a182b25ffcbbc87df11b03bdfbeee59ba78d57fdc662"
+    },
+    "src/app/utils/salesShiftPdf.ts": {
+      "before": null,
+      "after": "79ddf1ddd39a3aabe4d6df864399ae3b95f636548c6e7cb336736e23c0798204"
     }
   },
   "preservedFunctions": {
