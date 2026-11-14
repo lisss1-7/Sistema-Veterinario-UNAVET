@@ -112,6 +112,12 @@ export interface Appointment {
 
 export interface GroomingAppointment {
   id: string;
+  tutorId?: string;
+  paymentMethod?: string;
+  paymentMethodName?: string;
+  routeId?: string | null;
+  routeTransportCost?: number;
+  routeMembers?: Array<{ id: string; patientId: string; petName: string; status: string; isCancelled: boolean }>;
   type: 'Grooming en clínica' | 'Grooming con transporte';
   petName: string;
   time: string;

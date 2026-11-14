@@ -1,5 +1,6 @@
 const express = require('express');
 const {
+  listarCompanerosGrooming,
   listarGrooming,
   obtenerGroomingPorId,
   crearGrooming,
@@ -13,6 +14,7 @@ const { verificarPermiso } = require('../middleware/permissionMiddleware');
 const router = express.Router();
 
 router.get('/', verificarToken, verificarPermiso('grooming', 'ver'), listarGrooming);
+router.get('/pacientes/:id/companeros', verificarToken, verificarPermiso('grooming', 'ver'), listarCompanerosGrooming);
 router.get('/:id', verificarToken, verificarPermiso('grooming', 'ver'), obtenerGroomingPorId);
 router.post('/', verificarToken, verificarPermiso('grooming', 'crear'), crearGrooming);
 router.put('/:id', verificarToken, verificarPermiso('grooming', 'editar'), actualizarGrooming);

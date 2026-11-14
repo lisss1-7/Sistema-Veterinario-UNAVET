@@ -1,0 +1,721 @@
+diff --git a/backend/src/controllers/groomingController.js b/backend/src/controllers/groomingController.js
+--- a/backend/src/controllers/groomingController.js
++++ b/backend/src/controllers/groomingController.js
+@@ -3,2 +3,3 @@
+ const { validarHorarioConfigurado } = require('../utils/scheduleUtils');
++const transport = require('../utils/groomingTransport');
+ const {
+@@ -300,3 +301,3 @@
+
+-    res.json(rows.map(mapGroomingToFrontend));
++    res.json(await transport.enrichAppointments(pool, rows.map(mapGroomingToFrontend)));
+   } catch (error) {
+@@ -364,3 +365,3 @@
+
+-    res.json(mapGroomingToFrontend(rows[0]));
++    res.json((await transport.enrichAppointments(pool, [mapGroomingToFrontend(rows[0])]))[0]);
+   } catch (error) {
+@@ -432,2 +433,9 @@
+     await connection.beginTransaction();
++    const additionalPets = req.body.additionalPets || [];
++    if (!Array.isArray(additionalPets) || additionalPets.some(pet => !pet || typeof pet !== 'object') || additionalPets.length > 3 || (additionalPets.length && !patientId)) {
++      transport.fail('Seleccione una mascota registrada y un máximo de tres mascotas adicionales');
++    }
++    const operations = await transport.operationsAvailable(connection);
++    if (req.body.paymentMethod || additionalPets.length) transport.requireOperations(operations);
++    if (operations) await transport.lockTransportSchedules(connection);
+
+@@ -474,3 +482,4 @@
+     }
+-    if (groomingType.requiere_transporte) {
++    if (additionalPets.length && !groomingType.requiere_transporte) transport.fail('Las mascotas adicionales requieren una ruta de transporte');
++    if (groomingType.requiere_transporte && !operations) {
+       const transporteDisponible = await validarLimiteTransporte(
+@@ -537,2 +546,18 @@
+
++    const pets = [{ pacienteId, nombreMascota, raza, edadMascota, sizeId: sizeCatalog.tamano_animal_id, cost: Number(groomingCost) || 0 }];
++    for (const extra of additionalPets) {
++      if (!extra.patientId || pets.some(pet => String(pet.pacienteId) === String(extra.patientId))) transport.fail('No repita mascotas en la misma ruta');
++      const patient = await obtenerTutorPorPaciente(connection, extra.patientId);
++      if (!patient || String(patient.tutor_id) !== String(tutorId)) transport.fail('Todas las mascotas de una ruta deben pertenecer al mismo tutor');
++      const size = await obtenerTamanoAnimal(connection, extra.animalSize);
++      if (!size) transport.fail('Seleccione un tamaño válido para cada mascota');
++      pets.push({ pacienteId: extra.patientId, nombreMascota: patient.nombre_mascota, raza: patient.raza,
++        edadMascota: patient.edad, sizeId: size.tamano_animal_id, cost: transport.money(extra.groomingCost) });
++    }
++    if (operations) pets[0].cost = transport.money(groomingCost);
++    const methodId = operations ? await transport.paymentId(connection, req.body.paymentMethod) : null;
++    const routeId = operations && groomingType.requiere_transporte ? await transport.resolveRoute(connection, {
++      date, time, typeId: groomingType.tipo_grooming_id, tutorId, address, cost: transportCost,
++      patientIds: pets.map(pet => pet.pacienteId),
++    }) : null;
+     const [initialStatuses] = await connection.query(
+@@ -546,55 +571,60 @@
+     }
+-    const [result] = await connection.query(
+-      `
+-      INSERT INTO cita_grooming (
+-        paciente_id,
+-        tutor_id,
+-        nombre_mascota,
+-        tutor_primer_nombre,
+-        tutor_segundo_nombre,
+-        tutor_primer_apellido,
+-        tutor_segundo_apellido,
+-        telefono_tutor,
+-        raza,
+-        tamano_animal_id,
+-        direccion_recogida,
+-        fecha,
+-        hora,
+-        observaciones,
+-        edad,
+-        codigo_acceso,
+-        costo_grooming,
+-        costo_transporte,
+-        tipo_grooming_id,
+-        estado_grooming_id,
+-        creado_por
+-      )
+-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+-      `,
+-      [
+-        pacienteId,
+-        tutorId,
+-        nombreMascota,
+-        tutorNameParts.firstName,
+-        tutorNameParts.middleName || null,
+-        tutorNameParts.firstSurname,
+-        tutorNameParts.secondSurname || null,
+-        telefonoTutor,
+-        raza,
+-        sizeCatalog.tamano_animal_id,
+-        groomingType.requiere_transporte ? address || null : null,
+-        date,
+-        time,
+-        observations || null,
+-        edadMascota,
+-        accessCode || null,
+-        Number(groomingCost) || 0,
+-        Number(transportCost) || 0,
+-        groomingType.tipo_grooming_id,
+-        initialStatuses[0].estado_grooming_id,
+-        req.user?.id || null,
+-      ]
+-    );
+-
+-    await sincronizarHistorialDesdeGrooming(connection, result.insertId);
++    const ids = [];
++    for (const pet of pets) {
++      const [result] = await connection.query(
++        `
++        INSERT INTO cita_grooming (
++          paciente_id,
++          tutor_id,
++          nombre_mascota,
++          tutor_primer_nombre,
++          tutor_segundo_nombre,
++          tutor_primer_apellido,
++          tutor_segundo_apellido,
++          telefono_tutor,
++          raza,
++          tamano_animal_id,
++          direccion_recogida,
++          fecha,
++          hora,
++          observaciones,
++          edad,
++          codigo_acceso,
++          costo_grooming,
++          costo_transporte,
++          tipo_grooming_id,
++          estado_grooming_id,
++          creado_por
++        )
++        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
++        `,
++        [
++          pet.pacienteId,
++          tutorId,
++          pet.nombreMascota,
++          tutorNameParts.firstName,
++          tutorNameParts.middleName || null,
++          tutorNameParts.firstSurname,
++          tutorNameParts.secondSurname || null,
++          telefonoTutor,
++          pet.raza,
++          pet.sizeId,
++          groomingType.requiere_transporte ? address || null : null,
++          date,
++          time,
++          observations || null,
++          pet.edadMascota,
++          accessCode || null,
++          pet.cost,
++          routeId ? 0 : Number(transportCost) || 0,
++          groomingType.tipo_grooming_id,
++          initialStatuses[0].estado_grooming_id,
++          req.user?.id || null,
++        ]
++      );
++
++      if (operations && (methodId || routeId)) await transport.saveOperation(connection, result.insertId, methodId, routeId);
++      await sincronizarHistorialDesdeGrooming(connection, result.insertId);
++      ids.push(String(result.insertId));
++    }
+     await connection.commit();
+@@ -605,3 +635,3 @@
+         : 'Cita de grooming creada correctamente',
+-      id: String(result.insertId),
++      id: ids[0], ids, routeId: routeId ? String(routeId) : null,
+     });
+@@ -610,4 +640,5 @@
+
+-    res.status(500).json({
+-      message: 'Error al crear cita de grooming',
++    res.status(error.statusCode || 500).json({
++      message: error.statusCode ? error.message : 'Error al crear cita de grooming',
++      code: error.code,
+       error: error.message,
+@@ -681,2 +712,5 @@
+     await connection.beginTransaction();
++    const operations = await transport.operationsAvailable(connection);
++    if (req.body.paymentMethod) transport.requireOperations(operations);
++    if (operations) await transport.lockTransportSchedules(connection);
+
+@@ -722,2 +756,3 @@
+          grooming.estado_grooming_id,
++         estado.es_cancelado,
+          estado.nombre AS estado
+@@ -744,3 +779,3 @@
+     }
+-    if (groomingType.requiere_transporte) {
++    if (groomingType.requiere_transporte && !operations) {
+       const transporteDisponible = await validarLimiteTransporte(
+@@ -800,2 +835,3 @@
+       estado_grooming_id: existing[0].estado_grooming_id,
++      es_cancelado: existing[0].es_cancelado,
+     };
+@@ -803,3 +839,3 @@
+       const [statusRows] = await connection.query(
+-        `SELECT estado_grooming_id, nombre
++        `SELECT estado_grooming_id, nombre, es_cancelado
+          FROM estado_grooming
+@@ -829,2 +865,9 @@
+
++    const previousOperation = operations ? await transport.currentOperation(connection, id) : {};
++    const methodId = operations ? await transport.paymentId(connection, req.body.paymentMethod, previousOperation.forma_pago_id || null) : null;
++    const routeId = operations && groomingType.requiere_transporte ? await transport.resolveRoute(connection, {
++      date, time, typeId: groomingType.tipo_grooming_id, tutorId, address, cost: transportCost,
++      excludeId: id, patientIds: [pacienteId], active: !groomingStatus.es_cancelado,
++    }) : null;
++    if (operations) transport.money(groomingCost);
+     await connection.query(
+@@ -873,3 +916,3 @@
+         Number(groomingCost) || 0,
+-        Number(transportCost) || 0,
++        routeId || (operations && !groomingType.requiere_transporte) ? 0 : Number(transportCost) || 0,
+         groomingType.tipo_grooming_id,
+@@ -880,2 +923,3 @@
+
++    if (operations) await transport.saveOperation(connection, id, methodId, routeId);
+     await sincronizarHistorialDesdeGrooming(connection, id);
+@@ -891,4 +935,5 @@
+
+-    res.status(500).json({
+-      message: 'Error al actualizar cita de grooming',
++    res.status(error.statusCode || 500).json({
++      message: error.statusCode ? error.message : 'Error al actualizar cita de grooming',
++      code: error.code,
+       error: error.message,
+@@ -907,3 +952,3 @@
+     const [validStatuses] = await connection.query(
+-      `SELECT estado_grooming_id, nombre
++      `SELECT estado_grooming_id, nombre, es_cancelado
+        FROM estado_grooming
+@@ -921,2 +966,17 @@
+     await connection.beginTransaction();
++    if (await transport.operationsAvailable(connection)) {
++      await transport.lockTransportSchedules(connection);
++      const operation = await transport.currentOperation(connection, id);
++      if (operation.ruta_id && !validStatuses[0].es_cancelado) {
++        const [routes] = await connection.query(`SELECT ruta.*, DATE_FORMAT(ruta.fecha, '%Y-%m-%d') AS route_date, cita.paciente_id FROM grooming_transporte_ruta ruta
++          INNER JOIN grooming_operacion operacion ON operacion.ruta_id = ruta.ruta_id
++          INNER JOIN cita_grooming cita ON cita.grooming_id = operacion.grooming_id
++          WHERE operacion.grooming_id = ?`, [id]);
++        const route = routes[0];
++        if (!route) transport.fail('La ruta vinculada no está disponible');
++        await transport.resolveRoute(connection, { date: route.route_date,
++          time: route.hora, typeId: route.tipo_grooming_id, tutorId: route.tutor_id, address: route.direccion, cost: route.costo,
++          excludeId: id, patientIds: [route.paciente_id] });
++      }
++    }
+     const [result] = await connection.query(
+@@ -941,4 +1001,5 @@
+     await connection.rollback();
+-    res.status(500).json({
+-      message: 'Error al cambiar estado de grooming',
++    res.status(error.statusCode || 500).json({
++      message: error.statusCode ? error.message : 'Error al cambiar estado de grooming',
++      code: error.code,
+       error: error.message,
+@@ -956,2 +1017,3 @@
+     await connection.beginTransaction();
++    if (await transport.operationsAvailable(connection)) await transport.lockTransportSchedules(connection);
+     await connection.query(
+@@ -989,3 +1051,20 @@
+
++const listarCompanerosGrooming = async (req, res) => {
++  try {
++    const patient = await obtenerTutorPorPaciente(pool, req.params.id);
++    if (!patient) return res.status(404).json({ message: 'Paciente vinculado no encontrado' });
++    const [rows] = await pool.query(`SELECT paciente.paciente_id AS id, paciente.nombre AS petName,
++        paciente.edad AS age, raza.nombre AS breed
++      FROM paciente
++      LEFT JOIN raza ON raza.raza_id = paciente.raza_id
++      WHERE paciente.activo = 1 AND paciente.tutor_id = ?
++      ORDER BY paciente.nombre, paciente.paciente_id`, [patient.tutor_id]);
++    res.json(rows.map(row => ({ ...row, id: String(row.id) })));
++  } catch (error) {
++    res.status(500).json({ message: 'Error al consultar mascotas del tutor', error: error.message });
++  }
++};
++
+ module.exports = {
++  listarCompanerosGrooming,
+   listarGrooming,
+diff --git a/backend/src/routes/groomingRoutes.js b/backend/src/routes/groomingRoutes.js
+--- a/backend/src/routes/groomingRoutes.js
++++ b/backend/src/routes/groomingRoutes.js
+@@ -2,2 +2,3 @@
+ const {
++  listarCompanerosGrooming,
+   listarGrooming,
+@@ -15,2 +16,3 @@
+ router.get('/', verificarToken, verificarPermiso('grooming', 'ver'), listarGrooming);
++router.get('/pacientes/:id/companeros', verificarToken, verificarPermiso('grooming', 'ver'), listarCompanerosGrooming);
+ router.get('/:id', verificarToken, verificarPermiso('grooming', 'ver'), obtenerGroomingPorId);
+diff --git a/src/app/pages/Grooming.tsx b/src/app/pages/Grooming.tsx
+--- a/src/app/pages/Grooming.tsx
++++ b/src/app/pages/Grooming.tsx
+@@ -44,2 +44,3 @@
+ import { getAuthHeaders } from '../utils/apiClient';
++import { countGroomingTransportRoutes, groomingRouteCost } from '../utils/groomingTransport';
+
+@@ -49,2 +50,5 @@
+ };
++type AdditionalPet = { patientId: string; animalSize: string; groomingCost: number | '' };
++type Companion = { id: string; petName: string; breed?: string; age?: string };
++type PaymentOption = { codigo: string; nombre: string };
+
+@@ -117,2 +121,6 @@
+   const [formData, setFormData] = useState<GroomingFormData>({});
++  const [additionalPets, setAdditionalPets] = useState<AdditionalPet[]>([]);
++  const [companions, setCompanions] = useState<Companion[]>([]);
++  const [paymentOptions, setPaymentOptions] = useState<PaymentOption[]>([]);
++  const [saving, setSaving] = useState(false);
+
+@@ -210,2 +218,13 @@
+       (async () => {
++        try {
++          const response = await fetch(`${API_URL}/catalogos/formas-pago`, { headers: getAuthHeaders() });
++          const data = await response.json();
++          if (!response.ok) throw new Error(data.message || 'No se pudieron cargar las formas de pago');
++          setPaymentOptions(Array.isArray(data) ? data : []);
++        } catch (error) {
++          setPaymentOptions([]);
++          setFormError({ title: 'No se pudieron cargar las formas de pago', message: error instanceof Error ? error.message : 'Intente nuevamente.' });
++        }
++      })(),
++      (async () => {
+         const response = await fetch(`${API_URL}/catalogos/especies`, {
+@@ -286,2 +305,13 @@
+   useEffect(() => {
++    let active = true;
++    setCompanions([]);
++    if (!showModal || editingGrooming || !formData.patientId) return;
++    void fetch(`${API_URL}/grooming/pacientes/${encodeURIComponent(formData.patientId)}/companeros`, { headers: getAuthHeaders() })
++      .then(async response => { const data = await response.json(); if (!response.ok) throw new Error(data.message); return data; })
++      .then(data => { if (active) setCompanions(Array.isArray(data) ? data : []); })
++      .catch(error => { if (active) setFormError({ title: 'No se pudieron consultar las mascotas del tutor', message: error instanceof Error ? error.message : 'Intente nuevamente.' }); });
++    return () => { active = false; };
++  }, [formData.patientId, showModal, editingGrooming]);
++
++  useEffect(() => {
+     const transportType = groomingTypeCatalog.find((item) =>
+@@ -290,3 +320,3 @@
+     if (!transportType?.id) return;
+-    void loadSchedule(new Date().toISOString().split('T')[0], transportType.id)
++    void loadSchedule(getTodayLocal(), transportType.id)
+       .then((data) => setTransportCapacity(Number(data.capacity || 0)))
+@@ -359,2 +389,3 @@
+       calculateStats(data);
++      return data as GroomingAppointment[];
+     } catch (error) {
+@@ -387,3 +418,3 @@
+   const calculateStats = (data: GroomingAppointment[]) => {
+-    const today = new Date().toISOString().split('T')[0];
++    const today = getTodayLocal();
+
+@@ -400,2 +431,3 @@
+     ).length;
++    const routeCount = countGroomingTransportRoutes(todayGrooming.filter(g => isTransportType(g.type)));
+
+@@ -409,3 +441,3 @@
+       estimatedIncome,
+-      availableTransport: Math.max(0, transportCapacity - withTransport),
++      availableTransport: Math.max(0, transportCapacity - routeCount),
+     });
+@@ -448,2 +480,3 @@
+     e.preventDefault();
++    if (saving) return;
+     setFormError(null);
+@@ -515,3 +548,10 @@
+
++    if (isTransportType(formData.type) && !editingGrooming && !formData.paymentMethod) {
++      setFormError({ title: 'Falta la forma de pago', message: 'Seleccione una forma de pago del catálogo.' }); return;
++    }
++    if (additionalPets.some(pet => !pet.animalSize || !isNonNegativeNumber(pet.groomingCost))) {
++      setFormError({ title: 'Revise las mascotas adicionales', message: 'Cada mascota requiere su tamaño y costo de grooming.' }); return;
++    }
+     try {
++      setSaving(true);
+       const url = editingGrooming
+@@ -524,2 +564,3 @@
+         age: String(formData.age || '').trim(),
++        additionalPets: !editingGrooming && isTransportType(formData.type) ? additionalPets : [],
+       };
+@@ -561,3 +602,3 @@
+       });
+-    }
++    } finally { setSaving(false); }
+   };
+@@ -636,7 +677,8 @@
+
+-      await loadGrooming();
++      const updated = await loadGrooming();
+       setSelectedGrooming((current) =>
+-        current?.id === id
+-          ? { ...current, status: newStatus as GroomingAppointment['status'] }
+-          : current
++        updated?.find(item => item.id === current?.id) || (
++          current?.id === id
++            ? { ...current, status: newStatus as GroomingAppointment['status'] }
++            : current)
+       );
+@@ -649,2 +691,3 @@
+   const openModal = (groomingItem?: GroomingAppointment, date?: string) => {
++    setAdditionalPets([]);
+     setFormError(null);
+@@ -657,3 +700,3 @@
+       setEditingGrooming(groomingItem);
+-      setFormData({ ...groomingItem, species });
++      setFormData({ ...groomingItem, species, transportCost: groomingRouteCost(groomingItem) });
+       setSelectedBreedOption(groomingItem.breed || '');
+@@ -679,2 +722,6 @@
+   };
++
++  const sharedRouteUnchanged = Boolean(editingGrooming?.routeId && (editingGrooming.routeMembers?.length || 0) > 1 &&
++    formData.patientId === editingGrooming.patientId && formData.date === editingGrooming.date && formData.time === editingGrooming.time &&
++    formData.address?.trim().toLocaleLowerCase('es') === editingGrooming.address?.trim().toLocaleLowerCase('es'));
+
+@@ -738,3 +785,3 @@
+           compact
+-          label="Domicilios disponibles"
++          label="Rutas de transporte disponibles"
+           value={`${stats.availableTransport}/${transportCapacity}`}
+@@ -914,3 +961,3 @@
+                 <p className="text-foreground font-medium">
+-                  {groom.transportCost ? `Q${groom.transportCost}` : 'No aplica'}
++                  {groom.transportCost ? `Q${groom.transportCost}` : groom.routeId ? `Compartido en ruta #${groom.routeId}` : 'No aplica'}
+                 </p>
+@@ -1031,2 +1078,3 @@
+                       )}
++                      {groom.routeId && <p className="text-xs text-muted-foreground">Ruta #{groom.routeId} · importe único</p>}
+                     </div>
+@@ -1172,3 +1220,3 @@
+                     ? `Q${Number(selectedGrooming.transportCost).toFixed(2)}`
+-                    : 'No aplica'}
++                    : selectedGrooming.routeId ? `Compartido en ruta #${selectedGrooming.routeId}` : 'No aplica'}
+                 </p>
+@@ -1176,2 +1224,12 @@
+             </div>
++
++            <div className="mb-4 text-sm">
++              <p className="font-semibold text-muted-foreground">Forma de pago prevista</p>
++              <p className="text-foreground">{selectedGrooming.paymentMethodName || 'No registrada'}</p>
++            </div>
++            {selectedGrooming.routeId && <div className="mb-4 rounded-xl border border-border bg-muted p-3 text-sm">
++              <p className="font-semibold text-foreground">Ruta #{selectedGrooming.routeId} · Transporte único: Q{groomingRouteCost(selectedGrooming).toFixed(2)}</p>
++              <p className="mb-2 text-muted-foreground">El transporte se contabiliza una sola vez para esta ruta.</p>
++              <div className="space-y-2">{selectedGrooming.routeMembers?.map(member => <button key={member.id} type="button" onClick={() => { const item = grooming.find(appointment => appointment.id === member.id); if (item) setSelectedGrooming(item); }} className="block w-full rounded-lg bg-card px-3 py-2 text-left text-foreground">{member.petName} · {member.status}</button>)}</div>
++            </div>}
+
+@@ -1292,2 +1350,3 @@
+                   onChange={(patientId) => {
++                    setAdditionalPets([]);
+                     const selectedPatient = patients.find(
+@@ -1300,2 +1359,3 @@
+                         patientId: selectedPatient.id,
++                        address: selectedPatient.tutorAddress || '',
+                         petName: selectedPatient.petName || '',
+@@ -1343,3 +1403,4 @@
+                   value={formData.type || getDefaultGroomingType()}
+-                  onChange={(e) =>
++                  onChange={(e) => {
++                    setAdditionalPets([]);
+                     setFormData({
+@@ -1348,4 +1409,4 @@
+                       time: '',
+-                    })
+-                  }
++                    });
++                  }}
+                   className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+@@ -1594,4 +1655,13 @@
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
++                  <div className="md:col-span-2">
++                    <label className="mb-2 block text-sm text-foreground">Forma de pago prevista</label>
++                    <ThemedSelect value={formData.paymentMethod || ''} required={!editingGrooming} onChange={event => setFormData({ ...formData, paymentMethod: event.target.value })} className="w-full rounded-lg border border-border bg-secondary px-4 py-2 text-foreground">
++                      <option value="">{editingGrooming ? 'No registrada' : 'Seleccionar forma de pago'}</option>
++                      {formData.paymentMethod && !paymentOptions.some(method => method.codigo === formData.paymentMethod) && <option value={formData.paymentMethod}>{formData.paymentMethodName || formData.paymentMethod}</option>}
++                      {paymentOptions.map(method => <option key={method.codigo} value={method.codigo}>{method.nombre}</option>)}
++                    </ThemedSelect>
++                    <p className="mt-1 text-xs text-muted-foreground">Esta selección no genera cobros ni ventas.</p>
++                  </div>
+                   <FormInput
+-                    label="Costo del transporte, Q"
++                    label="Costo único de la ruta, Q"
+                     type="number"
+@@ -1607,2 +1677,3 @@
+                     step="0.01"
++                    disabled={sharedRouteUnchanged}
+                   />
+@@ -1627,2 +1698,17 @@
+                   </div>
++                  {sharedRouteUnchanged && <p className="md:col-span-2 text-xs text-muted-foreground">La ruta compartida conserva su costo. Para reprogramar solo esta mascota, cambie la fecha u hora; las demás citas permanecerán en su ruta.</p>}
++                  {!editingGrooming && formData.patientId && companions.length > 1 && <div className="md:col-span-2 rounded-xl border border-border bg-muted/40 p-3">
++                    <p className="mb-2 text-sm font-semibold text-foreground">Otras mascotas del mismo tutor en esta ruta</p>
++                    <p className="mb-3 text-xs text-muted-foreground">Comparten domicilio, fecha y hora. Máximo cuatro mascotas; cada una conserva su cita y costo de grooming.</p>
++                    {companions.filter(pet => pet.id !== formData.patientId).map(pet => {
++                      const selected = additionalPets.find(item => item.patientId === pet.id);
++                      return <div key={pet.id} className="mb-3 rounded-lg border border-border bg-card p-3">
++                        <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={Boolean(selected)} disabled={!selected && additionalPets.length >= 3} onChange={event => setAdditionalPets(event.target.checked ? [...additionalPets, { patientId: pet.id, animalSize: '', groomingCost: '' }] : additionalPets.filter(item => item.patientId !== pet.id))} />{pet.petName}</label>
++                        {selected && <div className="mt-3 grid gap-3 sm:grid-cols-2">
++                          <div><label className="mb-2 block text-sm text-foreground">Tamaño de {pet.petName}</label><ThemedSelect required value={selected.animalSize} onChange={event => setAdditionalPets(additionalPets.map(item => item.patientId === pet.id ? { ...item, animalSize: event.target.value } : item))} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-foreground"><option value="">Seleccionar tamaño</option>{animalSizeOptions.map(size => <option key={size} value={size}>{size}</option>)}</ThemedSelect></div>
++                          <FormInput label={`Grooming de ${pet.petName}, Q`} type="number" required min={0} step="0.01" value={selected.groomingCost} onChange={value => setAdditionalPets(additionalPets.map(item => item.patientId === pet.id ? { ...item, groomingCost: value === '' ? '' : Number(value) } : item))} />
++                        </div>}
++                      </div>;
++                    })}
++                  </div>}
+                 </div>
+@@ -1651,5 +1737,6 @@
+                   type="submit"
++                  disabled={saving}
+                   className="w-full sm:w-auto px-4 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors"
+                 >
+-                  {editingGrooming ? 'Actualizar' : 'Crear'}
++                  {saving ? 'Guardando…' : editingGrooming ? 'Actualizar' : 'Crear'}
+                 </button>
+@@ -1814,3 +1901,3 @@
+             <p className="text-muted-foreground text-sm mb-6">
+-              {`Ya se alcanzó el límite diario de ${transportCapacity} servicios de grooming con transporte. Selecciona otra fecha o cambia el tipo de cita.`}
++              Ya se alcanzó la capacidad de rutas para la fecha seleccionada. Seleccione otra fecha u horario, o revise la ruta compartida.
+             </p>
+@@ -1843,2 +1930,3 @@
+   inputMode,
++  disabled = false,
+ }: {
+@@ -1856,2 +1944,3 @@
+   inputMode?: 'none' | 'text' | 'tel' | 'url' | 'email' | 'numeric' | 'decimal' | 'search';
++  disabled?: boolean;
+ }) {
+@@ -1865,2 +1954,3 @@
+         type={type}
++        disabled={disabled}
+         value={value}
+diff --git a/src/app/utils/types.ts b/src/app/utils/types.ts
+--- a/src/app/utils/types.ts
++++ b/src/app/utils/types.ts
+@@ -114,2 +114,8 @@
+   id: string;
++  tutorId?: string;
++  paymentMethod?: string;
++  paymentMethodName?: string;
++  routeId?: string | null;
++  routeTransportCost?: number;
++  routeMembers?: Array<{ id: string; patientId: string; petName: string; status: string; isCancelled: boolean }>;
+   type: 'Grooming en clínica' | 'Grooming con transporte';
+diff --git a/backend/src/utils/groomingTransport.js b/backend/src/utils/groomingTransport.js
+new file mode 100644
+--- /dev/null
++++ b/backend/src/utils/groomingTransport.js
+@@ -0,0 +1,125 @@
++const { createHash } = require('node:crypto');
++const fail = (message, code = 'INVALID_TRANSPORT', statusCode = 400) => {
++  throw Object.assign(new Error(message), { code, statusCode });
++};
++const normalizeAddress = value => String(value || '').normalize('NFC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('es');
++const money = value => {
++  const number = Number(value);
++  if (!['string', 'number'].includes(typeof value) || String(value).trim() === '' || !Number.isFinite(number) || number < 0 || number > 99999999.99) fail('El costo debe ser un número válido mayor o igual a cero');
++  return Math.round(number * 100) / 100;
++};
++const operationsAvailable = async connection => {
++  const [rows] = await connection.query(`SELECT COUNT(*) AS grooming_operations_tables FROM information_schema.TABLES
++    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('grooming_operacion', 'grooming_transporte_ruta')`);
++  return Number(rows[0]?.grooming_operations_tables) === 2;
++};
++const requireOperations = available => {
++  if (!available) fail('La mejora de grooming requiere aplicar primero la migración de rutas y formas de pago', 'GROOMING_MIGRATION_REQUIRED', 503);
++};
++// Un orden de bloqueo único serializa reservas, reprogramaciones y reactivaciones.
++// No se escriben horarios ni se introducen tablas de bloqueo.
++const lockTransportSchedules = async connection => {
++  await connection.query(`SELECT h.horario_id FROM horario_atencion h
++    INNER JOIN modulo_sistema m ON m.modulo_id = h.modulo_id
++    WHERE m.codigo = 'grooming' ORDER BY h.horario_id FOR UPDATE`);
++};
++const paymentId = async (connection, code, previous = null) => {
++  if (code === undefined) return previous;
++  if (!code) return null;
++  const [rows] = await connection.query(`SELECT forma_pago_id FROM forma_pago
++    WHERE codigo = ? AND (activo = 1 OR forma_pago_id = ?) LIMIT 1`, [code, previous]);
++  if (!rows.length) fail('La forma de pago seleccionada no está disponible', 'INVALID_PAYMENT_METHOD');
++  return rows[0].forma_pago_id;
++};
++const currentOperation = async (connection, id) => {
++  const [rows] = await connection.query('SELECT forma_pago_id, ruta_id FROM grooming_operacion WHERE grooming_id = ?', [id]);
++  return rows[0] || {};
++};
++const routeMembers = async (connection, routeId, excludeId = 0) => {
++  const [rows] = await connection.query(`SELECT operacion.ruta_id, cita.grooming_id, cita.paciente_id, cita.nombre_mascota,
++      estado.nombre AS estado, estado.es_cancelado
++    FROM grooming_operacion operacion
++    INNER JOIN cita_grooming cita ON cita.grooming_id = operacion.grooming_id
++    INNER JOIN estado_grooming estado ON estado.estado_grooming_id = cita.estado_grooming_id
++    WHERE operacion.ruta_id ${Array.isArray(routeId) ? 'IN (?)' : '= ?'} AND cita.grooming_id <> ? ORDER BY cita.grooming_id`, [routeId, excludeId]);
++  return rows;
++};
++const resolveRoute = async (connection, { date, time, typeId, tutorId, address, cost, excludeId = 0, patientIds, active = true }) => {
++  const normalized = normalizeAddress(address);
++  if (!normalized || String(address).length > 255 || !tutorId) fail('Indique el tutor y una dirección de recogida válida');
++  const amount = money(cost);
++  const key = createHash('sha256').update(normalized).digest('hex');
++  const [routes] = await connection.query(`SELECT ruta_id, costo FROM grooming_transporte_ruta
++    WHERE fecha = ? AND hora = ? AND tutor_id = ? AND tipo_grooming_id = ? AND direccion_key = ? FOR UPDATE`,
++  [date, time, tutorId, typeId, key]);
++  const route = routes[0];
++  const members = route ? await routeMembers(connection, route.ruta_id, excludeId) : [];
++  const activeMembers = members.filter(member => !member.es_cancelado);
++  if (active && activeMembers.length + patientIds.length > 4) fail('La ruta admite un máximo de cuatro mascotas activas', 'ROUTE_PET_LIMIT', 409);
++  if (active && patientIds.some(id => id && activeMembers.some(member => String(member.paciente_id) === String(id)))) {
++    fail('Una de las mascotas ya tiene una cita activa en esta ruta', 'DUPLICATE_PATIENT_ROUTE', 409);
++  }
++  if (active && !activeMembers.length) {
++    const [counts] = await connection.query(`SELECT COUNT(DISTINCT CASE WHEN operacion.ruta_id IS NULL
++        THEN CONCAT('cita-', cita.grooming_id) ELSE CONCAT('ruta-', operacion.ruta_id) END) AS route_count
++      FROM cita_grooming cita
++      INNER JOIN estado_grooming estado ON estado.estado_grooming_id = cita.estado_grooming_id
++      LEFT JOIN grooming_operacion operacion ON operacion.grooming_id = cita.grooming_id
++      WHERE cita.fecha = ? AND cita.tipo_grooming_id = ? AND estado.es_cancelado = 0 AND cita.grooming_id <> ?`, [date, typeId, excludeId]);
++    const [capacities] = await connection.query(`SELECT h.capacidad_diaria FROM horario_atencion h
++      INNER JOIN modulo_sistema m ON m.modulo_id = h.modulo_id
++      WHERE m.codigo = 'grooming' AND h.dia_semana = DAYOFWEEK(?) - 1
++        AND h.tipo_grooming_id = ? AND h.activo = 1 LIMIT 1`, [date, typeId]);
++    const capacity = Number(capacities[0]?.capacidad_diaria || 0);
++    if (capacity <= 0 || Number(counts[0].route_count) >= capacity) fail('Ya se alcanzó el límite diario de rutas de transporte', 'TRANSPORT_LIMIT', 409);
++  }
++  if (route) {
++    if (money(route.costo) !== amount) {
++      if (members.length) fail(`La ruta compartida ya tiene un costo de Q${money(route.costo).toFixed(2)}. Conserve ese importe.`, 'SHARED_ROUTE_COST', 409);
++      await connection.query('UPDATE grooming_transporte_ruta SET costo = ? WHERE ruta_id = ?', [amount, route.ruta_id]);
++    }
++    return route.ruta_id;
++  }
++  const [result] = await connection.query(`INSERT INTO grooming_transporte_ruta
++    (tutor_id, tipo_grooming_id, fecha, hora, direccion, direccion_key, costo) VALUES (?, ?, ?, ?, ?, ?, ?)`,
++  [tutorId, typeId, date, time, String(address).trim(), key, amount]);
++  return result.insertId;
++};
++const saveOperation = async (connection, id, methodId, routeId) => {
++  await connection.query(`INSERT INTO grooming_operacion (grooming_id, forma_pago_id, ruta_id) VALUES (?, ?, ?)
++    ON DUPLICATE KEY UPDATE forma_pago_id = VALUES(forma_pago_id), ruta_id = VALUES(ruta_id)`, [id, methodId, routeId]);
++};
++const enrichAppointments = async (connection, appointments) => {
++  if (!appointments.length || !(await operationsAvailable(connection))) return appointments;
++  const [rows] = await connection.query(`SELECT operacion.grooming_id, operacion.ruta_id, pago.codigo, pago.nombre,
++      ruta.costo AS costo_ruta FROM grooming_operacion operacion
++    LEFT JOIN forma_pago pago ON pago.forma_pago_id = operacion.forma_pago_id
++    LEFT JOIN grooming_transporte_ruta ruta ON ruta.ruta_id = operacion.ruta_id
++    WHERE operacion.grooming_id IN (?)`, [appointments.map(item => item.id)]);
++  const routes = new Map();
++  const routeIds = [...new Set(rows.filter(row => row.ruta_id).map(row => String(row.ruta_id)))];
++  for (const member of routeIds.length ? await routeMembers(connection, routeIds) : []) {
++    const id = String(member.ruta_id);
++    if (!routes.has(id)) routes.set(id, []);
++    routes.get(id).push(member);
++  }
++  const byId = new Map(rows.map(row => [String(row.grooming_id), row]));
++  return appointments.map(item => {
++    const row = byId.get(item.id);
++    if (!row) return item; // El objeto de una cita anterior queda intacto.
++    const members = routes.get(String(row.ruta_id)) || [];
++    const charge = members.find(member => !member.es_cancelado);
++    return { ...item, paymentMethod: row.codigo || '', paymentMethodName: row.nombre || '',
++      routeId: row.ruta_id ? String(row.ruta_id) : null,
++      ...(row.ruta_id ? {
++        routeTransportCost: Number(row.costo_ruta),
++        transportCost: String(charge?.grooming_id) === item.id ? Number(row.costo_ruta) : 0,
++        routeMembers: members.map(member => ({ id: String(member.grooming_id), patientId: member.paciente_id ? String(member.paciente_id) : '',
++          petName: member.nombre_mascota, status: member.estado, isCancelled: Boolean(member.es_cancelado) })),
++      } : {}),
++    };
++  });
++};
++
++module.exports = { fail, money, normalizeAddress, operationsAvailable, requireOperations, lockTransportSchedules,
++  paymentId, currentOperation, resolveRoute, saveOperation, enrichAppointments };
+diff --git a/backend/src/scripts/groomingTransportMigration.sql b/backend/src/scripts/groomingTransportMigration.sql
+new file mode 100644
+--- /dev/null
++++ b/backend/src/scripts/groomingTransportMigration.sql
+@@ -0,0 +1,25 @@
++-- Migración aditiva para revisión. No se ejecuta al iniciar el servidor.
++-- No convierte ni actualiza citas, historiales, pagos o ventas existentes.
++CREATE TABLE IF NOT EXISTS grooming_transporte_ruta (
++  ruta_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
++  tutor_id BIGINT UNSIGNED NOT NULL,
++  tipo_grooming_id INT NOT NULL,
++  fecha DATE NOT NULL,
++  hora TIME NOT NULL,
++  direccion VARCHAR(255) NOT NULL,
++  direccion_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
++  costo DECIMAL(10,2) NOT NULL DEFAULT 0,
++  UNIQUE KEY uq_grooming_ruta (fecha, hora, tutor_id, tipo_grooming_id, direccion_key),
++  CONSTRAINT fk_grooming_ruta_tutor FOREIGN KEY (tutor_id) REFERENCES tutor(tutor_id),
++  CONSTRAINT fk_grooming_ruta_tipo FOREIGN KEY (tipo_grooming_id) REFERENCES tipo_grooming(tipo_grooming_id)
++) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
++
++CREATE TABLE IF NOT EXISTS grooming_operacion (
++  grooming_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
++  forma_pago_id INT UNSIGNED NULL,
++  ruta_id BIGINT UNSIGNED NULL,
++  KEY idx_grooming_operacion_ruta (ruta_id),
++  CONSTRAINT fk_grooming_operacion_cita FOREIGN KEY (grooming_id) REFERENCES cita_grooming(grooming_id) ON DELETE CASCADE,
++  CONSTRAINT fk_grooming_operacion_pago FOREIGN KEY (forma_pago_id) REFERENCES forma_pago(forma_pago_id),
++  CONSTRAINT fk_grooming_operacion_ruta FOREIGN KEY (ruta_id) REFERENCES grooming_transporte_ruta(ruta_id)
++) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+diff --git a/src/app/utils/groomingTransport.ts b/src/app/utils/groomingTransport.ts
+new file mode 100644
+--- /dev/null
++++ b/src/app/utils/groomingTransport.ts
+@@ -0,0 +1,8 @@
++import type { GroomingAppointment } from './types';
++
++// Las citas anteriores sin ruta conservan su cupo individual original.
++export const countGroomingTransportRoutes = (appointments: GroomingAppointment[]) =>
++  new Set(appointments.map(item => item.routeId ? `ruta-${item.routeId}` : `cita-${item.id}`)).size;
++
++export const groomingRouteCost = (appointment: GroomingAppointment) =>
++  appointment.routeId ? Number(appointment.routeTransportCost || 0) : Number(appointment.transportCost || 0);

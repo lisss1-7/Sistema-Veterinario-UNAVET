@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const { sincronizarHistorialDesdeGrooming } = require('../utils/groomingHistory');
 const { validarHorarioConfigurado } = require('../utils/scheduleUtils');
+const transport = require('../utils/groomingTransport');
 const {
   areValidNameParts,
   buildFullName,
@@ -298,7 +299,7 @@ const listarGrooming = async (req, res) => {
       `
     );
 
-    res.json(rows.map(mapGroomingToFrontend));
+    res.json(await transport.enrichAppointments(pool, rows.map(mapGroomingToFrontend)));
   } catch (error) {
     res.status(500).json({
       message: 'Error al listar citas de grooming',
@@ -362,7 +363,7 @@ const obtenerGroomingPorId = async (req, res) => {
       });
     }
 
-    res.json(mapGroomingToFrontend(rows[0]));
+    res.json((await transport.enrichAppointments(pool, [mapGroomingToFrontend(rows[0])]))[0]);
   } catch (error) {
     res.status(500).json({
       message: 'Error al obtener cita de grooming',
@@ -430,6 +431,13 @@ const crearGrooming = async (req, res) => {
     }
 
     await connection.beginTransaction();
+    const additionalPets = req.body.additionalPets || [];
+    if (!Array.isArray(additionalPets) || additionalPets.some(pet => !pet || typeof pet !== 'object') || additionalPets.length > 3 || (additionalPets.length && !patientId)) {
+      transport.fail('Seleccione una mascota registrada y un máximo de tres mascotas adicionales');
+    }
+    const operations = await transport.operationsAvailable(connection);
+    if (req.body.paymentMethod || additionalPets.length) transport.requireOperations(operations);
+    if (operations) await transport.lockTransportSchedules(connection);
 
     const breedName = String(breed || '').trim();
     if (breedName.toLocaleLowerCase() === 'otra') {
@@ -472,7 +480,8 @@ const crearGrooming = async (req, res) => {
       await connection.rollback();
       return res.status(400).json({ message: 'Tipo de grooming no válido' });
     }
-    if (groomingType.requiere_transporte) {
+    if (additionalPets.length && !groomingType.requiere_transporte) transport.fail('Las mascotas adicionales requieren una ruta de transporte');
+    if (groomingType.requiere_transporte && !operations) {
       const transporteDisponible = await validarLimiteTransporte(
         connection,
         date,
@@ -535,6 +544,22 @@ const crearGrooming = async (req, res) => {
       });
     }
 
+    const pets = [{ pacienteId, nombreMascota, raza, edadMascota, sizeId: sizeCatalog.tamano_animal_id, cost: Number(groomingCost) || 0 }];
+    for (const extra of additionalPets) {
+      if (!extra.patientId || pets.some(pet => String(pet.pacienteId) === String(extra.patientId))) transport.fail('No repita mascotas en la misma ruta');
+      const patient = await obtenerTutorPorPaciente(connection, extra.patientId);
+      if (!patient || String(patient.tutor_id) !== String(tutorId)) transport.fail('Todas las mascotas de una ruta deben pertenecer al mismo tutor');
+      const size = await obtenerTamanoAnimal(connection, extra.animalSize);
+      if (!size) transport.fail('Seleccione un tamaño válido para cada mascota');
+      pets.push({ pacienteId: extra.patientId, nombreMascota: patient.nombre_mascota, raza: patient.raza,
+        edadMascota: patient.edad, sizeId: size.tamano_animal_id, cost: transport.money(extra.groomingCost) });
+    }
+    if (operations) pets[0].cost = transport.money(groomingCost);
+    const methodId = operations ? await transport.paymentId(connection, req.body.paymentMethod) : null;
+    const routeId = operations && groomingType.requiere_transporte ? await transport.resolveRoute(connection, {
+      date, time, typeId: groomingType.tipo_grooming_id, tutorId, address, cost: transportCost,
+      patientIds: pets.map(pet => pet.pacienteId),
+    }) : null;
     const [initialStatuses] = await connection.query(
       `SELECT estado_grooming_id, nombre
        FROM estado_grooming
@@ -544,72 +569,78 @@ const crearGrooming = async (req, res) => {
     if (initialStatuses.length === 0) {
       throw new Error('No existe un estado inicial configurado para grooming');
     }
-    const [result] = await connection.query(
-      `
-      INSERT INTO cita_grooming (
-        paciente_id,
-        tutor_id,
-        nombre_mascota,
-        tutor_primer_nombre,
-        tutor_segundo_nombre,
-        tutor_primer_apellido,
-        tutor_segundo_apellido,
-        telefono_tutor,
-        raza,
-        tamano_animal_id,
-        direccion_recogida,
-        fecha,
-        hora,
-        observaciones,
-        edad,
-        codigo_acceso,
-        costo_grooming,
-        costo_transporte,
-        tipo_grooming_id,
-        estado_grooming_id,
-        creado_por
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-      [
-        pacienteId,
-        tutorId,
-        nombreMascota,
-        tutorNameParts.firstName,
-        tutorNameParts.middleName || null,
-        tutorNameParts.firstSurname,
-        tutorNameParts.secondSurname || null,
-        telefonoTutor,
-        raza,
-        sizeCatalog.tamano_animal_id,
-        groomingType.requiere_transporte ? address || null : null,
-        date,
-        time,
-        observations || null,
-        edadMascota,
-        accessCode || null,
-        Number(groomingCost) || 0,
-        Number(transportCost) || 0,
-        groomingType.tipo_grooming_id,
-        initialStatuses[0].estado_grooming_id,
-        req.user?.id || null,
-      ]
-    );
+    const ids = [];
+    for (const pet of pets) {
+      const [result] = await connection.query(
+        `
+        INSERT INTO cita_grooming (
+          paciente_id,
+          tutor_id,
+          nombre_mascota,
+          tutor_primer_nombre,
+          tutor_segundo_nombre,
+          tutor_primer_apellido,
+          tutor_segundo_apellido,
+          telefono_tutor,
+          raza,
+          tamano_animal_id,
+          direccion_recogida,
+          fecha,
+          hora,
+          observaciones,
+          edad,
+          codigo_acceso,
+          costo_grooming,
+          costo_transporte,
+          tipo_grooming_id,
+          estado_grooming_id,
+          creado_por
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          pet.pacienteId,
+          tutorId,
+          pet.nombreMascota,
+          tutorNameParts.firstName,
+          tutorNameParts.middleName || null,
+          tutorNameParts.firstSurname,
+          tutorNameParts.secondSurname || null,
+          telefonoTutor,
+          pet.raza,
+          pet.sizeId,
+          groomingType.requiere_transporte ? address || null : null,
+          date,
+          time,
+          observations || null,
+          pet.edadMascota,
+          accessCode || null,
+          pet.cost,
+          routeId ? 0 : Number(transportCost) || 0,
+          groomingType.tipo_grooming_id,
+          initialStatuses[0].estado_grooming_id,
+          req.user?.id || null,
+        ]
+      );
 
-    await sincronizarHistorialDesdeGrooming(connection, result.insertId);
+      if (operations && (methodId || routeId)) await transport.saveOperation(connection, result.insertId, methodId, routeId);
+      await sincronizarHistorialDesdeGrooming(connection, result.insertId);
+      ids.push(String(result.insertId));
+    }
     await connection.commit();
 
     res.status(201).json({
       message: pacienteId
         ? 'Cita de grooming creada correctamente y agregada al historial del paciente'
         : 'Cita de grooming creada correctamente',
-      id: String(result.insertId),
+      id: ids[0], ids, routeId: routeId ? String(routeId) : null,
     });
   } catch (error) {
     await connection.rollback();
 
-    res.status(500).json({
-      message: 'Error al crear cita de grooming',
+    res.status(error.statusCode || 500).json({
+      message: error.statusCode ? error.message : 'Error al crear cita de grooming',
+      code: error.code,
       error: error.message,
     });
   } finally {
@@ -679,6 +710,9 @@ const actualizarGrooming = async (req, res) => {
     }
  
     await connection.beginTransaction();
+    const operations = await transport.operationsAvailable(connection);
+    if (req.body.paymentMethod) transport.requireOperations(operations);
+    if (operations) await transport.lockTransportSchedules(connection);
 
     const breedName = String(breed || '').trim();
     if (breedName.toLocaleLowerCase() === 'otra') {
@@ -720,6 +754,7 @@ const actualizarGrooming = async (req, res) => {
       `SELECT
          grooming.grooming_id,
          grooming.estado_grooming_id,
+         estado.es_cancelado,
          estado.nombre AS estado
        FROM cita_grooming grooming
        INNER JOIN estado_grooming estado
@@ -742,7 +777,7 @@ const actualizarGrooming = async (req, res) => {
       await connection.rollback();
       return res.status(400).json({ message: 'Tipo de grooming no válido' });
     }
-    if (groomingType.requiere_transporte) {
+    if (groomingType.requiere_transporte && !operations) {
       const transporteDisponible = await validarLimiteTransporte(
         connection,
         date,
@@ -798,10 +833,11 @@ const actualizarGrooming = async (req, res) => {
     let groomingStatus = {
       nombre: existing[0].estado,
       estado_grooming_id: existing[0].estado_grooming_id,
+      es_cancelado: existing[0].es_cancelado,
     };
     if (status) {
       const [statusRows] = await connection.query(
-        `SELECT estado_grooming_id, nombre
+        `SELECT estado_grooming_id, nombre, es_cancelado
          FROM estado_grooming
          WHERE nombre = ?
          LIMIT 1`,
@@ -827,6 +863,13 @@ const actualizarGrooming = async (req, res) => {
       });
     }
 
+    const previousOperation = operations ? await transport.currentOperation(connection, id) : {};
+    const methodId = operations ? await transport.paymentId(connection, req.body.paymentMethod, previousOperation.forma_pago_id || null) : null;
+    const routeId = operations && groomingType.requiere_transporte ? await transport.resolveRoute(connection, {
+      date, time, typeId: groomingType.tipo_grooming_id, tutorId, address, cost: transportCost,
+      excludeId: id, patientIds: [pacienteId], active: !groomingStatus.es_cancelado,
+    }) : null;
+    if (operations) transport.money(groomingCost);
     await connection.query(
       `
       UPDATE cita_grooming
@@ -871,13 +914,14 @@ const actualizarGrooming = async (req, res) => {
         edadMascota,
         accessCode || null,
         Number(groomingCost) || 0,
-        Number(transportCost) || 0,
+        routeId || (operations && !groomingType.requiere_transporte) ? 0 : Number(transportCost) || 0,
         groomingType.tipo_grooming_id,
         groomingStatus.estado_grooming_id,
         id,
       ]
     );
 
+    if (operations) await transport.saveOperation(connection, id, methodId, routeId);
     await sincronizarHistorialDesdeGrooming(connection, id);
     await connection.commit();
 
@@ -889,8 +933,9 @@ const actualizarGrooming = async (req, res) => {
   } catch (error) {
     await connection.rollback();
 
-    res.status(500).json({
-      message: 'Error al actualizar cita de grooming',
+    res.status(error.statusCode || 500).json({
+      message: error.statusCode ? error.message : 'Error al actualizar cita de grooming',
+      code: error.code,
       error: error.message,
     });
   } finally {
@@ -905,7 +950,7 @@ const cambiarEstadoGrooming = async (req, res) => {
     const { status } = req.body;
 
     const [validStatuses] = await connection.query(
-      `SELECT estado_grooming_id, nombre
+      `SELECT estado_grooming_id, nombre, es_cancelado
        FROM estado_grooming
        WHERE nombre = ?
        LIMIT 1`,
@@ -919,6 +964,21 @@ const cambiarEstadoGrooming = async (req, res) => {
     }
 
     await connection.beginTransaction();
+    if (await transport.operationsAvailable(connection)) {
+      await transport.lockTransportSchedules(connection);
+      const operation = await transport.currentOperation(connection, id);
+      if (operation.ruta_id && !validStatuses[0].es_cancelado) {
+        const [routes] = await connection.query(`SELECT ruta.*, DATE_FORMAT(ruta.fecha, '%Y-%m-%d') AS route_date, cita.paciente_id FROM grooming_transporte_ruta ruta
+          INNER JOIN grooming_operacion operacion ON operacion.ruta_id = ruta.ruta_id
+          INNER JOIN cita_grooming cita ON cita.grooming_id = operacion.grooming_id
+          WHERE operacion.grooming_id = ?`, [id]);
+        const route = routes[0];
+        if (!route) transport.fail('La ruta vinculada no está disponible');
+        await transport.resolveRoute(connection, { date: route.route_date,
+          time: route.hora, typeId: route.tipo_grooming_id, tutorId: route.tutor_id, address: route.direccion, cost: route.costo,
+          excludeId: id, patientIds: [route.paciente_id] });
+      }
+    }
     const [result] = await connection.query(
       `UPDATE cita_grooming
        SET estado_grooming_id = ?
@@ -939,8 +999,9 @@ const cambiarEstadoGrooming = async (req, res) => {
     });
   } catch (error) {
     await connection.rollback();
-    res.status(500).json({
-      message: 'Error al cambiar estado de grooming',
+    res.status(error.statusCode || 500).json({
+      message: error.statusCode ? error.message : 'Error al cambiar estado de grooming',
+      code: error.code,
       error: error.message,
     });
   } finally {
@@ -954,6 +1015,7 @@ const eliminarGrooming = async (req, res) => {
     const { id } = req.params;
 
     await connection.beginTransaction();
+    if (await transport.operationsAvailable(connection)) await transport.lockTransportSchedules(connection);
     await connection.query(
       `DELETE FROM historial_clinico
        WHERE grooming_id = ? AND origen = 'Grooming' AND estado_clinico = 'Pendiente'
@@ -987,7 +1049,24 @@ const eliminarGrooming = async (req, res) => {
   }
 };
 
+const listarCompanerosGrooming = async (req, res) => {
+  try {
+    const patient = await obtenerTutorPorPaciente(pool, req.params.id);
+    if (!patient) return res.status(404).json({ message: 'Paciente vinculado no encontrado' });
+    const [rows] = await pool.query(`SELECT paciente.paciente_id AS id, paciente.nombre AS petName,
+        paciente.edad AS age, raza.nombre AS breed
+      FROM paciente
+      LEFT JOIN raza ON raza.raza_id = paciente.raza_id
+      WHERE paciente.activo = 1 AND paciente.tutor_id = ?
+      ORDER BY paciente.nombre, paciente.paciente_id`, [patient.tutor_id]);
+    res.json(rows.map(row => ({ ...row, id: String(row.id) })));
+  } catch (error) {
+    res.status(500).json({ message: 'Error al consultar mascotas del tutor', error: error.message });
+  }
+};
+
 module.exports = {
+  listarCompanerosGrooming,
   listarGrooming,
   obtenerGroomingPorId,
   crearGrooming,

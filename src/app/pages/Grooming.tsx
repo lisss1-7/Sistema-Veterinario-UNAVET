@@ -42,11 +42,15 @@ import {
 } from '../utils/formValidation';
 import { API_URL } from '../config/api';
 import { getAuthHeaders } from '../utils/apiClient';
+import { countGroomingTransportRoutes, groomingRouteCost } from '../utils/groomingTransport';
 
 type GroomingFormData = Partial<GroomingAppointment> & {
   patientId?: string;
   species?: string;
 };
+type AdditionalPet = { patientId: string; animalSize: string; groomingCost: number | '' };
+type Companion = { id: string; petName: string; breed?: string; age?: string };
+type PaymentOption = { codigo: string; nombre: string };
 
 type DeleteTarget = {
   id: string;
@@ -115,6 +119,10 @@ export default function Grooming() {
     useState<GroomingAppointment | null>(null);
 
   const [formData, setFormData] = useState<GroomingFormData>({});
+  const [additionalPets, setAdditionalPets] = useState<AdditionalPet[]>([]);
+  const [companions, setCompanions] = useState<Companion[]>([]);
+  const [paymentOptions, setPaymentOptions] = useState<PaymentOption[]>([]);
+  const [saving, setSaving] = useState(false);
 
   const [patients, setPatients] = useState<any[]>([]);
   const [groomingTypeCatalog, setGroomingTypeCatalog] = useState<CatalogItem[]>([]);
@@ -208,6 +216,17 @@ export default function Grooming() {
       fetchCatalogSafely('estados-grooming', setGroomingStatusOptions),
       fetchCatalogSafely('tamanos-animales', setAnimalSizeOptions),
       (async () => {
+        try {
+          const response = await fetch(`${API_URL}/catalogos/formas-pago`, { headers: getAuthHeaders() });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.message || 'No se pudieron cargar las formas de pago');
+          setPaymentOptions(Array.isArray(data) ? data : []);
+        } catch (error) {
+          setPaymentOptions([]);
+          setFormError({ title: 'No se pudieron cargar las formas de pago', message: error instanceof Error ? error.message : 'Intente nuevamente.' });
+        }
+      })(),
+      (async () => {
         const response = await fetch(`${API_URL}/catalogos/especies`, {
           headers: getAuthHeaders(),
         });
@@ -284,11 +303,22 @@ export default function Grooming() {
   }, [formData.date, formData.type, groomingTypeCatalog]);
 
   useEffect(() => {
+    let active = true;
+    setCompanions([]);
+    if (!showModal || editingGrooming || !formData.patientId) return;
+    void fetch(`${API_URL}/grooming/pacientes/${encodeURIComponent(formData.patientId)}/companeros`, { headers: getAuthHeaders() })
+      .then(async response => { const data = await response.json(); if (!response.ok) throw new Error(data.message); return data; })
+      .then(data => { if (active) setCompanions(Array.isArray(data) ? data : []); })
+      .catch(error => { if (active) setFormError({ title: 'No se pudieron consultar las mascotas del tutor', message: error instanceof Error ? error.message : 'Intente nuevamente.' }); });
+    return () => { active = false; };
+  }, [formData.patientId, showModal, editingGrooming]);
+
+  useEffect(() => {
     const transportType = groomingTypeCatalog.find((item) =>
       isTransportType(item.nombre)
     );
     if (!transportType?.id) return;
-    void loadSchedule(new Date().toISOString().split('T')[0], transportType.id)
+    void loadSchedule(getTodayLocal(), transportType.id)
       .then((data) => setTransportCapacity(Number(data.capacity || 0)))
       .catch(() => setTransportCapacity(0));
   }, [groomingTypeCatalog]);
@@ -357,6 +387,7 @@ export default function Grooming() {
 
       setGrooming(data);
       calculateStats(data);
+      return data as GroomingAppointment[];
     } catch (error) {
       console.error('Error al cargar citas de grooming:', error);
       setGrooming([]);
@@ -385,7 +416,7 @@ export default function Grooming() {
   };
 
   const calculateStats = (data: GroomingAppointment[]) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayLocal();
 
     const todayGrooming = data.filter(
       (g: GroomingAppointment) => g.date === today && !isCancelledStatus(g.status)
@@ -398,6 +429,7 @@ export default function Grooming() {
     const withTransport = todayGrooming.filter((g: GroomingAppointment) =>
       isTransportType(g.type)
     ).length;
+    const routeCount = countGroomingTransportRoutes(todayGrooming.filter(g => isTransportType(g.type)));
 
     const estimatedIncome = todayGrooming.reduce((sum, g) => {
       return sum + Number(g.groomingCost || 0) + Number(g.transportCost || 0);
@@ -407,7 +439,7 @@ export default function Grooming() {
       inClinic,
       withTransport,
       estimatedIncome,
-      availableTransport: Math.max(0, transportCapacity - withTransport),
+      availableTransport: Math.max(0, transportCapacity - routeCount),
     });
   };
 
@@ -446,6 +478,7 @@ export default function Grooming() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     setFormError(null);
 
     if (!isValidPetName(formData.petName)) {
@@ -513,7 +546,14 @@ export default function Grooming() {
       return;
     }
 
+    if (isTransportType(formData.type) && !editingGrooming && !formData.paymentMethod) {
+      setFormError({ title: 'Falta la forma de pago', message: 'Seleccione una forma de pago del catálogo.' }); return;
+    }
+    if (additionalPets.some(pet => !pet.animalSize || !isNonNegativeNumber(pet.groomingCost))) {
+      setFormError({ title: 'Revise las mascotas adicionales', message: 'Cada mascota requiere su tamaño y costo de grooming.' }); return;
+    }
     try {
+      setSaving(true);
       const url = editingGrooming
         ? `${API_URL}/grooming/${editingGrooming.id}`
         : `${API_URL}/grooming`;
@@ -522,6 +562,7 @@ export default function Grooming() {
       const groomingPayload = {
         ...formData,
         age: String(formData.age || '').trim(),
+        additionalPets: !editingGrooming && isTransportType(formData.type) ? additionalPets : [],
       };
 
       const response = await fetch(url, {
@@ -559,7 +600,7 @@ export default function Grooming() {
             ? error.message
             : 'Revisa el backend o la consola para más detalles.',
       });
-    }
+    } finally { setSaving(false); }
   };
 
   const closeSuccessModal = () => {
@@ -634,11 +675,12 @@ export default function Grooming() {
         throw new Error(data.message || 'Error al cambiar estado');
       }
 
-      await loadGrooming();
+      const updated = await loadGrooming();
       setSelectedGrooming((current) =>
-        current?.id === id
-          ? { ...current, status: newStatus as GroomingAppointment['status'] }
-          : current
+        updated?.find(item => item.id === current?.id) || (
+          current?.id === id
+            ? { ...current, status: newStatus as GroomingAppointment['status'] }
+            : current)
       );
     } catch (error) {
       console.error('Error al cambiar estado de grooming:', error);
@@ -647,6 +689,7 @@ export default function Grooming() {
   };
 
   const openModal = (groomingItem?: GroomingAppointment, date?: string) => {
+    setAdditionalPets([]);
     setFormError(null);
     if (groomingItem) {
       const linkedPatient = patients.find(
@@ -655,7 +698,7 @@ export default function Grooming() {
       const species = linkedPatient?.species || '';
 
       setEditingGrooming(groomingItem);
-      setFormData({ ...groomingItem, species });
+      setFormData({ ...groomingItem, species, transportCost: groomingRouteCost(groomingItem) });
       setSelectedBreedOption(groomingItem.breed || '');
       setCustomBreed('');
 
@@ -677,6 +720,10 @@ export default function Grooming() {
 
     setShowModal(true);
   };
+
+  const sharedRouteUnchanged = Boolean(editingGrooming?.routeId && (editingGrooming.routeMembers?.length || 0) > 1 &&
+    formData.patientId === editingGrooming.patientId && formData.date === editingGrooming.date && formData.time === editingGrooming.time &&
+    formData.address?.trim().toLocaleLowerCase('es') === editingGrooming.address?.trim().toLocaleLowerCase('es'));
 
   const closeFormModal = () => {
     setFormError(null);
@@ -736,7 +783,7 @@ export default function Grooming() {
         />
         <InformationCard
           compact
-          label="Domicilios disponibles"
+          label="Rutas de transporte disponibles"
           value={`${stats.availableTransport}/${transportCapacity}`}
           icon={<MapPin className="h-6 w-6" strokeWidth={2} />}
           tone="earth"
@@ -912,7 +959,7 @@ export default function Grooming() {
               <div className="col-span-2">
                 <p className="text-muted-foreground">Transporte</p>
                 <p className="text-foreground font-medium">
-                  {groom.transportCost ? `Q${groom.transportCost}` : 'No aplica'}
+                  {groom.transportCost ? `Q${groom.transportCost}` : groom.routeId ? `Compartido en ruta #${groom.routeId}` : 'No aplica'}
                 </p>
               </div>
             </div>
@@ -1029,6 +1076,7 @@ export default function Grooming() {
                       {groom.transportCost && (
                         <p>Transporte: Q{groom.transportCost}</p>
                       )}
+                      {groom.routeId && <p className="text-xs text-muted-foreground">Ruta #{groom.routeId} · importe único</p>}
                     </div>
                   </td>
 
@@ -1170,10 +1218,20 @@ export default function Grooming() {
                 <p className="text-foreground">
                   {selectedGrooming.transportCost
                     ? `Q${Number(selectedGrooming.transportCost).toFixed(2)}`
-                    : 'No aplica'}
+                    : selectedGrooming.routeId ? `Compartido en ruta #${selectedGrooming.routeId}` : 'No aplica'}
                 </p>
               </div>
             </div>
+
+            <div className="mb-4 text-sm">
+              <p className="font-semibold text-muted-foreground">Forma de pago prevista</p>
+              <p className="text-foreground">{selectedGrooming.paymentMethodName || 'No registrada'}</p>
+            </div>
+            {selectedGrooming.routeId && <div className="mb-4 rounded-xl border border-border bg-muted p-3 text-sm">
+              <p className="font-semibold text-foreground">Ruta #{selectedGrooming.routeId} · Transporte único: Q{groomingRouteCost(selectedGrooming).toFixed(2)}</p>
+              <p className="mb-2 text-muted-foreground">El transporte se contabiliza una sola vez para esta ruta.</p>
+              <div className="space-y-2">{selectedGrooming.routeMembers?.map(member => <button key={member.id} type="button" onClick={() => { const item = grooming.find(appointment => appointment.id === member.id); if (item) setSelectedGrooming(item); }} className="block w-full rounded-lg bg-card px-3 py-2 text-left text-foreground">{member.petName} · {member.status}</button>)}</div>
+            </div>}
 
             {isTransportType(selectedGrooming.type) && (
               <div className="grid grid-cols-2 gap-4 text-sm mb-4">
@@ -1290,6 +1348,7 @@ export default function Grooming() {
                   patients={patients}
                   value={formData.patientId || ''}
                   onChange={(patientId) => {
+                    setAdditionalPets([]);
                     const selectedPatient = patients.find(
                       (p) => p.id === patientId
                     );
@@ -1298,6 +1357,7 @@ export default function Grooming() {
                       setFormData({
                         ...formData,
                         patientId: selectedPatient.id,
+                        address: selectedPatient.tutorAddress || '',
                         petName: selectedPatient.petName || '',
                         species: selectedPatient.species || '',
                         breed: selectedPatient.breed || '',
@@ -1341,13 +1401,14 @@ export default function Grooming() {
 
                 <ThemedSelect
                   value={formData.type || getDefaultGroomingType()}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    setAdditionalPets([]);
                     setFormData({
                       ...formData,
                       type: e.target.value as any,
                       time: '',
-                    })
-                  }
+                    });
+                  }}
                   className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
                   required
                 >
@@ -1592,8 +1653,17 @@ export default function Grooming() {
 
               {isTransportType(formData.type) && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="mb-2 block text-sm text-foreground">Forma de pago prevista</label>
+                    <ThemedSelect value={formData.paymentMethod || ''} required={!editingGrooming} onChange={event => setFormData({ ...formData, paymentMethod: event.target.value })} className="w-full rounded-lg border border-border bg-secondary px-4 py-2 text-foreground">
+                      <option value="">{editingGrooming ? 'No registrada' : 'Seleccionar forma de pago'}</option>
+                      {formData.paymentMethod && !paymentOptions.some(method => method.codigo === formData.paymentMethod) && <option value={formData.paymentMethod}>{formData.paymentMethodName || formData.paymentMethod}</option>}
+                      {paymentOptions.map(method => <option key={method.codigo} value={method.codigo}>{method.nombre}</option>)}
+                    </ThemedSelect>
+                    <p className="mt-1 text-xs text-muted-foreground">Esta selección no genera cobros ni ventas.</p>
+                  </div>
                   <FormInput
-                    label="Costo del transporte, Q"
+                    label="Costo único de la ruta, Q"
                     type="number"
                     value={formData.transportCost ?? ''}
                     onChange={(value) =>
@@ -1605,6 +1675,7 @@ export default function Grooming() {
                     required
                     min={0}
                     step="0.01"
+                    disabled={sharedRouteUnchanged}
                   />
 
                   <FormInput
@@ -1625,6 +1696,21 @@ export default function Grooming() {
                       required
                     />
                   </div>
+                  {sharedRouteUnchanged && <p className="md:col-span-2 text-xs text-muted-foreground">La ruta compartida conserva su costo. Para reprogramar solo esta mascota, cambie la fecha u hora; las demás citas permanecerán en su ruta.</p>}
+                  {!editingGrooming && formData.patientId && companions.length > 1 && <div className="md:col-span-2 rounded-xl border border-border bg-muted/40 p-3">
+                    <p className="mb-2 text-sm font-semibold text-foreground">Otras mascotas del mismo tutor en esta ruta</p>
+                    <p className="mb-3 text-xs text-muted-foreground">Comparten domicilio, fecha y hora. Máximo cuatro mascotas; cada una conserva su cita y costo de grooming.</p>
+                    {companions.filter(pet => pet.id !== formData.patientId).map(pet => {
+                      const selected = additionalPets.find(item => item.patientId === pet.id);
+                      return <div key={pet.id} className="mb-3 rounded-lg border border-border bg-card p-3">
+                        <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={Boolean(selected)} disabled={!selected && additionalPets.length >= 3} onChange={event => setAdditionalPets(event.target.checked ? [...additionalPets, { patientId: pet.id, animalSize: '', groomingCost: '' }] : additionalPets.filter(item => item.patientId !== pet.id))} />{pet.petName}</label>
+                        {selected && <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          <div><label className="mb-2 block text-sm text-foreground">Tamaño de {pet.petName}</label><ThemedSelect required value={selected.animalSize} onChange={event => setAdditionalPets(additionalPets.map(item => item.patientId === pet.id ? { ...item, animalSize: event.target.value } : item))} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-foreground"><option value="">Seleccionar tamaño</option>{animalSizeOptions.map(size => <option key={size} value={size}>{size}</option>)}</ThemedSelect></div>
+                          <FormInput label={`Grooming de ${pet.petName}, Q`} type="number" required min={0} step="0.01" value={selected.groomingCost} onChange={value => setAdditionalPets(additionalPets.map(item => item.patientId === pet.id ? { ...item, groomingCost: value === '' ? '' : Number(value) } : item))} />
+                        </div>}
+                      </div>;
+                    })}
+                  </div>}
                 </div>
               )}
 
@@ -1649,9 +1735,10 @@ export default function Grooming() {
               <div className="flex flex-col sm:flex-row sm:justify-start gap-4 pt-4">
                 <button
                   type="submit"
+                  disabled={saving}
                   className="w-full sm:w-auto px-4 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors"
                 >
-                  {editingGrooming ? 'Actualizar' : 'Crear'}
+                  {saving ? 'Guardando…' : editingGrooming ? 'Actualizar' : 'Crear'}
                 </button>
 
                 <button
@@ -1812,7 +1899,7 @@ export default function Grooming() {
             </h3>
 
             <p className="text-muted-foreground text-sm mb-6">
-              {`Ya se alcanzó el límite diario de ${transportCapacity} servicios de grooming con transporte. Selecciona otra fecha o cambia el tipo de cita.`}
+              Ya se alcanzó la capacidad de rutas para la fecha seleccionada. Seleccione otra fecha u horario, o revise la ruta compartida.
             </p>
 
             <button
@@ -1841,6 +1928,7 @@ function FormInput({
   maxLength,
   pattern,
   inputMode,
+  disabled = false,
 }: {
   label: string;
   value: string | number;
@@ -1854,6 +1942,7 @@ function FormInput({
   maxLength?: number;
   pattern?: string;
   inputMode?: 'none' | 'text' | 'tel' | 'url' | 'email' | 'numeric' | 'decimal' | 'search';
+  disabled?: boolean;
 }) {
   return (
     <div>
@@ -1863,6 +1952,7 @@ function FormInput({
 
       <input
         type={type}
+        disabled={disabled}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground"

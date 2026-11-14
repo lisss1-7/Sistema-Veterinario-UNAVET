@@ -24,6 +24,7 @@ const setup = ({ historyError = false, occupied = false, scheduleEnabled = true,
     rollback: async () => events.push('rollback'),
     release: () => events.push('release'),
     async query(sql, params) {
+      if (sql.includes('grooming_operations_tables')) return [[{ grooming_operations_tables: 0 }]];
       if (sql.includes('FROM horario_atencion')) return [scheduleEnabled ? [{ enabled: 1, capacidad_diaria: 2 }] : []];
       if (sql.includes('SELECT grooming_id')) return [occupied ? [{ grooming_id: 99 }] : []];
       if (sql.includes('SELECT COUNT(*) AS total')) return [[{ total: 2 }]];

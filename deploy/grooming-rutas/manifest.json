@@ -1,0 +1,73 @@
+{
+  "description": "Grooming y transporte: parche limitado contra fuentes verificadas de produccion. SHA-256 normalizado a LF.",
+  "cashParentCommit": "19d139db3ebe49219bf2d619b5b5e849c184c8c9",
+  "migrationRequired": true,
+  "files": {
+    "backend/src/controllers/groomingController.js": {
+      "before": "6cefd9a0df4a1eb7fd10f517588b90212509c5a4b21f88be190f1c30a3981990",
+      "after": "9f73a82e525eedafd5b61728977c0b7823b997dfb0cac8acbacc829b9484c927"
+    },
+    "backend/src/routes/groomingRoutes.js": {
+      "before": "2e2383c818c9c913a42c466b7d2e53ceec90ed6060f92b80c48eb7ec9b59ab43",
+      "after": "6867a3afb081e611d27394bc17727aae352b1f98ac33673a301564af1294e567"
+    },
+    "backend/src/utils/scheduleUtils.js": {
+      "before": "d95df7b1eff3f55aa2cf5b1888a69f115a421047d05bd049188eb7bef09c5a8a",
+      "after": "d95df7b1eff3f55aa2cf5b1888a69f115a421047d05bd049188eb7bef09c5a8a"
+    },
+    "backend/src/utils/groomingHistory.js": {
+      "before": "6363a9822ba17a89a0504220ca09c6807b3450813751aeb7eb60be16550ad7dd",
+      "after": "6363a9822ba17a89a0504220ca09c6807b3450813751aeb7eb60be16550ad7dd"
+    },
+    "backend/src/controllers/catalogosController.js": {
+      "before": "b0607282e54ca6011eb21e78fb9d7913b78e9a1f8ccdb3508eef1280548bc75f",
+      "after": "b0607282e54ca6011eb21e78fb9d7913b78e9a1f8ccdb3508eef1280548bc75f"
+    },
+    "src/app/pages/Grooming.tsx": {
+      "before": "e7826bbc72f8f3c743aa9ea1313f3d9dffedad058cf8be7c6442fe4804a8970e",
+      "after": "bf2cf254df2a910a0d92990f94a4ed36e9b69e39972d8e503694ca25418a3eee"
+    },
+    "src/app/utils/types.ts": {
+      "before": "c9edb6625068345fb3fb1c151a2bbed4b988571b38375975c5d0a6151b6d9009",
+      "after": "091a7f6a73d160fa3a2843f3997cc22a5adb821ea3d168637dad162e4425d5f5"
+    },
+    "src/app/components/SearchablePatientSelect.tsx": {
+      "before": "1a00aa5df1a48bb3ef66294c0e67a788c9f4da9582874a0c734e7135c1683a45",
+      "after": "1a00aa5df1a48bb3ef66294c0e67a788c9f4da9582874a0c734e7135c1683a45"
+    },
+    "backend/src/utils/groomingTransport.js": {
+      "before": null,
+      "after": "f673a7fbbf0bc7c85a99ebff9f0f44dab17d1704459b017c48b2392798c9e2de"
+    },
+    "backend/src/scripts/groomingTransportMigration.sql": {
+      "before": null,
+      "after": "0849ff2b7ce3c572319c0eca6a0f94f6cf3bceec1a89c15c6081a7953fe2ac8e"
+    },
+    "src/app/utils/groomingTransport.ts": {
+      "before": null,
+      "after": "40bace090032a0980fa7b3d57005d022ef66c15c64711271908e7f2e3615f026"
+    }
+  },
+  "schemaPreconditions": {
+    "tutor": {
+      "idColumn": "tutor_id",
+      "columnType": "bigint unsigned",
+      "engine": "InnoDB"
+    },
+    "tipo_grooming": {
+      "idColumn": "tipo_grooming_id",
+      "columnType": "int",
+      "engine": "InnoDB"
+    },
+    "cita_grooming": {
+      "idColumn": "grooming_id",
+      "columnType": "bigint unsigned",
+      "engine": "InnoDB"
+    },
+    "forma_pago": {
+      "idColumn": "forma_pago_id",
+      "columnType": "int unsigned",
+      "engine": "InnoDB"
+    }
+  }
+}
