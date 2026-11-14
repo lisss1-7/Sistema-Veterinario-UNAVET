@@ -22,7 +22,12 @@ test('MySQL local: fondo separado en registros, turnos y cierre diario', {
       await connection.query(`ALTER TABLE cash_fund_test_${table} RENAME TO ${table}`);
     }
     // Simular exactamente la ausencia de las cuatro columnas en produccion.
-    await connection.query('ALTER TABLE cierre_venta DROP COLUMN anulada, DROP COLUMN motivo_anulacion, DROP COLUMN anulada_por, DROP COLUMN anulada_en');
+    const logicalColumns = ['anulada', 'motivo_anulacion', 'anulada_por', 'anulada_en'];
+    const [columns] = await connection.query('SHOW COLUMNS FROM cierre_venta');
+    const present = logicalColumns.filter(name => columns.some(column => column.Field === name));
+    if (present.length) await connection.query(`ALTER TABLE cierre_venta ${present.map(name => `DROP COLUMN ${name}`).join(', ')}`);
+    const [productionColumns] = await connection.query('SHOW COLUMNS FROM cierre_venta');
+    assert.ok(productionColumns.every(column => !logicalColumns.includes(column.Field)));
     await connection.query(`CREATE TEMPORARY TABLE cierre_venta_turno (
       turno_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
       fecha DATE NOT NULL, numero INT UNSIGNED NOT NULL, nombre VARCHAR(80) NULL,

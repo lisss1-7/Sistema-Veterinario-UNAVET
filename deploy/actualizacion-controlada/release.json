@@ -1,0 +1,56 @@
+{
+  "sourceCommit": "fd19a48066db498c8d6459614f77f808e0484b1b",
+  "productionDeploymentExecuted": false,
+  "improvements": [
+    "cash_fund_separation",
+    "day_night_closings",
+    "compact_closing_pdf",
+    "grooming_payment_method",
+    "transport_route_capacity",
+    "shared_pet_routes",
+    "prescription_weight_kg_lb",
+    "prescription_procedures_prices"
+  ],
+  "packages": [
+    {
+      "name": "caja-fondos",
+      "manifest": "deploy/caja-fondos/manifest.json",
+      "patch": "deploy/caja-fondos/production.patch",
+      "migrations": [],
+      "artifacts": {
+        "deploy/caja-fondos/manifest.json": "9af3cf3ebabc8f44172b69393d9fd80845069753e938de34904450231a7cadac",
+        "deploy/caja-fondos/production.patch": "ac62e57b1bb17be9db56cf53ab942ab3ffd259854fe9cd3588431ffaf02d2c09"
+      }
+    },
+    {
+      "name": "grooming-rutas",
+      "manifest": "deploy/grooming-rutas/manifest.json",
+      "patch": "deploy/grooming-rutas/production.patch",
+      "migrations": [
+        "backend/src/scripts/groomingTransportMigration.sql"
+      ],
+      "artifacts": {
+        "deploy/grooming-rutas/manifest.json": "7610faf44203fa7b678d072866d8ad8f00e558441e469edcd265656d20b5e192",
+        "deploy/grooming-rutas/production.patch": "47783cc430507d65e1ea189e8212a5d8aec358947ea10dc165993efc61497b32",
+        "backend/src/scripts/groomingTransportMigration.sql": "0849ff2b7ce3c572319c0eca6a0f94f6cf3bceec1a89c15c6081a7953fe2ac8e"
+      }
+    },
+    {
+      "name": "recetas-consulta",
+      "manifest": "deploy/recetas-consulta/manifest.json",
+      "patch": "deploy/recetas-consulta/production.patch",
+      "migrations": [
+        "backend/src/scripts/prescriptionConsultationMigration.sql"
+      ],
+      "artifacts": {
+        "deploy/recetas-consulta/manifest.json": "5a16daabce29824b5180e73173da0b51dca314f5fdd9ada3773e2b2bb5a42331",
+        "deploy/recetas-consulta/production.patch": "a4239ebef61900be7cae0fa16569f1d0fec4aba164873d7e2b6153212aa42194",
+        "backend/src/scripts/prescriptionConsultationMigration.sql": "328fe1b73247608b56dc9648e305a6f1a296798f8770ce3b44d5ceb308dd5305"
+      }
+    }
+  ],
+  "activation": {
+    "variable": "CASH_FUND_ACCOUNTING_START_AFTER_SALE_ID",
+    "rule": "Permanent global sale ID captured after draining writes; never recalculate or remove on recovery."
+  }
+}

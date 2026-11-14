@@ -91,6 +91,8 @@ test('MySQL local: rutas compartidas, pagos, cancelación, reprogramación e his
     const group = await create(1, { additionalPets: [extra(2), extra(3)], paymentMethod: card.codigo });
     assert.equal(group.ids.length, 3);
     const three = await Promise.all(group.ids.map(get));
+    assert.deepEqual(three.map(item => item.groomingCost), [100, 20, 30]);
+    assert.equal(three.reduce((sum, item) => sum + item.groomingCost + item.transportCost, 0), 180);
     assert.equal(new Set(three.map(item => item.routeId)).size, 1);
     assert.equal(three.reduce((sum, item) => sum + item.transportCost, 0), 30);
     assert(three.every(item => item.paymentMethod === card.codigo && item.routeMembers.length === 3));
@@ -111,10 +113,25 @@ test('MySQL local: rutas compartidas, pagos, cancelación, reprogramación e his
     const four = await create(1, { date: '2099-10-07', additionalPets: [extra(2), extra(3), extra(4)] });
     assert.equal(four.ids.length, 4);
     const fourAppointments = await Promise.all(four.ids.map(get));
+    assert.deepEqual(fourAppointments.map(item => item.groomingCost), [100, 20, 30, 40]);
+    assert.equal(fourAppointments.reduce((sum, item) => sum + item.groomingCost + item.transportCost, 0), 220);
     assert(fourAppointments.every(item => item.routeId === four.routeId));
     assert.equal(fourAppointments.reduce((sum, item) => sum + item.transportCost, 0), 30);
 
+    const differentlyPriced = await get(group.ids[2]);
+    const otherIds = group.ids.filter(id => id !== differentlyPriced.id);
+    const [otherPricesBefore] = await connection.query('SELECT * FROM cita_grooming WHERE grooming_id IN (?) ORDER BY grooming_id', [otherIds]);
+    await call(controller.actualizarGrooming, { params: { id: differentlyPriced.id }, body: {
+      ...differentlyPriced, groomingCost: 47.5, transportCost: differentlyPriced.routeTransportCost,
+    } });
+    const [otherPricesAfter] = await connection.query('SELECT * FROM cita_grooming WHERE grooming_id IN (?) ORDER BY grooming_id', [otherIds]);
+    assert.deepEqual(otherPricesAfter, otherPricesBefore, 'Editar el precio individual no cambia a sus compañeras');
     const shared = await get(group.ids[2]);
+    assert.equal(shared.groomingCost, 47.5); assert.equal(shared.routeId, group.routeId);
+    assert.equal(shared.routeTransportCost, 30);
+    const updatedGroup = await Promise.all([...group.ids, fourth.id].map(get));
+    assert.deepEqual(updatedGroup.map(item => item.groomingCost), [100, 20, 47.5, 100]);
+    assert.equal(updatedGroup.reduce((sum, item) => sum + item.transportCost, 0), 30);
     const sharedFee = await call(controller.actualizarGrooming, { params: { id: shared.id }, body: { ...shared, transportCost: 31 } }, 409);
     assert.equal(sharedFee.code, 'SHARED_ROUTE_COST');
     assert.deepEqual(await get(shared.id), shared);

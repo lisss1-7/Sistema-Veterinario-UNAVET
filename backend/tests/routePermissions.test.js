@@ -20,6 +20,7 @@ const expectedPermissions = {
   ],
   grooming: [
     ['get', '/', 'grooming', 'ver'],
+    ['get', '/pacientes/:id/companeros', 'grooming', 'ver'],
     ['get', '/:id', 'grooming', 'ver'],
     ['post', '/', 'grooming', 'crear'],
     ['put', '/:id', 'grooming', 'editar'],
@@ -56,7 +57,6 @@ const expectedPermissions = {
   cierreVentas: [
     ['get', '/turnos', 'inventory', 'ver'],
     ['post', '/turnos/finalizar', 'inventory', 'editar'],
-    ['post', '/:id/anular', 'inventory', 'eliminar'],
     ['get', '/', 'inventory', 'ver'],
     ['get', '/estado', 'inventory', 'ver'],
     ['post', '/finalizar', 'inventory', 'editar'],
@@ -64,6 +64,15 @@ const expectedPermissions = {
     ['delete', '/:id', 'inventory', 'eliminar'],
   ],
 };
+
+test('Caja conserva DELETE con el controlador de producción y no expone anulación lógica', () => {
+  const router = require('../src/routes/cierreVentasRoutes');
+  const { eliminarVenta } = require('../src/controllers/cierreVentasController');
+  const deletion = router.stack.find(layer => layer.route?.path === '/:id' && layer.route.methods.delete);
+  assert.ok(deletion, 'conserva DELETE /:id');
+  assert.equal(deletion.route.stack.at(-1).handle, eliminarVenta);
+  assert.ok(!router.stack.some(layer => layer.route?.path.includes('/anular')));
+});
 
 for (const [routeName, expectations] of Object.entries(expectedPermissions)) {
   test(`protege todas las operaciones de ${routeName} con rol_permisos`, () => {
