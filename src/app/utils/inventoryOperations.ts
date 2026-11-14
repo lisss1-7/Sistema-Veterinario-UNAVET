@@ -58,6 +58,7 @@ export const inventoryError = (error: unknown) => error instanceof Error ? error
 
 type SummarySale = {
   canceled?: boolean;
+  accountingVersion?: number;
   total: number;
   cashFundTotal?: number;
   hasSales?: boolean;
@@ -68,15 +69,16 @@ type SummarySale = {
 export const calculateSalesTotals = (sales: SummarySale[]) => sales.reduce((result, sale) => {
   if (sale.canceled) return result;
   const round = (value: number) => Math.round(value * 100) / 100;
-  const fund = Number(sale.cashFundTotal || 0);
-  if (sale.hasSales !== false) result.saleCount += 1;
-  result.total = round(result.total + sale.total - fund);
+  const corrected = sale.accountingVersion === 2;
+  const fund = corrected ? Number(sale.cashFundTotal || 0) : 0;
+  if (!corrected || sale.hasSales !== false) result.saleCount += 1;
+  result.total = corrected ? round(result.total + sale.total - fund) : result.total + sale.total;
   result.cashFundTotal = round(result.cashFundTotal + fund);
   result.receivedTotal = round(result.receivedTotal + sale.total);
   for (const payment of sale.payments) {
-    const amount = round(payment.amount - Number(payment.cashFundAmount || 0));
-    if (amount === 0 && payment.cashFundAmount) continue;
-    result.byMethod[payment.code] = round((result.byMethod[payment.code] || 0) + amount);
+    const amount = (payment.amount - (corrected ? Number(payment.cashFundAmount || 0) : 0));
+    if (corrected && amount === 0 && payment.cashFundAmount) continue;
+    result.byMethod[payment.code] = corrected ? round((result.byMethod[payment.code] || 0) + amount) : (result.byMethod[payment.code] || 0) + amount;
   }
   for (const item of sale.items) if (item.type === 'Producto') result.productQuantity += item.quantity;
   return result;

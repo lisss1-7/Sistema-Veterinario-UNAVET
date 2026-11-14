@@ -1,0 +1,522 @@
+diff --git a/backend/src/controllers/cierreVentasController.js b/backend/src/controllers/cierreVentasController.js
+--- a/backend/src/controllers/cierreVentasController.js
++++ b/backend/src/controllers/cierreVentasController.js
+@@ -1,5 +1,6 @@
+ const pool = require('../config/db');
+ const { listSalesShifts, closeSalesShift } = require('../utils/salesShift');
++const { cashFundCondition, roundMoney, splitCashFundPayments, getAccountingCutoff, saleAccountingVersion } = require('../utils/salesAccounting');
+ const {
+   getProductAndLots,
+   consumeLots,
+@@ -43,16 +44,24 @@
+   throw error;
+ };
+
+-const mapVenta = (row) => ({
+-  id: String(row.venta_id),
+-  date: row.fecha,
+-  client: row.cliente || '',
+-  payments: row.payments || [],
+-  invoiceNit: row.factura_nit || '',
+-  invoiceName: row.factura_nombre || '',
+-  total: Number(row.total || 0),
+-  items: row.items || [],
+-});
++const mapVenta = (row, version) => {
++  const sale = {
++    id: String(row.venta_id),
++    date: row.fecha,
++    client: row.cliente || '',
++    payments: row.payments || [],
++    invoiceNit: row.factura_nit || '',
++    invoiceName: row.factura_nombre || '',
++    total: Number(row.total || 0),
++    items: row.items || [],
++  };
++  if (version !== 2) return sale;
++  const items = sale.items.map(item => ({ ...item, isCashFund: Boolean(item.isCashFund) }));
++  const cashFundTotal = roundMoney(items.reduce((sum, item) => sum + (item.isCashFund ? item.subtotal : 0), 0));
++  return { ...sale, items, accountingVersion: 2, cashFundTotal,
++    hasSales: items.some(item => !item.isCashFund),
++    payments: splitCashFundPayments(sale.payments, sale.total, cashFundTotal) };
++};
+
+ const listarVentas = async (req, res) => {
+   const connection = await pool.getConnection();
+@@ -74,6 +83,10 @@
+     );
+     if (ventas.length === 0) return res.json([]);
+
++    const cutoff = await getAccountingCutoff(connection);
++    const shifts = await listSalesShifts(connection, fecha);
++    const versions = new Map(ventas.map(venta => [String(venta.venta_id), saleAccountingVersion(venta.venta_id, shifts, cutoff)]));
++
+     const ids = ventas.map((venta) => venta.venta_id);
+     const [detalles] = await connection.query(
+       `SELECT
+@@ -85,8 +98,9 @@
+          descripcion,
+          cantidad,
+          precio_unitario,
+-         subtotal
+-       FROM cierre_venta_detalle
++         subtotal,
++         ${cashFundCondition('detalle')} AS es_fondo_caja
++       FROM cierre_venta_detalle detalle
+        WHERE venta_id IN (?)
+        ORDER BY detalle_id`,
+       [ids]
+@@ -122,6 +136,7 @@
+         quantity: Number(item.cantidad),
+         unitPrice: Number(item.precio_unitario),
+         subtotal: Number(item.subtotal),
++        ...(versions.get(key) === 2 ? { isCashFund: Boolean(item.es_fondo_caja) } : {}),
+       });
+       return result;
+     }, {});
+@@ -143,7 +158,7 @@
+           ...venta,
+           items: itemsBySale[String(venta.venta_id)] || [],
+           payments: paymentsBySale[String(venta.venta_id)] || [],
+-        })
++        }, versions.get(String(venta.venta_id)))
+       )
+     );
+   } catch (error) {
+diff --git a/backend/src/utils/salesShift.js b/backend/src/utils/salesShift.js
+--- a/backend/src/utils/salesShift.js
++++ b/backend/src/utils/salesShift.js
+@@ -1,3 +1,5 @@
++const { cashFundCondition, roundMoney, splitCashFundPayments, getAccountingCutoff } = require('./salesAccounting');
++
+ const mapShift = (row) => ({
+   id: String(row.turno_id),
+   number: Number(row.numero),
+@@ -39,31 +41,77 @@
+   const throughSaleId = String(Math.max(Number(bounds[0]?.hasta_venta_id || 0), Number(afterSaleId)));
+   if (onlyIfPending && latest && String(throughSaleId) === String(afterSaleId)) return null;
+
+-  // Algunas instalaciones anteriores todavía no tienen anulación lógica.
+-  const [columns] = await connection.query(`
+-    SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+-      AND TABLE_NAME = 'cierre_venta' AND COLUMN_NAME = 'anulada' LIMIT 1`);
+-  const activeCondition = columns.length ? 'AND COALESCE(venta.anulada, 0) = 0' : '';
++  // Producción elimina físicamente los comprobantes y reintegra sus lotes.
++  const activeCondition = '';
+   const values = [date, afterSaleId, throughSaleId];
+-  const [totals] = await connection.query(`
+-    SELECT COUNT(DISTINCT venta.venta_id) AS sale_count,
+-      COALESCE(SUM(detalle.subtotal), 0) AS total,
+-      COALESCE(SUM(CASE WHEN detalle.tipo = 'Producto' THEN detalle.cantidad ELSE 0 END), 0) AS product_quantity
+-    FROM cierre_venta venta
+-    LEFT JOIN cierre_venta_detalle detalle ON detalle.venta_id = venta.venta_id
+-    WHERE venta.fecha = ? AND venta.venta_id > ? AND venta.venta_id <= ? ${activeCondition}`, values);
+-  const [payments] = await connection.query(`
+-    SELECT forma.codigo, forma.nombre, SUM(pago.monto) AS amount
+-    FROM venta_pago pago
+-    INNER JOIN cierre_venta venta ON venta.venta_id = pago.venta_id
+-    INNER JOIN forma_pago forma ON forma.forma_pago_id = pago.forma_pago_id
+-    WHERE venta.fecha = ? AND venta.venta_id > ? AND venta.venta_id <= ? ${activeCondition}
+-    GROUP BY forma.forma_pago_id, forma.codigo, forma.nombre ORDER BY forma.orden, forma.nombre`, values);
+-  const summary = {
+-    saleCount: Number(totals[0].sale_count), total: Number(totals[0].total),
+-    productQuantity: Number(totals[0].product_quantity),
+-    payments: payments.map(row => ({ code: row.codigo, name: row.nombre, amount: Number(row.amount) })),
+-  };
++  const cutoff = await getAccountingCutoff(connection);
++  let summary;
++  if (cutoff === null) {
++    const [totals] = await connection.query(`
++      SELECT COUNT(DISTINCT venta.venta_id) AS sale_count,
++        COALESCE(SUM(detalle.subtotal), 0) AS total,
++        COALESCE(SUM(CASE WHEN detalle.tipo = 'Producto' THEN detalle.cantidad ELSE 0 END), 0) AS product_quantity
++      FROM cierre_venta venta
++      LEFT JOIN cierre_venta_detalle detalle ON detalle.venta_id = venta.venta_id
++      WHERE venta.fecha = ? AND venta.venta_id > ? AND venta.venta_id <= ? ${activeCondition}`, values);
++    const [payments] = await connection.query(`
++      SELECT forma.codigo, forma.nombre, SUM(pago.monto) AS amount
++      FROM venta_pago pago
++      INNER JOIN cierre_venta venta ON venta.venta_id = pago.venta_id
++      INNER JOIN forma_pago forma ON forma.forma_pago_id = pago.forma_pago_id
++      WHERE venta.fecha = ? AND venta.venta_id > ? AND venta.venta_id <= ? ${activeCondition}
++      GROUP BY forma.forma_pago_id, forma.codigo, forma.nombre ORDER BY forma.orden, forma.nombre`, values);
++    summary = {
++      saleCount: Number(totals[0].sale_count), total: Number(totals[0].total),
++      productQuantity: Number(totals[0].product_quantity),
++      payments: payments.map(row => ({ code: row.codigo, name: row.nombre, amount: Number(row.amount) })),
++    };
++  } else {
++    const [rawTotals] = await connection.query(`
++      SELECT venta.venta_id,
++        MAX(CASE WHEN detalle.detalle_id IS NOT NULL AND NOT ${cashFundCondition('detalle')} THEN 1 ELSE 0 END) AS sale_count,
++        COALESCE(SUM(detalle.subtotal), 0) AS total,
++        COALESCE(SUM(CASE WHEN ${cashFundCondition('detalle')} THEN detalle.subtotal ELSE 0 END), 0) AS cash_fund_total,
++        COALESCE(SUM(CASE WHEN detalle.tipo = 'Producto' THEN detalle.cantidad ELSE 0 END), 0) AS product_quantity
++      FROM cierre_venta venta
++      LEFT JOIN cierre_venta_detalle detalle ON detalle.venta_id = venta.venta_id
++      WHERE venta.fecha = ? AND venta.venta_id > ? AND venta.venta_id <= ? ${activeCondition}
++      GROUP BY venta.venta_id ORDER BY venta.venta_id`, values);
++    const totals = rawTotals.map(row => BigInt(row.venta_id) > BigInt(cutoff) ? row :
++      { ...row, sale_count: 1, cash_fund_total: 0 });
++    const [payments] = await connection.query(`
++      SELECT pago.venta_id, forma.codigo, forma.nombre, pago.monto AS amount
++      FROM venta_pago pago
++      INNER JOIN cierre_venta venta ON venta.venta_id = pago.venta_id
++      INNER JOIN forma_pago forma ON forma.forma_pago_id = pago.forma_pago_id
++      WHERE venta.fecha = ? AND venta.venta_id > ? AND venta.venta_id <= ? ${activeCondition}
++      ORDER BY forma.orden, forma.nombre, pago.venta_id`, values);
++    const paymentsBySale = new Map();
++    for (const payment of payments) {
++      const id = String(payment.venta_id);
++      if (!paymentsBySale.has(id)) paymentsBySale.set(id, []);
++      paymentsBySale.get(id).push({ code: payment.codigo, name: payment.nombre, amount: Number(payment.amount) });
++    }
++    const byMethod = new Map();
++    for (const sale of totals) {
++      const split = splitCashFundPayments(paymentsBySale.get(String(sale.venta_id)) || [], Number(sale.total), Number(sale.cash_fund_total || 0));
++      for (const payment of split) {
++        const amount = roundMoney(payment.amount - payment.cashFundAmount);
++        if (amount === 0 && payment.cashFundAmount > 0) continue;
++        const previous = byMethod.get(payment.code);
++        byMethod.set(payment.code, { code: payment.code, name: payment.name, amount: roundMoney((previous?.amount || 0) + amount) });
++      }
++    }
++    summary = {
++      accountingVersion: 2, accountingStartAfterSaleId: cutoff,
++      saleCount: totals.reduce((sum, row) => sum + Number(row.sale_count), 0),
++      total: roundMoney(totals.reduce((sum, row) => sum + Number(row.total) - Number(row.cash_fund_total || 0), 0)),
++      cashFundTotal: roundMoney(totals.reduce((sum, row) => sum + Number(row.cash_fund_total || 0), 0)),
++      receivedTotal: roundMoney(totals.reduce((sum, row) => sum + Number(row.total), 0)),
++      productQuantity: totals.reduce((sum, row) => sum + Number(row.product_quantity), 0),
++      payments: [...new Set(payments.map(row => row.codigo))].filter(code => byMethod.has(code)).map(code => byMethod.get(code)),
++    };
++  }
+   const [result] = await connection.query(`
+     INSERT INTO cierre_venta_turno
+       (fecha, numero, nombre, desde_venta_id, hasta_venta_id, finalizado_por, resumen)
+diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosing.tsx
+--- a/src/app/components/SalesClosing.tsx
++++ b/src/app/components/SalesClosing.tsx
+@@ -19,6 +19,7 @@
+ import { CreateButton } from './ModuleHeader';
+ import { API_URL } from '../config/api';
+ import { getAuthHeaders } from '../utils/apiClient';
++import { calculateSalesTotals } from '../utils/inventoryOperations';
+ import type { ModulePermissions } from '../hooks/useModulePermissions';
+ import SaleDetailsModal from './SaleDetailsModal';
+ import PdfPreviewModal from './PdfPreviewModal';
+@@ -43,10 +44,14 @@
+     code: string;
+     name: string;
+     amount: number;
++    cashFundAmount?: number;
+   }>;
+   invoiceNit: string;
+   invoiceName: string;
+   total: number;
++  accountingVersion?: number;
++  cashFundTotal?: number;
++  hasSales?: boolean;
+   canceled?: boolean;
+   items: Array<SaleItem & { id: string; subtotal: number }>;
+ };
+@@ -61,6 +66,9 @@
+   summary: {
+     saleCount: number;
+     total: number;
++    accountingVersion?: number;
++    cashFundTotal?: number;
++    receivedTotal?: number;
+     productQuantity: number;
+     payments: Array<{ code: string; name: string; amount: number }>;
+   };
+@@ -436,35 +444,15 @@
+     document.body.appendChild(link); link.click(); link.remove();
+   };
+   const documentUnavailable = loading || loadingDayStatus || loadingShifts || !salesKnown || !dayStatusKnown || !shiftsKnown || closingShift || finalizingDay;
+-  const totals = useMemo(
+-    () =>
+-      sales.reduce(
+-        (result, sale) => {
+-          sale.payments.forEach((payment) => {
+-            result.byMethod[payment.code] =
+-              (result.byMethod[payment.code] || 0) + payment.amount;
+-          });
+-          result.total += sale.total;
+-          return result;
+-        },
+-        { byMethod: {} as Record<string, number>, total: 0 }
+-      ),
+-    [sales]
+-  );
++  const totals = useMemo(() => calculateSalesTotals(sales), [sales]);
++  const hasNewAccounting = sales.some(sale => sale.accountingVersion === 2) || shifts.some(shift => shift.summary.accountingVersion === 2);
+
+   const currentShiftTotals = useMemo(() => {
+     const active = sales.filter((sale) => Number(sale.id) > Number(afterSaleId) && !sale.canceled);
+-    const payments = new Map<string, { code: string; name: string; amount: number }>();
+-    for (const sale of active) for (const payment of sale.payments) {
+-      const previous = payments.get(payment.code);
+-      payments.set(payment.code, { code: payment.code, name: payment.name, amount: (previous?.amount || 0) + Number(payment.amount) });
+-    }
+-    return {
+-      saleCount: active.length,
+-      total: active.reduce((sum, sale) => sum + Number(sale.total), 0),
+-      productQuantity: active.reduce((sum, sale) => sum + sale.items.reduce((quantity, item) => quantity + (item.type === 'Producto' ? Number(item.quantity) : 0), 0), 0),
+-      payments: [...payments.values()],
+-    };
++    const totals = calculateSalesTotals(active);
++    const names = new Map(active.flatMap(sale => sale.payments.map(payment => [payment.code, payment.name] as const)));
++    return { ...totals, corrected: active.some(sale => sale.accountingVersion === 2),
++      payments: Object.entries(totals.byMethod).map(([code, amount]) => ({ code, name: names.get(code) || code, amount })) };
+   }, [sales, afterSaleId]);
+
+   const saleTotal = items.reduce(
+@@ -769,8 +757,8 @@
+       )}
+
+       <div className="mb-4 grid grid-cols-1 gap-2 min-[400px]:grid-cols-2 lg:grid-cols-3 min-[400px]:[&>div:last-child]:col-span-2 lg:[&>div:last-child]:col-span-1">
+-        <SummaryCard label="Ventas registradas" value={String(sales.length)} />
+-        <SummaryCard label="Total del día" value={money(totals.total)} />
++        <SummaryCard label="Ventas registradas" value={String(totals.saleCount)} />
++        <SummaryCard label={hasNewAccounting ? 'Ingresos por ventas' : 'Total del día'} value={money(totals.total)} />
+         <SummaryCard
+           label="Productos vendidos"
+           value={String(
+@@ -781,6 +769,8 @@
+         />
+       </div>
+
++      {hasNewAccounting && <p className="mb-4 text-sm text-muted-foreground">Fondos agregados: {money(totals.cashFundTotal)} · Total recibido: {money(totals.receivedTotal)}</p>}
++
+       <section className="mb-4 min-w-0 rounded-2xl border border-border bg-card p-4 shadow-sm" aria-label="Cierres de turno">
+         <div className="mb-3 flex items-start gap-3">
+           <div className="rounded-xl bg-primary/15 p-2 text-primary"><Clock3 className="h-5 w-5" /></div>
+@@ -793,7 +783,11 @@
+         {!isDayClosed && shiftsKnown && !loading && !loadingShifts && <>
+           <div className="grid gap-2 sm:grid-cols-3">
+             <SummaryCard label="Ventas de este turno" value={String(currentShiftTotals.saleCount)} />
+-            <SummaryCard label="Total de este turno" value={money(currentShiftTotals.total)} />
++            <SummaryCard label={currentShiftTotals.corrected ? 'Ingresos por ventas' : 'Total de este turno'} value={money(currentShiftTotals.total)} />
++            {currentShiftTotals.corrected && <>
++              <SummaryCard label="Fondos agregados" value={money(currentShiftTotals.cashFundTotal)} />
++              <SummaryCard label="Total recibido" value={money(currentShiftTotals.receivedTotal)} />
++            </>}
+             <SummaryCard label="Productos de este turno" value={String(currentShiftTotals.productQuantity)} />
+           </div>
+           <div className="mt-2 flex flex-wrap gap-2">
+@@ -810,6 +804,7 @@
+             </div>
+             <p className="mt-1 break-words text-xs text-muted-foreground">Cerrado por {shift.responsible} · {new Intl.DateTimeFormat('es-GT', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Guatemala' }).format(new Date(shift.closedAt))}</p>
+             <p className="mt-2 text-sm text-foreground">{shift.summary.saleCount} ventas · {shift.summary.productQuantity} productos</p>
++            {shift.summary.accountingVersion === 2 && <p className="mt-2 text-sm text-foreground">Ingresos por ventas: {money(shift.summary.total)} · Fondos agregados: {money(shift.summary.cashFundTotal || 0)} · Total recibido: {money(shift.summary.receivedTotal || 0)}</p>}
+             <div className="mt-2 flex flex-wrap gap-2">{shift.summary.payments.map((payment) => <span key={payment.code} className="rounded-lg bg-card px-2 py-1 text-xs text-foreground">{payment.name}: {money(payment.amount)}</span>)}</div>
+           </article>)}
+         </div>
+@@ -860,7 +855,7 @@
+           </p>
+         )}
+         <div className="rounded-xl border border-border bg-muted p-3 text-sm text-foreground">
+-          <p className="font-bold">Total: {money(totals.total)}</p>
++          <p className="font-bold">{hasNewAccounting ? 'Ingresos por ventas' : 'Total'}: {money(totals.total)}</p>
+           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+             {paymentOptions.map((payment) => (
+               <span key={payment.id}>{payment.nombre}: {money(totals.byMethod[payment.codigo] || 0)}</span>
+@@ -934,7 +929,7 @@
+                   value={totals.byMethod[payment.codigo] || 0}
+                 />
+               ))}
+-              <td className="px-4 py-3" colSpan={3}>Total: {money(totals.total)}</td>
++              <td className="px-4 py-3" colSpan={3}>{hasNewAccounting ? 'Ingresos por ventas' : 'Total'}: {money(totals.total)}</td>
+             </tr>
+           </tfoot>
+         </table>
+diff --git a/src/app/components/SaleDetailsModal.tsx b/src/app/components/SaleDetailsModal.tsx
+--- a/src/app/components/SaleDetailsModal.tsx
++++ b/src/app/components/SaleDetailsModal.tsx
+@@ -35,6 +35,7 @@
+     <h3 className="mb-2 mt-5 font-semibold text-foreground">Formas de pago</h3>
+     <div className="space-y-2">{sale.payments.map((payment, index) => <div key={`${payment.code}-${index}`} className="flex flex-wrap justify-between gap-2 rounded-xl bg-muted p-3 text-sm text-foreground"><span className="min-w-0 flex-1 break-words">{payment.name}</span><span className="shrink-0 font-semibold">{inventoryMoney(payment.amount)}</span></div>)}</div>
+     <p className="mt-4 flex flex-wrap justify-between gap-2 text-lg font-semibold text-foreground"><span>Importe registrado</span><span>{inventoryMoney(sale.total)}</span></p>
++    {sale.accountingVersion === 2 && <p className="mt-2 text-sm text-muted-foreground">Fondo de caja: {inventoryMoney(sale.cashFundTotal || 0)} ? Ingreso por ventas: {inventoryMoney(sale.total - (sale.cashFundTotal || 0))}</p>}
+     {sale.canceled && <p className="mt-1 text-sm text-muted-foreground">Esta venta está excluida de los totales vigentes del día.</p>}
+     <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+       <button type="button" disabled={pdfBusy} onClick={onPdf} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50"><FileText className="h-4 w-4" />{pdfBusy ? 'Generando PDF…' : 'Vista previa PDF'}</button>
+diff --git a/src/app/utils/salesClosingPdf.ts b/src/app/utils/salesClosingPdf.ts
+--- a/src/app/utils/salesClosingPdf.ts
++++ b/src/app/utils/salesClosingPdf.ts
+@@ -10,9 +10,12 @@
+   invoiceNit: string;
+   invoiceName: string;
+   total: number;
++  accountingVersion?: number;
++  cashFundTotal?: number;
++  hasSales?: boolean;
+   canceled?: boolean;
+   cancellationReason?: string;
+-  payments: Array<{ code: string; name: string; amount: number }>;
++  payments: Array<{ code: string; name: string; amount: number; cashFundAmount?: number }>;
+   items: Array<{ type: string; description: string; quantity: number; unitPrice: number; subtotal: number }>;
+ };
+
+@@ -21,7 +24,7 @@
+   label: string;
+   closedAt: string;
+   responsible: string;
+-  summary: { saleCount: number; total: number; productQuantity: number; payments: Array<{ name: string; amount: number }> };
++  summary: { accountingVersion?: number; cashFundTotal?: number; receivedTotal?: number; saleCount: number; total: number; productQuantity: number; payments: Array<{ name: string; amount: number }> };
+ };
+
+ type SalesDocument = {
+@@ -69,12 +72,18 @@
+   section(individual ? 'Resumen de la venta' : 'Resumen del día');
+   text(`Ventas vigentes: ${totals.saleCount} | Anuladas: ${report.sales.filter(sale => sale.canceled).length}`);
+   text(`Unidades de productos vendidas: ${totals.productQuantity}`);
+-  text(`Total vigente: ${money(totals.total)}`, true);
++  const corrected = report.sales.some(sale => sale.accountingVersion === 2) || (!individual && report.shifts.some(shift => shift.summary.accountingVersion === 2));
++  text(`${corrected ? 'Ingresos por ventas' : 'Total vigente'}: ${money(totals.total)}`, true);
++  if (corrected) {
++    text(`Fondos agregados: ${money(totals.cashFundTotal)} | Total recibido: ${money(totals.receivedTotal)}`);
++  }
+   const payments = new Map<string, { name: string; amount: number }>();
+   for (const sale of report.sales.filter(sale => !sale.canceled)) {
+     for (const payment of sale.payments) {
+       const entry = payments.get(payment.code) || { name: payment.name, amount: 0 };
+-      entry.amount += Number(payment.amount); payments.set(payment.code, entry);
++      const amount = Number(payment.amount) - (sale.accountingVersion === 2 ? Number(payment.cashFundAmount || 0) : 0);
++      if (sale.accountingVersion === 2 && amount === 0 && payment.cashFundAmount) continue;
++      entry.amount += amount; payments.set(payment.code, entry);
+     }
+   }
+   section('Desglose de pagos vigentes');
+@@ -89,6 +98,10 @@
+       text(`Turno ${shift.number}: ${shift.label}`, true);
+       text(`Responsable: ${shift.responsible || 'No registrado'} | Cierre: ${time(new Date(shift.closedAt))}`);
+       text(`${shift.summary.saleCount} ventas | ${shift.summary.productQuantity} unidades | Total: ${money(shift.summary.total)}`);
++      if (shift.summary.accountingVersion === 2) {
++        text(`Ingresos por ventas: ${money(shift.summary.total)}`);
++        text(`Fondos agregados: ${money(shift.summary.cashFundTotal || 0)} | Total recibido: ${money(shift.summary.receivedTotal || 0)}`);
++      }
+       for (const payment of shift.summary.payments) text(`${payment.name}: ${money(payment.amount)}`);
+       y += 2;
+     }
+@@ -116,6 +129,7 @@
+       `NIT: ${sale.invoiceNit || 'No registrado'} | Nombre para factura: ${sale.invoiceName || 'No registrado'}`,
+       ...(sale.canceled ? [`Motivo de anulación: ${sale.cancellationReason || 'No registrado'}`] : []),
+       ...sale.payments.map(payment => `Pago registrado: ${payment.name} - ${money(payment.amount)}`),
++      ...(sale.accountingVersion === 2 ? [`Fondo de caja: ${money(sale.cashFundTotal || 0)} | Ingreso por ventas: ${money(sale.total - (sale.cashFundTotal || 0))}`] : []),
+     ];
+     const metadataHeight = metadata.reduce((height, value) => height + doc.splitTextToSize(value, width).length * 5, 0);
+     font(false, 8);
+@@ -129,6 +143,7 @@
+     text(`NIT: ${sale.invoiceNit || 'No registrado'} | Nombre para factura: ${sale.invoiceName || 'No registrado'}`);
+     if (sale.canceled) text(`Motivo de anulación: ${sale.cancellationReason || 'No registrado'}`);
+     for (const payment of sale.payments) text(`Pago registrado: ${payment.name} - ${money(payment.amount)}`);
++    if (sale.accountingVersion === 2) text(`Fondo de caja: ${money(sale.cashFundTotal || 0)} | Ingreso por ventas: ${money(sale.total - (sale.cashFundTotal || 0))}`);
+     ensure(17); tableHeader();
+     for (const [itemIndex, item] of sale.items.entries()) {
+       font(false, 8);
+diff --git a/src/app/utils/inventoryOperations.ts b/src/app/utils/inventoryOperations.ts
+--- a/src/app/utils/inventoryOperations.ts
++++ b/src/app/utils/inventoryOperations.ts
+@@ -58,16 +58,28 @@
+
+ type SummarySale = {
+   canceled?: boolean;
++  accountingVersion?: number;
+   total: number;
+-  payments: Array<{ code: string; amount: number }>;
++  cashFundTotal?: number;
++  hasSales?: boolean;
++  payments: Array<{ code: string; amount: number; cashFundAmount?: number }>;
+   items: Array<{ type: string; quantity: number }>;
+ };
+
+ export const calculateSalesTotals = (sales: SummarySale[]) => sales.reduce((result, sale) => {
+   if (sale.canceled) return result;
+-  result.saleCount += 1;
+-  result.total += sale.total;
+-  for (const payment of sale.payments) result.byMethod[payment.code] = (result.byMethod[payment.code] || 0) + payment.amount;
++  const round = (value: number) => Math.round(value * 100) / 100;
++  const corrected = sale.accountingVersion === 2;
++  const fund = corrected ? Number(sale.cashFundTotal || 0) : 0;
++  if (!corrected || sale.hasSales !== false) result.saleCount += 1;
++  result.total = corrected ? round(result.total + sale.total - fund) : result.total + sale.total;
++  result.cashFundTotal = round(result.cashFundTotal + fund);
++  result.receivedTotal = round(result.receivedTotal + sale.total);
++  for (const payment of sale.payments) {
++    const amount = (payment.amount - (corrected ? Number(payment.cashFundAmount || 0) : 0));
++    if (corrected && amount === 0 && payment.cashFundAmount) continue;
++    result.byMethod[payment.code] = corrected ? round((result.byMethod[payment.code] || 0) + amount) : (result.byMethod[payment.code] || 0) + amount;
++  }
+   for (const item of sale.items) if (item.type === 'Producto') result.productQuantity += item.quantity;
+   return result;
+-}, { byMethod: {} as Record<string, number>, total: 0, saleCount: 0, productQuantity: 0 });
++}, { byMethod: {} as Record<string, number>, total: 0, cashFundTotal: 0, receivedTotal: 0, saleCount: 0, productQuantity: 0 });
+diff --git a/backend/src/utils/salesAccounting.js b/backend/src/utils/salesAccounting.js
+new file mode 100644
+--- /dev/null
++++ b/backend/src/utils/salesAccounting.js
+@@ -0,0 +1,62 @@
++// El nombre del concepto se guarda desde el catálogo al registrar el detalle.
++// Usar esa copia conserva la clasificación de Caja aunque se edite el catálogo.
++const cashFundCondition = (alias) =>
++  `(${alias}.tipo = 'Servicio' AND TRIM(${alias}.descripcion) = 'Caja')`;
++
++const roundMoney = (value) => Math.round(Number(value) * 100) / 100;
++
++// Mantener los pagos originales y separar su parte de fondo en centavos.
++// El reparto acumulado evita perder centavos en comprobantes con pagos mixtos.
++const splitCashFundPayments = (payments, total, cashFundTotal) => {
++  const amounts = payments.map((payment) => Math.round(Number(payment.amount) * 100));
++  const paid = amounts.reduce((sum, amount) => sum + amount, 0);
++  const ratio = total > 0 ? Math.min(1, Math.max(0, cashFundTotal / total)) : 0;
++  const fund = Math.round(paid * ratio);
++  let processed = 0;
++  let allocated = 0;
++  return payments.map((payment, index) => {
++    processed += amounts[index];
++    const through = paid > 0 ? Math.round(fund * processed / paid) : 0;
++    const cashFundAmount = (through - allocated) / 100;
++    allocated = through;
++    return { ...payment, cashFundAmount };
++  });
++};
++
++const parseCutoff = (value) => {
++  if (value === undefined || value === null || value === '') return null;
++  if (!/^(0|[1-9]\d*)$/.test(String(value)) || BigInt(value) > 18446744073709551615n) {
++    throw new Error('El límite de activación de fondos debe ser un ID MySQL válido');
++  }
++  return String(value);
++};
++
++// No inferir la activación de la hora de arranque: cambiaría tras reiniciar.
++// Los nuevos snapshots conservan el límite incluso si se omite la variable.
++const getAccountingCutoff = async (connection) => {
++  const configured = parseCutoff(process.env.CASH_FUND_ACCOUNTING_START_AFTER_SALE_ID);
++  const [rows] = await connection.query(`
++    SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(resumen, '$.accountingStartAfterSaleId')) AS accounting_cutoff
++    FROM cierre_venta_turno
++    WHERE JSON_EXTRACT(resumen, '$.accountingVersion') = 2`);
++  const saved = rows.map(row => parseCutoff(row.accounting_cutoff));
++  if (saved.some(value => value === null) || new Set(saved).size > 1 ||
++      (configured !== null && saved.length && configured !== saved[0])) {
++    throw new Error('El límite de fondos no coincide con los cierres guardados; revise la configuración');
++  }
++  return saved[0] ?? configured;
++};
++
++const saleAccountingVersion = (id, shifts, cutoff) => {
++  const saleId = BigInt(id);
++  const shift = shifts.find(row => saleId > BigInt(row.afterSaleId) && saleId <= BigInt(row.throughSaleId));
++  // Un snapshot sin versión siempre conserva el cálculo original.
++  if (shift) {
++    if (shift.summary.accountingVersion !== 2) return 1;
++    cutoff = parseCutoff(shift.summary.accountingStartAfterSaleId);
++    if (cutoff === null) throw new Error('El cierre nuevo no contiene su límite de activación');
++  }
++  return cutoff !== null && saleId > BigInt(cutoff) ? 2 : 1;
++};
++
++module.exports = { cashFundCondition, roundMoney, splitCashFundPayments, parseCutoff, getAccountingCutoff, saleAccountingVersion };

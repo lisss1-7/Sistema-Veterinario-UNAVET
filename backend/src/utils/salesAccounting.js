@@ -23,4 +23,40 @@ const splitCashFundPayments = (payments, total, cashFundTotal) => {
   });
 };
 
-module.exports = { cashFundCondition, roundMoney, splitCashFundPayments };
+const parseCutoff = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  if (!/^(0|[1-9]\d*)$/.test(String(value)) || BigInt(value) > 18446744073709551615n) {
+    throw new Error('El límite de activación de fondos debe ser un ID MySQL válido');
+  }
+  return String(value);
+};
+
+// No inferir la activación de la hora de arranque: cambiaría tras reiniciar.
+// Los nuevos snapshots conservan el límite incluso si se omite la variable.
+const getAccountingCutoff = async (connection) => {
+  const configured = parseCutoff(process.env.CASH_FUND_ACCOUNTING_START_AFTER_SALE_ID);
+  const [rows] = await connection.query(`
+    SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(resumen, '$.accountingStartAfterSaleId')) AS accounting_cutoff
+    FROM cierre_venta_turno
+    WHERE JSON_EXTRACT(resumen, '$.accountingVersion') = 2`);
+  const saved = rows.map(row => parseCutoff(row.accounting_cutoff));
+  if (saved.some(value => value === null) || new Set(saved).size > 1 ||
+      (configured !== null && saved.length && configured !== saved[0])) {
+    throw new Error('El límite de fondos no coincide con los cierres guardados; revise la configuración');
+  }
+  return saved[0] ?? configured;
+};
+
+const saleAccountingVersion = (id, shifts, cutoff) => {
+  const saleId = BigInt(id);
+  const shift = shifts.find(row => saleId > BigInt(row.afterSaleId) && saleId <= BigInt(row.throughSaleId));
+  // Un snapshot sin versión siempre conserva el cálculo original.
+  if (shift) {
+    if (shift.summary.accountingVersion !== 2) return 1;
+    cutoff = parseCutoff(shift.summary.accountingStartAfterSaleId);
+    if (cutoff === null) throw new Error('El cierre nuevo no contiene su límite de activación');
+  }
+  return cutoff !== null && saleId > BigInt(cutoff) ? 2 : 1;
+};
+
+module.exports = { cashFundCondition, roundMoney, splitCashFundPayments, parseCutoff, getAccountingCutoff, saleAccountingVersion };

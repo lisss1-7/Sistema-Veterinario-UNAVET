@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { createServer } from 'vite';
 import { transformSync } from 'esbuild';
@@ -20,7 +21,8 @@ const report = { date: sale.date, sales: [sale, { ...sale, id: '43', total: 999,
 
 test.before(async () => {
   await mkdir(output, { recursive: true });
-  globalThis.fetch = async (url, options) => typeof url === 'string' && url.startsWith('/node_modules/pdfjs-dist/')
+  globalThis.fetch = async (url, options) => typeof url === 'string' && url.startsWith('/@fs/')
+    ? new Response(await readFile(url.slice(5).split('?')[0])) : typeof url === 'string' && url.startsWith('/node_modules/pdfjs-dist/')
     ? new Response(await readFile(new URL(`.${url.split('?')[0]}`, new URL('../../../', import.meta.url)))) : originalFetch(url, options);
   vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'silent' });
   createPdf = (await vite.ssrLoadModule('/src/app/utils/salesClosingPdf.ts')).createSalesClosingPdf;
@@ -67,28 +69,28 @@ test('día abierto sin ventas genera un reporte válido de cero', async t => {
 });
 
 test('PDF separa fondo de ingresos y pagos incluso con comprobantes mixtos', async t => {
-  const fund = { ...sale, id: 'fund', total: 100, cashFundTotal: 100, hasSales: false,
+  const fund = { ...sale, id: 'fund', total: 100, accountingVersion: 2, cashFundTotal: 100, hasSales: false,
     payments: [{ code: 'cash', name: 'Efectivo', amount: 100, cashFundAmount: 100 }],
     items: [{ type: 'Servicio', description: 'Caja', quantity: 1, unitPrice: 100, subtotal: 100 }] };
-  const mixed = { ...sale, id: 'mixed', total: 90, cashFundTotal: 30, hasSales: true,
+  const mixed = { ...sale, id: 'mixed', total: 90, accountingVersion: 2, cashFundTotal: 30, hasSales: true,
     payments: [{ code: 'cash', name: 'Efectivo', amount: 60, cashFundAmount: 20 }, { code: 'retired', name: 'Forma histórica', amount: 30, cashFundAmount: 10 }],
     items: [{ ...sale.items[0], unitPrice: 30, subtotal: 60 }, { type: 'Servicio', description: 'Caja', quantity: 1, unitPrice: 30, subtotal: 30 }] };
-  const { text } = await inspectPdf(createPdf({ ...report, sales: [fund, mixed, { ...fund, id: 'canceled-fund', canceled: true }], shifts: [{ ...report.shifts[0], summary: { saleCount: 1, total: 60, cashFundTotal: 130, receivedTotal: 190, productQuantity: 2, payments: [{ name: 'Efectivo', amount: 40 }, { name: 'Forma histórica', amount: 20 }] } }] }, logo), 'fondos', t);
+  const { text } = await inspectPdf(createPdf({ ...report, sales: [fund, mixed, { ...fund, id: 'canceled-fund', canceled: true }], shifts: [{ ...report.shifts[0], summary: { saleCount: 1, total: 60, accountingVersion: 2, cashFundTotal: 130, receivedTotal: 190, productQuantity: 2, payments: [{ name: 'Efectivo', amount: 40 }, { name: 'Forma histórica', amount: 20 }] } }] }, logo), 'fondos', t);
   assert.match(text, /Ventas vigentes: 1 \| Anuladas: 1/);
-  assert.match(text, /Total vigente: Q 60\.00/);
-  assert.match(text, /Fondo de caja: Q 130\.00 \| Total recibido: Q 190\.00/);
+  assert.match(text, /Ingresos por ventas: Q 60\.00/);
+  assert.match(text, /Fondos agregados: Q 130\.00 \| Total recibido: Q 190\.00/);
   assert.match(text, /Efectivo: Q 40\.00/);
   assert.match(text, /Forma histórica: Q 20\.00/);
   assert.match(text, /Importe registrado: Q 100\.00/);
   const individual = await inspectPdf(createPdf({ ...report, sales: [fund], shifts: [], mode: 'sale' }, logo), 'fondo-individual', t);
   assert.match(individual.text, /Ventas vigentes: 0/);
-  assert.match(individual.text, /Total vigente: Q 0\.00/);
-  assert.match(individual.text, /Fondo de caja: Q 100\.00 \| Total recibido: Q 100\.00/);
+  assert.match(individual.text, /Ingresos por ventas: Q 0\.00/);
+  assert.match(individual.text, /Fondos agregados: Q 100\.00 \| Total recibido: Q 100\.00/);
   assert.match(individual.text, /Pago registrado: Efectivo - Q 100\.00/);
 });
 
 test('ficha de comprobante mantiene el importe y distingue el fondo del ingreso', () => {
-  const html = renderToStaticMarkup(createElement(Details, { sale: { ...sale, total: 150, cashFundTotal: 100 }, onClose() {}, onPdf() {}, pdfBusy: false }));
+  const html = renderToStaticMarkup(createElement(Details, { sale: { ...sale, total: 150, accountingVersion: 2, cashFundTotal: 100 }, onClose() {}, onPdf() {}, pdfBusy: false }));
   for (const value of ['Importe registrado', '150.00', 'Fondo de caja:', '100.00', 'Ingreso por ventas:', '50.00']) assert.ok(html.includes(value));
 });
 
@@ -134,4 +136,40 @@ test('consulta fallida o venta eliminada impide generar un PDF engañoso', async
     const { state, run } = exporter({ sales, day: { data: { isClosed: false } }, shifts: { data: { shifts: [] } } });
     await run(sale); assert.equal(state.documents.length, 0); assert.equal(state.previews.length, 0); assert.equal(state.notices.length, 1);
   }
+});
+
+
+test('PDF de 42 cierres antiguos y comprobante individual conserva todos los comandos originales', async () => {
+  const expected = JSON.parse(await readFile(new URL('./fixtures/legacySalesPdf.json', import.meta.url), 'utf8'));
+  const sales = Array.from({ length: 42 }, (_, i) => ({ id: String(i + 1), date: '2000-01-01', client: 'Cliente de prueba', invoiceNit: 'CF', invoiceName: 'Nombre de prueba', total: 100,
+    payments: [{ code: 'efectivo', name: 'Efectivo', amount: 100 }], items: [{ type: 'Servicio', description: 'Caja', quantity: 1, unitPrice: 100, subtotal: 100 }] }));
+  const legacy = { date: '2000-01-01', sales, shifts: sales.map((sale, i) => ({ number: i + 1, label: `Turno ${i + 1}`, closedAt: '2000-01-01T18:00:00Z', responsible: 'Responsable de prueba',
+    summary: { saleCount: 1, total: 100, productQuantity: 0, payments: [{ name: 'Efectivo', amount: 100 }] } })), isDayClosed: true, generatedAt: new Date('2000-01-02T01:00:00Z') };
+  const before = JSON.stringify(legacy);
+  const fingerprint = doc => ({ pages: doc.getNumberOfPages(), pageCommandsSha256: createHash('sha256').update(JSON.stringify(doc.internal.pages)).digest('hex') });
+  assert.deepEqual(fingerprint(createPdf(legacy, logo)), expected.day);
+  assert.deepEqual(fingerprint(createPdf({ ...legacy, sales: [sales[0]], shifts: [], mode: 'sale' }, logo)), expected.sale);
+  assert.equal(JSON.stringify(legacy), before);
+});
+
+test('dia con turnos de ambas versiones conserva el fondo antiguo dentro del total original', async t => {
+  const oldFund = { ...sale, id: '1', payments: [{ code: 'cash', name: 'Efectivo', amount: 100 }], items: [{ type: 'Servicio', description: 'Caja', quantity: 1, unitPrice: 100, subtotal: 100 }] };
+  const newFund = { ...oldFund, id: '2', accountingVersion: 2, cashFundTotal: 100, hasSales: false, payments: [{ code: 'cash', name: 'Efectivo', amount: 100, cashFundAmount: 100 }] };
+  const oldShift = { ...report.shifts[0], summary: { saleCount: 1, total: 100, productQuantity: 0, payments: [{ name: 'Efectivo', amount: 100 }] } };
+  const newShift = { ...oldShift, number: 2, summary: { accountingVersion: 2, total: 0, cashFundTotal: 100, receivedTotal: 100, saleCount: 0, productQuantity: 0, payments: [] } };
+  const data = { ...report, sales: [oldFund, newFund], shifts: [oldShift, newShift] };
+  const before = JSON.stringify(data);
+  const { text } = await inspectPdf(createPdf(data, logo), 'dia-mixto', t);
+  assert.match(text, /Ingresos por ventas: Q 100\.00/);
+  assert.match(text, /Fondos agregados: Q 100\.00 \| Total recibido: Q 200\.00/);
+  assert.match(text, /1 ventas \| 0 unidades \| Total: Q 100\.00/);
+  assert.match(text, /0 ventas \| 0 unidades \| Total: Q 0\.00/);
+  assert.equal(JSON.stringify(data), before);
+});
+
+test('cierre nuevo sin fondos tambien muestra las tres cifras', async t => {
+  const data = { ...report, sales: [{ ...sale, accountingVersion: 2, cashFundTotal: 0, hasSales: true }], shifts: [] };
+  const { text } = await inspectPdf(createPdf(data, logo), 'nuevo-sin-fondo', t);
+  assert.match(text, /Ingresos por ventas: Q 100\.00/);
+  assert.match(text, /Fondos agregados: Q 0\.00 \| Total recibido: Q 100\.00/);
 });

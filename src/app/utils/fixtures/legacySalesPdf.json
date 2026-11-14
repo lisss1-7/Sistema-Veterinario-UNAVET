@@ -1,0 +1,11 @@
+{
+  "description": "Datos sinteticos; huellas de comandos PDF generadas con el codigo original de produccion.",
+  "day": {
+    "pages": 20,
+    "pageCommandsSha256": "169a0eba8e702fde24295d64d0c6628752cb093ddacc54ebfac2463e2d29272f"
+  },
+  "sale": {
+    "pages": 1,
+    "pageCommandsSha256": "b386bd393922837d4700ae0242dfa7a47383b22a50d03f5f110ab79a38ec2a8b"
+  }
+}

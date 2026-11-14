@@ -77,6 +77,7 @@ test('finaliza el día y registra al usuario responsable', async () => {
     }
     if (sql.includes('SELECT numero')) return [[]];
     if (sql.includes('MAX(venta_id)')) return [[{ hasta_venta_id: 15 }]];
+    if (sql.includes('AS accounting_cutoff')) return [[]];
     if (sql.includes('information_schema')) return [[]];
     if (sql.includes('AS sale_count')) return [[{ sale_count: 1, total: 50, product_quantity: 0 }]];
     if (sql.includes('FROM venta_pago')) return [[]];
@@ -108,6 +109,7 @@ test('cerrar turno deja abierto el día y no modifica ventas ni inventario', asy
     if (sql.includes('SELECT finalizado')) return [[{ finalizado: 0 }]];
     if (sql.includes('SELECT numero')) return [[]];
     if (sql.includes('MAX(venta_id)')) return [[{ hasta_venta_id: 15 }]];
+    if (sql.includes('AS accounting_cutoff')) return [[]];
     if (sql.includes('information_schema')) return [[]];
     if (sql.includes('AS sale_count')) return [[{ sale_count: 1, total: 50, product_quantity: 2 }]];
     if (sql.includes('FROM venta_pago')) return [[{ codigo: 'efectivo', nombre: 'Efectivo', amount: 50 }]];

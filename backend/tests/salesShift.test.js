@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+process.env.CASH_FUND_ACCOUNTING_START_AFTER_SALE_ID = '0';
 const { closeSalesShift, listSalesShifts } = require('../src/utils/salesShift');
 
 function fixture({ latest = null, max = 20, canceledColumn = true, sales = [
@@ -12,6 +13,7 @@ function fixture({ latest = null, max = 20, canceledColumn = true, sales = [
   const calls = [];
   return { calls, query: async (sql, values) => {
     calls.push({ sql, values });
+    if (sql.includes('AS accounting_cutoff')) return [[]];
     if (sql.includes('SELECT numero')) return [latest ? [latest] : []];
     if (sql.includes('MAX(venta_id)')) return [[{ hasta_venta_id: max }]];
     if (sql.includes('information_schema')) return [canceledColumn ? [{ exists: 1 }] : []];
@@ -30,7 +32,7 @@ test('turno sucesivo incluye únicamente ventas posteriores al límite anterior'
   for (const query of db.calls.filter(call => /AS sale_count|FROM venta_pago/.test(call.sql))) {
     assert.deepEqual(query.values, ['2026-10-13', 10, '20']);
     assert.match(query.sql, /venta\.venta_id > \? AND venta\.venta_id <= \?/);
-    assert.match(query.sql, /COALESCE\(venta\.anulada, 0\) = 0/);
+    assert.ok(!query.sql.includes('venta.anulada'));
   }
 });
 test('fondo y comprobantes mixtos se separan de ingresos y pagos del turno', async () => {
@@ -43,14 +45,14 @@ test('fondo y comprobantes mixtos se separan de ingresos y pagos del turno', asy
     { venta_id: 12, codigo: 'tarjeta', nombre: 'Tarjeta', amount: '30' },
   ] });
   const { summary } = await closeSalesShift(db, { date: '2026-11-13', expectedNumber: 1 });
-  assert.deepEqual(summary, { saleCount: 1, total: 60, cashFundTotal: 130, receivedTotal: 190, productQuantity: 2, payments: [
+  assert.deepEqual(summary, { accountingVersion: 2, accountingStartAfterSaleId: '0', saleCount: 1, total: 60, cashFundTotal: 130, receivedTotal: 190, productQuantity: 2, payments: [
     { code: 'efectivo', name: 'Efectivo', amount: 40 },
     { code: 'tarjeta', name: 'Tarjeta', amount: 20 },
   ] });
 });
 test('un turno sin movimientos conserva sus totales en cero', async () => {
   const { summary } = await closeSalesShift(fixture({ sales: [], payments: [], max: 0 }), { date: '2026-11-13', expectedNumber: 1 });
-  assert.deepEqual(summary, { saleCount: 0, total: 0, cashFundTotal: 0, receivedTotal: 0, productQuantity: 0, payments: [] });
+  assert.deepEqual(summary, { accountingVersion: 2, accountingStartAfterSaleId: '0', saleCount: 0, total: 0, cashFundTotal: 0, receivedTotal: 0, productQuantity: 0, payments: [] });
 });
 test('rechaza un cierre repetido o desactualizado, incluso si el turno está vacío', async () => {
   const db = fixture({ latest: { numero: 2, hasta_venta_id: 20 }, max: 20 });
@@ -75,4 +77,31 @@ test('consulta conserva snapshot y convierte hora de cierre sin depender de zona
   const rows = await listSalesShifts({ query: async () => [[{ turno_id: 1, numero: 1, desde_venta_id: 0, hasta_venta_id: 15, closed_ms: 1791907200000, finalizado_por: 7, responsable: 'Usuario de prueba', resumen: JSON.stringify(summary) }]] }, '2026-10-13');
   assert.deepEqual(rows[0].summary, summary);
   assert.equal(rows[0].closedAt, new Date(1791907200000).toISOString());
+});
+
+
+test('un cierre nuevo conserva importes antiguos pendientes del mismo turno', async t => {
+  process.env.CASH_FUND_ACCOUNTING_START_AFTER_SALE_ID = '11';
+  t.after(() => { process.env.CASH_FUND_ACCOUNTING_START_AFTER_SALE_ID = '0'; });
+  const { summary } = await closeSalesShift(fixture({ sales: [
+    { venta_id: 11, sale_count: 0, total: 100, cash_fund_total: 100, product_quantity: 0 },
+    { venta_id: 12, sale_count: 0, total: 50, cash_fund_total: 50, product_quantity: 0 },
+  ], payments: [
+    { venta_id: 11, codigo: 'efectivo', nombre: 'Efectivo', amount: 100 },
+    { venta_id: 12, codigo: 'efectivo', nombre: 'Efectivo', amount: 50 },
+  ] }), { date: '2026-11-13' });
+  assert.deepEqual(summary, { accountingVersion: 2, accountingStartAfterSaleId: '11', saleCount: 1,
+    total: 100, cashFundTotal: 50, receivedTotal: 150, productQuantity: 0,
+    payments: [{ code: 'efectivo', name: 'Efectivo', amount: 100 }] });
+});
+
+test('sin activacion el cierre nuevo mantiene exactamente el formato y calculo anterior', async t => {
+  delete process.env.CASH_FUND_ACCOUNTING_START_AFTER_SALE_ID;
+  t.after(() => { process.env.CASH_FUND_ACCOUNTING_START_AFTER_SALE_ID = '0'; });
+  const db = fixture({ sales: [{ sale_count: 2, total: 150, product_quantity: 0 }],
+    payments: [{ codigo: 'efectivo', nombre: 'Efectivo', amount: 150 }] });
+  const { summary } = await closeSalesShift(db, { date: '2026-11-13' });
+  assert.deepEqual(summary, { saleCount: 2, total: 150, productQuantity: 0,
+    payments: [{ code: 'efectivo', name: 'Efectivo', amount: 150 }] });
+  assert.ok(db.calls.find(call => call.sql.includes('AS sale_count')).sql.includes('COUNT(DISTINCT'));
 });

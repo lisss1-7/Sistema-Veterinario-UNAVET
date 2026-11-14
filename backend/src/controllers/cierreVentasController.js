@@ -1,6 +1,6 @@
 const pool = require('../config/db');
 const { listSalesShifts, closeSalesShift } = require('../utils/salesShift');
-const { cashFundCondition, roundMoney, splitCashFundPayments } = require('../utils/salesAccounting');
+const { cashFundCondition, roundMoney, splitCashFundPayments, getAccountingCutoff, saleAccountingVersion } = require('../utils/salesAccounting');
 const {
   getProductAndLots,
   consumeLots,
@@ -44,25 +44,23 @@ const throwIfSalesDayIsClosed = (day) => {
   throw error;
 };
 
-const mapVenta = (row) => {
-  const items = row.items || [];
-  const total = Number(row.total || 0);
-  const cashFundTotal = roundMoney(items.reduce((sum, item) => sum + (item.isCashFund ? item.subtotal : 0), 0));
-  return {
+const mapVenta = (row, version) => {
+  const sale = {
     id: String(row.venta_id),
     date: row.fecha,
     client: row.cliente || '',
-    payments: splitCashFundPayments(row.payments || [], total, cashFundTotal),
+    payments: row.payments || [],
     invoiceNit: row.factura_nit || '',
     invoiceName: row.factura_nombre || '',
-    total,
-    cashFundTotal,
-    hasSales: items.some((item) => !item.isCashFund),
-    items,
-    canceled: Boolean(row.anulada),
-    cancellationReason: row.motivo_anulacion || '',
-    canceledAt: row.anulada_en || null,
+    total: Number(row.total || 0),
+    items: row.items || [],
   };
+  if (version !== 2) return sale;
+  const items = sale.items.map(item => ({ ...item, isCashFund: Boolean(item.isCashFund) }));
+  const cashFundTotal = roundMoney(items.reduce((sum, item) => sum + (item.isCashFund ? item.subtotal : 0), 0));
+  return { ...sale, items, accountingVersion: 2, cashFundTotal,
+    hasSales: items.some(item => !item.isCashFund),
+    payments: splitCashFundPayments(sale.payments, sale.total, cashFundTotal) };
 };
 
 const listarVentas = async (req, res) => {
@@ -84,6 +82,10 @@ const listarVentas = async (req, res) => {
       [fecha]
     );
     if (ventas.length === 0) return res.json([]);
+
+    const cutoff = await getAccountingCutoff(connection);
+    const shifts = await listSalesShifts(connection, fecha);
+    const versions = new Map(ventas.map(venta => [String(venta.venta_id), saleAccountingVersion(venta.venta_id, shifts, cutoff)]));
 
     const ids = ventas.map((venta) => venta.venta_id);
     const [detalles] = await connection.query(
@@ -134,7 +136,7 @@ const listarVentas = async (req, res) => {
         quantity: Number(item.cantidad),
         unitPrice: Number(item.precio_unitario),
         subtotal: Number(item.subtotal),
-        isCashFund: Boolean(item.es_fondo_caja),
+        ...(versions.get(key) === 2 ? { isCashFund: Boolean(item.es_fondo_caja) } : {}),
       });
       return result;
     }, {});
@@ -156,7 +158,7 @@ const listarVentas = async (req, res) => {
           ...venta,
           items: itemsBySale[String(venta.venta_id)] || [],
           payments: paymentsBySale[String(venta.venta_id)] || [],
-        })
+        }, versions.get(String(venta.venta_id)))
       )
     );
   } catch (error) {
@@ -224,6 +226,7 @@ const finalizarDia = async (req, res) => {
     }
 
     await closeSalesShift(connection, { date, userId: req.user?.id, onlyIfPending: true });
+
     await connection.query(
       `UPDATE cierre_venta_dia
        SET finalizado = 1,
@@ -538,7 +541,7 @@ const eliminarVenta = async (req, res) => {
     throwIfSalesDayIsClosed(salesDay);
 
     const [sales] = await connection.query(
-      `SELECT venta_id, anulada
+      `SELECT venta_id
        FROM cierre_venta
        WHERE venta_id = ?
        LIMIT 1
@@ -550,18 +553,6 @@ const eliminarVenta = async (req, res) => {
       return res.status(404).json({
         message: 'Venta no encontrada',
       });
-    }
-
-    if (sales[0].anulada) {
-      const error = new Error('La venta ya fue anulada');
-      error.statusCode = 409;
-      throw error;
-    }
-    const reason = String(req.body?.reason || '').trim();
-    if (!reason || reason.length > 200) {
-      const error = new Error('Indique un motivo de anulación de hasta 200 caracteres');
-      error.statusCode = 400;
-      throw error;
     }
 
     const [allocations] = await connection.query(
@@ -580,25 +571,25 @@ const eliminarVenta = async (req, res) => {
       connection,
       allocations,
       userId: req.user?.id,
-      reason: `Anulación de venta: ${reason}`,
+      reason: 'Anulación de venta del cierre diario',
       referenceType: 'Venta',
       referenceId: req.params.id,
     });
 
     await connection.query(
-      `UPDATE cierre_venta SET anulada = 1, motivo_anulacion = ?,
-         anulada_por = ?, anulada_en = NOW() WHERE venta_id = ?`,
-      [reason, req.user?.id || null, req.params.id]
+      `DELETE FROM cierre_venta
+       WHERE venta_id = ?`,
+      [req.params.id]
     );
     await connection.commit();
     res.json({
       message:
-        'Venta anulada y lotes reintegrados; se conservó el documento',
+        'Venta eliminada y lotes reintegrados correctamente',
     });
   } catch (error) {
     await connection.rollback();
     res.status(error.statusCode || 500).json({
-      message: error.message || 'Error al anular la venta',
+      message: error.message || 'Error al eliminar la venta',
     });
   } finally {
     connection.release();

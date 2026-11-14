@@ -1,0 +1,47 @@
+{
+  "description": "Parche exclusivo de caja contra las fuentes inspeccionadas en produccion. Hashes SHA-256 normalizados a LF.",
+  "files": {
+    "backend/src/controllers/cierreVentasController.js": {
+      "before": "0e53d1a63bc84660abbc851147b2ad5aa81e3922767c66eb32b53019eaa627de",
+      "after": "106da7bc0a77731486eebef74e8c03a0311ffb44ef7f9c9131a8052c3714482a"
+    },
+    "backend/src/utils/salesShift.js": {
+      "before": "dc18f741909efa539f861d46c33c2dbf6e10a7617849da0eb3bb56689b5194b4",
+      "after": "e34543052f92770957e62ea476076070b03ef6b2905db3c0be120eab55b03093"
+    },
+    "backend/src/routes/cierreVentasRoutes.js": {
+      "before": "3f57bfe53bac46d5f85445dfb943c4df6c13a6039fe68338695b947cf74cdf9c",
+      "after": "3f57bfe53bac46d5f85445dfb943c4df6c13a6039fe68338695b947cf74cdf9c"
+    },
+    "src/app/components/SalesClosing.tsx": {
+      "before": "97c49f8e4ff371a0e7009db4620667b74a880f91bf75993c18375a9f955b5c10",
+      "after": "60f766baa3a7fc86e137dd87e827e37aeb052b160f9f381ac59bf6d179aae707"
+    },
+    "src/app/components/SaleDetailsModal.tsx": {
+      "before": "c64be08fa1d31e1e7581c11682640a6a42956ea0732dff7c3c91ad75e0c403db",
+      "after": "a2b505c742137545e1cc5c12e52bd1479af0bda06141a4c0179aa0b377f30651"
+    },
+    "src/app/utils/salesClosingPdf.ts": {
+      "before": "2a7842c27594902d7973c040342553b5cbf081239199a8bb54906f2f0c1ab8bf",
+      "after": "31793cd3b2f207e8ca0ea30695ffd43847fc0a9088714a1d80fce13cc6e872c2"
+    },
+    "src/app/utils/inventoryOperations.ts": {
+      "before": "33e81c070279d94cd8c4abe304834a65d11cf7e51b5d668f314ae53a786a36b5",
+      "after": "814e4708bf1368d74752c84b1b3f5e27644f90868b8a21568790f3980ca96949"
+    },
+    "backend/src/utils/salesAccounting.js": {
+      "before": null,
+      "after": "fc799342cc494085bde6a182b25ffcbbc87df11b03bdfbeee59ba78d57fdc662"
+    }
+  },
+  "preservedFunctions": {
+    "lockSalesDay": "aed940a26c7e6479d152f13bda6dc3cc1512a80a2d232e4b74c915c9b616a502",
+    "throwIfSalesDayIsClosed": "6ce658b942b227f19144c7684c03c47f4ae86bd989c1897c9329a2f2a2a92557",
+    "obtenerEstadoDia": "f437879cc25ee8ca3473ed39f805b0adbfc395212fb6c2e03a48d571434d8a10",
+    "finalizarDia": "9dd8d9771ecc205d385cd36c4ef0796f390474efa28b33ab571cdc32c0f69b7c",
+    "listarTurnos": "abbffa6622c679404dfca61bbed21bfcd2df84dae92718ea47279d4d12186f48",
+    "finalizarTurno": "c5e0a18766605aad84397e3e9d12cdb4135ee519c7540d2a0f76aef92daedb32",
+    "crearVenta": "f8d6244f0d15cf4b7835c8f70fbc3e05ec7ea611f3c7cfb57443c27644392a55",
+    "eliminarVenta": "3fd30948f17259cae7adf97aceb4368bce6f7aa6218034a1d402b6d0a2775e4f"
+  }
+}
