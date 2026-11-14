@@ -1,0 +1,58 @@
+{
+  "description": "Recetas: peso y procedimientos. SHA-256 normalizado a LF.",
+  "parentCommit": "3393f18c380ba2fb9bbb951b446713943faf869b",
+  "migrationRequired": true,
+  "schemaPreconditions": {
+    "receta": {
+      "idType": "bigint unsigned",
+      "engine": "InnoDB"
+    },
+    "servicio": {
+      "idType": "bigint unsigned",
+      "priceType": "decimal(10,2)",
+      "engine": "InnoDB"
+    }
+  },
+  "files": {
+    "backend/src/controllers/recetasController.js": {
+      "before": "f0dcffa7b0a0872bc1d3d64b6c57d49984225491944864de93dcbec4729845a8",
+      "after": "0d55f21dbe8f206eee905674b55b866a67c5b3391edfc45e1279a35c908c015c"
+    },
+    "src/app/pages/Prescriptions.tsx": {
+      "before": "6b190465273e46e1b42f6c8321d6a1a9429c3c6bbf6abbd058acf69a6e1dac67",
+      "after": "6a4de46427efd11d07087d299c03a810b29212306331740a6d76615f3b7cc980"
+    },
+    "backend/src/utils/prescriptionConsultation.js": {
+      "before": null,
+      "after": "08a84a81b54825e4564940451f7af4f48c85c388d3f9cace21832984091a1f7d"
+    },
+    "backend/src/scripts/prescriptionConsultationMigration.sql": {
+      "before": null,
+      "after": "328fe1b73247608b56dc9648e305a6f1a296798f8770ce3b44d5ceb308dd5305"
+    },
+    "src/app/utils/prescriptionConsultation.ts": {
+      "before": null,
+      "after": "dc664f744d0cebe1662b6ea854319d3e13b77538161ee14321c44ca694507469"
+    },
+    "backend/src/routes/recetasRoutes.js": {
+      "before": "5d5362eea9567a698fa512edd14a3ba15ee267d3fd892ef0044cbe1ace0bb011",
+      "after": "5d5362eea9567a698fa512edd14a3ba15ee267d3fd892ef0044cbe1ace0bb011"
+    },
+    "backend/src/controllers/catalogosController.js": {
+      "before": "b0607282e54ca6011eb21e78fb9d7913b78e9a1f8ccdb3508eef1280548bc75f",
+      "after": "b0607282e54ca6011eb21e78fb9d7913b78e9a1f8ccdb3508eef1280548bc75f"
+    },
+    "backend/src/utils/inventoryLots.js": {
+      "before": "fcb46cb456c98e51cbc2d89362f903f6fa08fe8a480f9f006094b486b9ef86b6",
+      "after": "fcb46cb456c98e51cbc2d89362f903f6fa08fe8a480f9f006094b486b9ef86b6"
+    },
+    "src/app/utils/clinicalText.ts": {
+      "before": "372a5757587d432b5e4117ab9f6d93dfdf02ea0124415726ad28aaa7529045fe",
+      "after": "372a5757587d432b5e4117ab9f6d93dfdf02ea0124415726ad28aaa7529045fe"
+    },
+    "src/app/utils/pdfBranding.ts": {
+      "before": "6176aeb3fda6c4c2718272b0e2bb13ac73ec5043a83d465ca6d487e673a37171",
+      "after": "6176aeb3fda6c4c2718272b0e2bb13ac73ec5043a83d465ca6d487e673a37171"
+    }
+  }
+}

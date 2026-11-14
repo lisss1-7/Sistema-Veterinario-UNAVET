@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const consultation = require('../utils/prescriptionConsultation');
 const {
   consumeLots,
   restoreLots,
@@ -139,7 +140,7 @@ const obtenerRecetas = async (connection, patientId = null) => {
       items.push(mapMedicamentoToFrontend(medication));
       medicationsByRecipe.set(String(medication.receta_id), items);
     }
-    return rows.map(row => mapRecetaToFrontend(row, medicationsByRecipe.get(String(row.receta_id)) || []));
+    return consultation.enrich(connection, rows.map(row => mapRecetaToFrontend(row, medicationsByRecipe.get(String(row.receta_id)) || [])));
 };
 
 const listarRecetas = async (req, res) => {
@@ -225,7 +226,7 @@ const obtenerRecetaPorId = async (req, res) => {
       );
 
     res.json(
-      mapRecetaToFrontend(rows[0], medications)
+      (await consultation.enrich(connection, [mapRecetaToFrontend(rows[0], medications)]))[0]
     );
   } catch (error) {
     console.error(
@@ -412,6 +413,7 @@ const crearReceta = async (req, res) => {
       throw error;
     }
 
+    const details = await consultation.prepare(connection, req.body);
     const tutorId = patientRows[0].tutor_id;
 
     const [veterinarianRows] = await connection.query(
@@ -466,6 +468,7 @@ const crearReceta = async (req, res) => {
       );
 
     const recetaId = recetaResult.insertId;
+    await consultation.save(connection, recetaId, details);
 
     await descontarMedicamentosDelInventario({
       connection,
@@ -542,6 +545,7 @@ const actualizarReceta = async (req, res) => {
         `
         SELECT
           receta.receta_id,
+          receta.paciente_id,
           estado.es_anulado
         FROM receta receta
         INNER JOIN estado_receta estado
@@ -593,6 +597,9 @@ const actualizarReceta = async (req, res) => {
       error.statusCode = 404;
       throw error;
     }
+
+    const details = await consultation.prepare(connection, req.body, { id,
+      patientChanged: String(recetaRows[0].paciente_id) !== String(patientId) });
 
     const [oldAllocations] = await connection.query(
       `SELECT
@@ -660,6 +667,7 @@ const actualizarReceta = async (req, res) => {
       usuarioId: req.user?.id || null,
     });
 
+    await consultation.save(connection, id, details);
     await connection.commit();
 
     res.json({

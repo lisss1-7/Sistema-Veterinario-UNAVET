@@ -26,6 +26,7 @@ const medicine = { productName: 'Medicamento de prueba', quantity: 2, instructio
 test('carga los medicamentos de varias recetas en una sola consulta sin mezclarlos', async () => {
   let calls = 0;
   query = async (sql, values) => {
+    if (sql.includes('prescription_consultation_tables')) return [[{ prescription_consultation_tables: 0 }]];
     calls++;
     if (sql.includes('FROM receta r')) return [[{ receta_id: 12, paciente_id: 4 }, { receta_id: 13, paciente_id: 5 }, { receta_id: 14, paciente_id: 4 }]];
     assert.match(sql, /rm\.receta_id IN \(\?, \?, \?\)/);
@@ -40,6 +41,7 @@ test('carga los medicamentos de varias recetas en una sola consulta sin mezclarl
 const configureWrites = ({ clinic = false, annulled = false } = {}) => {
   events.length = 0;
   query = async (sql, values) => {
+    if (sql.includes('prescription_consultation_tables')) return [[{ prescription_consultation_tables: 0 }]];
     events.push({ sql, values });
     if (sql.includes('FROM paciente')) return [[{ paciente_id: 4, tutor_id: 2 }]];
     if (sql.includes('FROM veterinario')) return [[{ veterinario_id: 3 }]];
@@ -89,6 +91,7 @@ test('mantiene la validación de entrega en clínica y revierte la transacción'
 test('historial mezcla consultas y recetas del paciente sin escribir duplicados', async () => {
   let status = 'Emitida';
   query = async (sql, values) => {
+    if (sql.includes('prescription_consultation_tables')) return [[{ prescription_consultation_tables: 0 }]];
     assert.ok(!/INSERT|UPDATE|DELETE/.test(sql));
     if (sql.includes('FROM historial_clinico historial')) return [[{ historial_id: 12, paciente_id: 4, fecha: '2026-10-01', tipo_consulta: 'Consulta', estado_clinico: 'Completado' }]];
     if (sql.includes('FROM receta r')) {

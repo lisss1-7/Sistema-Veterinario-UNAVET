@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import type {
-  Prescription,
   PrescriptionMedication,
   Patient,
   InventoryProduct,
@@ -26,6 +25,7 @@ import PdfPreviewModal from '../components/PdfPreviewModal';
 import { useModulePermissions } from '../hooks/useModulePermissions';
 import { API_URL } from '../config/api';
 import { getAuthHeaders } from '../utils/apiClient';
+import { type PrescriptionConsultation as Prescription, type PrescriptionProcedure, prescriptionWeightKg, prescriptionWeightText, procedureSubtotal, procedureTotal, drawPrescriptionProcedures } from '../utils/prescriptionConsultation';
 import { clinicalPdfLines, drawClinicalPdfLine, observationParagraphs } from '../utils/clinicalText';
 
 type CatalogItem = {
@@ -36,6 +36,8 @@ type CatalogItem = {
   descripcion?: string;
   activo?: number;
 };
+
+type ServiceOption = { id: string | number; nombre: string; descripcion: string | null; precio_base: number | string | null; categoria: string };
 
 export default function Prescriptions() {
   const [searchParams] = useSearchParams();
@@ -65,6 +67,16 @@ export default function Prescriptions() {
     medications: [],
   });
 
+  const [weightValue, setWeightValue] = useState('');
+  const [weightUnit, setWeightUnit] = useState<'kg' | 'lb'>('kg');
+  const [procedures, setProcedures] = useState<PrescriptionProcedure[]>([]);
+  const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([]);
+  const [serviceError, setServiceError] = useState('');
+  const [selectedService, setSelectedService] = useState('');
+  const [saving, setSaving] = useState(false);
+  const supportsConsultation = !editingPrescription || editingPrescription.consultationVersion === 1;
+  const currentWeightKg = prescriptionWeightKg(weightValue, weightUnit);
+
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [medications, setMedications] = useState<PrescriptionMedication[]>([]);
   const [currentMed, setCurrentMed] =
@@ -78,6 +90,7 @@ export default function Prescriptions() {
         loadInventory(),
         loadDeliveryModes(),
         loadVeterinarians(),
+        loadServices(),
       ]);
     };
 
@@ -211,6 +224,36 @@ export default function Prescriptions() {
     }
   };
 
+  const loadServices = async () => {
+    try {
+      const response = await fetch(`${API_URL}/catalogos/servicios`, { headers: getAuthHeaders() });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Error al cargar servicios');
+      setServiceOptions(Array.isArray(data) ? data : []);
+      setServiceError('');
+    } catch (error) {
+      setServiceOptions([]);
+      setServiceError(error instanceof Error ? error.message : 'No se pudo cargar el catálogo de servicios');
+    }
+  };
+  const resetConsultation = () => {
+    setWeightValue(''); setWeightUnit('kg'); setProcedures([]); setSelectedService('');
+  };
+  const addProcedure = () => {
+    const service = serviceOptions.find(item => String(item.id) === selectedService);
+    if (!service || service.precio_base === null || !Number.isFinite(Number(service.precio_base)) || Number(service.precio_base) < 0) {
+      setPrescriptionError('Seleccione un servicio con precio válido en el catálogo'); return;
+    }
+    if (procedures.some(item => item.serviceId === selectedService)) {
+      setPrescriptionError('El servicio ya est? agregado. Puede ajustar su cantidad'); return;
+    }
+    if (procedures.length >= 100) { setPrescriptionError('La receta admite un máximo de 100 procedimientos'); return; }
+    const saved = editingPrescription?.procedures?.find(item => item.serviceId === selectedService);
+    setProcedures([...procedures, saved ? { ...saved, quantity: 1 } : { serviceId: selectedService,
+      name: service.nombre, description: service.descripcion || '', unitPrice: Number(service.precio_base), quantity: 1 }]);
+    setSelectedService('');
+  };
+
   const filteredPrescriptions = prescriptions.filter((p) =>
     (p.tutorName || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -221,6 +264,7 @@ export default function Prescriptions() {
 
     if (patient) {
       setSelectedPatient(patient);
+      setWeightValue(''); setWeightUnit('kg');
       setFormData({
         ...formData,
         patientId,
@@ -248,6 +292,7 @@ export default function Prescriptions() {
 
     openedPatientFromUrl.current = patientId;
     setEditingPrescription(null);
+    resetConsultation();
     setSelectedPatient(patient);
     setFormData({
       medications: [],
@@ -461,7 +506,10 @@ export default function Prescriptions() {
     doc.text(`Fecha: ${prescription.date}`, marginX, dataY);
 
     const tableX = marginX;
-    let tableY = 84;
+    if (prescription.consultationVersion === 1) {
+      doc.text(`Peso: ${prescriptionWeightText(prescription.weightKg)}`, marginX, dataY + 7);
+    }
+    let tableY = prescription.consultationVersion === 1 ? 91 : 84;
     const tableWidth = pageWidth - marginX * 2;
 
     const colMedication = 70;
@@ -582,6 +630,9 @@ export default function Prescriptions() {
         drawUnavetPdfHeader(doc, logoBase64, 'Sistema de Gestión Veterinaria');
         sectionY = 43;
     };
+    if (prescription.consultationVersion === 1 && prescription.procedures?.length) {
+      sectionY = drawPrescriptionProcedures(doc, prescription.procedures, sectionY, () => { nextSectionPage(); return sectionY; });
+    }
     const textSections = [
       ['Motivo de consulta', prescription.reason || 'No registrado'],
       ...(prescription.diagnosis?.trim() ? [['Diagnóstico', prescription.diagnosis]] : []),
@@ -653,6 +704,7 @@ export default function Prescriptions() {
     setPrescriptionError(null);
     setEditingPrescription(null);
     setFormData({ medications: [] });
+    resetConsultation();
     setMedications([]);
     setCurrentMed({});
     setSelectedPatient(null);
@@ -689,6 +741,10 @@ export default function Prescriptions() {
       );
 
       setEditingPrescription(fullPrescription);
+      setWeightValue(fullPrescription.weightKg === null || fullPrescription.weightKg === undefined ? '' : String(fullPrescription.weightKg));
+      setWeightUnit('kg');
+      setProcedures(fullPrescription.procedures || []);
+      setSelectedService('');
       setSelectedPatient(patient || null);
       setFormData({
         patientId: fullPrescription.patientId,
@@ -726,6 +782,10 @@ export default function Prescriptions() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (saving) return;
+    if (supportsConsultation && Number.isNaN(currentWeightKg)) {
+      setPrescriptionError('Indique un peso positivo y menor que 10000 kg'); return;
+    }
 
     if (medications.length === 0) {
       alert('Debe agregar al menos un medicamento');
@@ -733,6 +793,7 @@ export default function Prescriptions() {
     }
 
     try {
+      setSaving(true);
       const url = editingPrescription
         ? `${API_URL}/recetas/${editingPrescription.id}`
         : `${API_URL}/recetas`;
@@ -751,6 +812,9 @@ export default function Prescriptions() {
             ? { veterinarianId: formData.veterinarianId }
             : {}),
           medications,
+          ...(supportsConsultation ? { consultationVersion: 1,
+            weight: weightValue.trim() ? { value: weightValue, unit: weightUnit } : null,
+            procedures: procedures.map(item => ({ serviceId: item.serviceId, quantity: item.quantity })) } : {}),
         }),
       });
 
@@ -781,6 +845,8 @@ export default function Prescriptions() {
           ? error.message
           : 'No se pudo guardar la receta.'
       );
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -882,6 +948,13 @@ export default function Prescriptions() {
               </div>
 
               <div className="border-t border-border pt-4">
+                {prescription.consultationVersion === 1 && (
+                  <div className="text-sm text-muted-foreground mb-3 space-y-1">
+                    <p><strong>Peso al emitir:</strong> {prescriptionWeightText(prescription.weightKg)}</p>
+                    {prescription.procedures?.map(item => <p key={item.serviceId}>{item.name}{item.description ? `: ${item.description}` : ''} · {item.quantity} × Q{item.unitPrice.toFixed(2)} · Subtotal Q{procedureSubtotal(item).toFixed(2)}</p>)}
+                    {!!prescription.procedures?.length && <p><strong>Total de procedimientos:</strong> Q{procedureTotal(prescription.procedures).toFixed(2)}</p>}
+                  </div>
+                )}
                 <p className="text-foreground text-sm text-justify whitespace-pre-line break-words">
                   <strong>Motivo de consulta:</strong> {prescription.reason || 'No registrado'}
                 </p>
@@ -1041,6 +1114,53 @@ export default function Prescriptions() {
                   maxLength={10000}
                 />
               </div>
+
+              {supportsConsultation ? (
+                <>
+                  <div className="border-t border-border pt-4">
+                    <label className="block text-foreground mb-2 text-sm" htmlFor="prescription-weight">Peso al emitir la receta (opcional)</label>
+                    <div className="grid grid-cols-2 gap-4">
+                      <input id="prescription-weight" type="number" min="0.000001" step="any" value={weightValue}
+                        onChange={e => setWeightValue(e.target.value)}
+                        className="w-full px-4 py-2 bg-secondary border border-border rounded-lg text-foreground" />
+                      <ThemedSelect aria-label="Unidad de peso" value={weightUnit}
+                        onChange={e => { const unit = e.target.value as 'kg' | 'lb';
+                          if (weightValue.trim() && Number.isFinite(currentWeightKg)) setWeightValue(String(unit === 'kg' ? currentWeightKg : Number(currentWeightKg) / 0.45359237));
+                          setWeightUnit(unit); }}
+                        className="w-full px-4 py-2 bg-secondary border border-border rounded-lg text-foreground">
+                        <option value="kg">Kilogramos (kg)</option><option value="lb">Libras (lb)</option>
+                      </ThemedSelect>
+                    </div>
+                    <p className="text-muted-foreground text-sm mt-2">{Number.isNaN(currentWeightKg) ? 'Peso no válido' : prescriptionWeightText(currentWeightKg)}</p>
+                  </div>
+                  <div className="border-t border-border pt-4 space-y-3">
+                    <h3 className="text-foreground text-lg">Servicios y procedimientos realizados</h3>
+                    {serviceError && <p className="text-destructive text-sm">{serviceError} <button type="button" onClick={() => void loadServices()} className="underline">Reintentar</button></p>}
+                    <div className="flex flex-col md:flex-row gap-2">
+                      <ThemedSelect aria-label="Servicio médico" value={selectedService} onChange={e => setSelectedService(e.target.value)}
+                        className="w-full px-4 py-2 bg-secondary border border-border rounded-lg text-foreground">
+                        <option value="">Seleccionar servicio del catálogo</option>
+                        {serviceOptions.map(service => <option key={service.id} value={String(service.id)} disabled={service.precio_base === null}>
+                          {service.categoria} · {service.nombre} · {service.precio_base === null ? 'Sin precio' : `Q${Number(service.precio_base).toFixed(2)}`}
+                        </option>)}
+                      </ThemedSelect>
+                      <button type="button" onClick={addProcedure} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg">Agregar</button>
+                    </div>
+                    {procedures.map(item => <div key={item.serviceId} className="p-3 bg-muted rounded-lg flex flex-col md:flex-row gap-3 md:items-center">
+                      <div className="flex-1"><p className="text-foreground font-medium">{item.name}</p><p className="text-muted-foreground text-sm">{item.description}</p><p className="text-muted-foreground text-sm">Precio: Q{item.unitPrice.toFixed(2)} · Subtotal: Q{procedureSubtotal(item).toFixed(2)}</p></div>
+                      <label className="text-foreground text-sm">Cantidad
+                        <input aria-label={`Cantidad de ${item.name}`} type="number" min="1" max="1000" step="1" required value={item.quantity}
+                          onChange={e => setProcedures(procedures.map(procedure => procedure.serviceId === item.serviceId ? { ...procedure, quantity: Number(e.target.value) } : procedure))}
+                          className="w-24 ml-2 px-3 py-2 bg-secondary border border-border rounded-lg" />
+                      </label>
+                      <button type="button" onClick={() => setProcedures(procedures.filter(procedure => procedure.serviceId !== item.serviceId))} aria-label={`Quitar ${item.name}`} className="text-destructive"><X className="w-4 h-4" /></button>
+                    </div>)}
+                    <p className="text-foreground text-sm">Subtotal: Q{procedureTotal(procedures).toFixed(2)}</p>
+                    <p className="text-foreground font-medium">Total de procedimientos: Q{procedureTotal(procedures).toFixed(2)}</p>
+                    <p className="text-muted-foreground text-xs">Este registro no genera ventas ni cobros automáticos.</p>
+                  </div>
+                </>
+              ) : <p className="text-muted-foreground text-sm">Esta receta anterior conserva su formato original. Para registrar peso y procedimientos, emita una nueva receta.</p>}
 
               <div className="border-t border-border pt-4">
                 <h3 className="text-foreground text-lg mb-3">Medicamentos</h3>
@@ -1240,7 +1360,7 @@ export default function Prescriptions() {
 
               <div className="flex gap-4 pt-4">
                 <button
-                  type="submit"
+                  type="submit" disabled={saving}
                   className="flex-1 px-4 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors"
                 >
                   {editingPrescription ? 'Actualizar receta' : 'Crear receta'}

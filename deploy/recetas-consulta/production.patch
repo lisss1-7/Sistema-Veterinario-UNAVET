@@ -1,0 +1,396 @@
+diff --git a/backend/src/controllers/recetasController.js b/backend/src/controllers/recetasController.js
+--- a/backend/src/controllers/recetasController.js
++++ b/backend/src/controllers/recetasController.js
+@@ -1,2 +1,3 @@
+ const pool = require('../config/db');
++const consultation = require('../utils/prescriptionConsultation');
+ const {
+@@ -141,3 +142,3 @@
+     }
+-    return rows.map(row => mapRecetaToFrontend(row, medicationsByRecipe.get(String(row.receta_id)) || []));
++    return consultation.enrich(connection, rows.map(row => mapRecetaToFrontend(row, medicationsByRecipe.get(String(row.receta_id)) || [])));
+ };
+@@ -227,3 +228,3 @@
+     res.json(
+-      mapRecetaToFrontend(rows[0], medications)
++      (await consultation.enrich(connection, [mapRecetaToFrontend(rows[0], medications)]))[0]
+     );
+@@ -414,2 +415,3 @@
+
++    const details = await consultation.prepare(connection, req.body);
+     const tutorId = patientRows[0].tutor_id;
+@@ -468,2 +470,3 @@
+     const recetaId = recetaResult.insertId;
++    await consultation.save(connection, recetaId, details);
+
+@@ -544,2 +547,3 @@
+           receta.receta_id,
++          receta.paciente_id,
+           estado.es_anulado
+@@ -595,2 +599,5 @@
+     }
++
++    const details = await consultation.prepare(connection, req.body, { id,
++      patientChanged: String(recetaRows[0].paciente_id) !== String(patientId) });
+
+@@ -662,2 +669,3 @@
+
++    await consultation.save(connection, id, details);
+     await connection.commit();
+diff --git a/src/app/pages/Prescriptions.tsx b/src/app/pages/Prescriptions.tsx
+--- a/src/app/pages/Prescriptions.tsx
++++ b/src/app/pages/Prescriptions.tsx
+@@ -15,3 +15,2 @@
+ import type {
+-  Prescription,
+   PrescriptionMedication,
+@@ -28,2 +27,3 @@
+ import { getAuthHeaders } from '../utils/apiClient';
++import { type PrescriptionConsultation as Prescription, type PrescriptionProcedure, prescriptionWeightKg, prescriptionWeightText, procedureSubtotal, procedureTotal, drawPrescriptionProcedures } from '../utils/prescriptionConsultation';
+ import { clinicalPdfLines, drawClinicalPdfLine, observationParagraphs } from '../utils/clinicalText';
+@@ -38,2 +38,4 @@
+ };
++
++type ServiceOption = { id: string | number; nombre: string; descripcion: string | null; precio_base: number | string | null; categoria: string };
+
+@@ -67,2 +69,12 @@
+
++  const [weightValue, setWeightValue] = useState('');
++  const [weightUnit, setWeightUnit] = useState<'kg' | 'lb'>('kg');
++  const [procedures, setProcedures] = useState<PrescriptionProcedure[]>([]);
++  const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([]);
++  const [serviceError, setServiceError] = useState('');
++  const [selectedService, setSelectedService] = useState('');
++  const [saving, setSaving] = useState(false);
++  const supportsConsultation = !editingPrescription || editingPrescription.consultationVersion === 1;
++  const currentWeightKg = prescriptionWeightKg(weightValue, weightUnit);
++
+   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+@@ -80,2 +92,3 @@
+         loadVeterinarians(),
++        loadServices(),
+       ]);
+@@ -213,2 +226,32 @@
+
++  const loadServices = async () => {
++    try {
++      const response = await fetch(`${API_URL}/catalogos/servicios`, { headers: getAuthHeaders() });
++      const data = await response.json();
++      if (!response.ok) throw new Error(data.message || 'Error al cargar servicios');
++      setServiceOptions(Array.isArray(data) ? data : []);
++      setServiceError('');
++    } catch (error) {
++      setServiceOptions([]);
++      setServiceError(error instanceof Error ? error.message : 'No se pudo cargar el catálogo de servicios');
++    }
++  };
++  const resetConsultation = () => {
++    setWeightValue(''); setWeightUnit('kg'); setProcedures([]); setSelectedService('');
++  };
++  const addProcedure = () => {
++    const service = serviceOptions.find(item => String(item.id) === selectedService);
++    if (!service || service.precio_base === null || !Number.isFinite(Number(service.precio_base)) || Number(service.precio_base) < 0) {
++      setPrescriptionError('Seleccione un servicio con precio válido en el catálogo'); return;
++    }
++    if (procedures.some(item => item.serviceId === selectedService)) {
++      setPrescriptionError('El servicio ya est? agregado. Puede ajustar su cantidad'); return;
++    }
++    if (procedures.length >= 100) { setPrescriptionError('La receta admite un máximo de 100 procedimientos'); return; }
++    const saved = editingPrescription?.procedures?.find(item => item.serviceId === selectedService);
++    setProcedures([...procedures, saved ? { ...saved, quantity: 1 } : { serviceId: selectedService,
++      name: service.nombre, description: service.descripcion || '', unitPrice: Number(service.precio_base), quantity: 1 }]);
++    setSelectedService('');
++  };
++
+   const filteredPrescriptions = prescriptions.filter((p) =>
+@@ -223,2 +266,3 @@
+       setSelectedPatient(patient);
++      setWeightValue(''); setWeightUnit('kg');
+       setFormData({
+@@ -250,2 +294,3 @@
+     setEditingPrescription(null);
++    resetConsultation();
+     setSelectedPatient(patient);
+@@ -463,3 +508,6 @@
+     const tableX = marginX;
+-    let tableY = 84;
++    if (prescription.consultationVersion === 1) {
++      doc.text(`Peso: ${prescriptionWeightText(prescription.weightKg)}`, marginX, dataY + 7);
++    }
++    let tableY = prescription.consultationVersion === 1 ? 91 : 84;
+     const tableWidth = pageWidth - marginX * 2;
+@@ -584,2 +632,5 @@
+     };
++    if (prescription.consultationVersion === 1 && prescription.procedures?.length) {
++      sectionY = drawPrescriptionProcedures(doc, prescription.procedures, sectionY, () => { nextSectionPage(); return sectionY; });
++    }
+     const textSections = [
+@@ -655,2 +706,3 @@
+     setFormData({ medications: [] });
++    resetConsultation();
+     setMedications([]);
+@@ -691,2 +743,6 @@
+       setEditingPrescription(fullPrescription);
++      setWeightValue(fullPrescription.weightKg === null || fullPrescription.weightKg === undefined ? '' : String(fullPrescription.weightKg));
++      setWeightUnit('kg');
++      setProcedures(fullPrescription.procedures || []);
++      setSelectedService('');
+       setSelectedPatient(patient || null);
+@@ -728,2 +784,6 @@
+     e.preventDefault();
++    if (saving) return;
++    if (supportsConsultation && Number.isNaN(currentWeightKg)) {
++      setPrescriptionError('Indique un peso positivo y menor que 10000 kg'); return;
++    }
+
+@@ -735,2 +795,3 @@
+     try {
++      setSaving(true);
+       const url = editingPrescription
+@@ -753,2 +814,5 @@
+           medications,
++          ...(supportsConsultation ? { consultationVersion: 1,
++            weight: weightValue.trim() ? { value: weightValue, unit: weightUnit } : null,
++            procedures: procedures.map(item => ({ serviceId: item.serviceId, quantity: item.quantity })) } : {}),
+         }),
+@@ -783,2 +847,4 @@
+       );
++    } finally {
++      setSaving(false);
+     }
+@@ -884,2 +950,9 @@
+               <div className="border-t border-border pt-4">
++                {prescription.consultationVersion === 1 && (
++                  <div className="text-sm text-muted-foreground mb-3 space-y-1">
++                    <p><strong>Peso al emitir:</strong> {prescriptionWeightText(prescription.weightKg)}</p>
++                    {prescription.procedures?.map(item => <p key={item.serviceId}>{item.name}{item.description ? `: ${item.description}` : ''} · {item.quantity} × Q{item.unitPrice.toFixed(2)} · Subtotal Q{procedureSubtotal(item).toFixed(2)}</p>)}
++                    {!!prescription.procedures?.length && <p><strong>Total de procedimientos:</strong> Q{procedureTotal(prescription.procedures).toFixed(2)}</p>}
++                  </div>
++                )}
+                 <p className="text-foreground text-sm text-justify whitespace-pre-line break-words">
+@@ -1044,2 +1117,49 @@
+
++              {supportsConsultation ? (
++                <>
++                  <div className="border-t border-border pt-4">
++                    <label className="block text-foreground mb-2 text-sm" htmlFor="prescription-weight">Peso al emitir la receta (opcional)</label>
++                    <div className="grid grid-cols-2 gap-4">
++                      <input id="prescription-weight" type="number" min="0.000001" step="any" value={weightValue}
++                        onChange={e => setWeightValue(e.target.value)}
++                        className="w-full px-4 py-2 bg-secondary border border-border rounded-lg text-foreground" />
++                      <ThemedSelect aria-label="Unidad de peso" value={weightUnit}
++                        onChange={e => { const unit = e.target.value as 'kg' | 'lb';
++                          if (weightValue.trim() && Number.isFinite(currentWeightKg)) setWeightValue(String(unit === 'kg' ? currentWeightKg : Number(currentWeightKg) / 0.45359237));
++                          setWeightUnit(unit); }}
++                        className="w-full px-4 py-2 bg-secondary border border-border rounded-lg text-foreground">
++                        <option value="kg">Kilogramos (kg)</option><option value="lb">Libras (lb)</option>
++                      </ThemedSelect>
++                    </div>
++                    <p className="text-muted-foreground text-sm mt-2">{Number.isNaN(currentWeightKg) ? 'Peso no válido' : prescriptionWeightText(currentWeightKg)}</p>
++                  </div>
++                  <div className="border-t border-border pt-4 space-y-3">
++                    <h3 className="text-foreground text-lg">Servicios y procedimientos realizados</h3>
++                    {serviceError && <p className="text-destructive text-sm">{serviceError} <button type="button" onClick={() => void loadServices()} className="underline">Reintentar</button></p>}
++                    <div className="flex flex-col md:flex-row gap-2">
++                      <ThemedSelect aria-label="Servicio médico" value={selectedService} onChange={e => setSelectedService(e.target.value)}
++                        className="w-full px-4 py-2 bg-secondary border border-border rounded-lg text-foreground">
++                        <option value="">Seleccionar servicio del catálogo</option>
++                        {serviceOptions.map(service => <option key={service.id} value={String(service.id)} disabled={service.precio_base === null}>
++                          {service.categoria} · {service.nombre} · {service.precio_base === null ? 'Sin precio' : `Q${Number(service.precio_base).toFixed(2)}`}
++                        </option>)}
++                      </ThemedSelect>
++                      <button type="button" onClick={addProcedure} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg">Agregar</button>
++                    </div>
++                    {procedures.map(item => <div key={item.serviceId} className="p-3 bg-muted rounded-lg flex flex-col md:flex-row gap-3 md:items-center">
++                      <div className="flex-1"><p className="text-foreground font-medium">{item.name}</p><p className="text-muted-foreground text-sm">{item.description}</p><p className="text-muted-foreground text-sm">Precio: Q{item.unitPrice.toFixed(2)} · Subtotal: Q{procedureSubtotal(item).toFixed(2)}</p></div>
++                      <label className="text-foreground text-sm">Cantidad
++                        <input aria-label={`Cantidad de ${item.name}`} type="number" min="1" max="1000" step="1" required value={item.quantity}
++                          onChange={e => setProcedures(procedures.map(procedure => procedure.serviceId === item.serviceId ? { ...procedure, quantity: Number(e.target.value) } : procedure))}
++                          className="w-24 ml-2 px-3 py-2 bg-secondary border border-border rounded-lg" />
++                      </label>
++                      <button type="button" onClick={() => setProcedures(procedures.filter(procedure => procedure.serviceId !== item.serviceId))} aria-label={`Quitar ${item.name}`} className="text-destructive"><X className="w-4 h-4" /></button>
++                    </div>)}
++                    <p className="text-foreground text-sm">Subtotal: Q{procedureTotal(procedures).toFixed(2)}</p>
++                    <p className="text-foreground font-medium">Total de procedimientos: Q{procedureTotal(procedures).toFixed(2)}</p>
++                    <p className="text-muted-foreground text-xs">Este registro no genera ventas ni cobros automáticos.</p>
++                  </div>
++                </>
++              ) : <p className="text-muted-foreground text-sm">Esta receta anterior conserva su formato original. Para registrar peso y procedimientos, emita una nueva receta.</p>}
++
+               <div className="border-t border-border pt-4">
+@@ -1242,3 +1362,3 @@
+                 <button
+-                  type="submit"
++                  type="submit" disabled={saving}
+                   className="flex-1 px-4 py-2 bg-primary hover:bg-primary text-[#F7EFE6] rounded-lg transition-colors"
+diff --git a/backend/src/utils/prescriptionConsultation.js b/backend/src/utils/prescriptionConsultation.js
+new file mode 100644
+--- /dev/null
++++ b/backend/src/utils/prescriptionConsultation.js
+@@ -0,0 +1,75 @@
++const KG_PER_LB = 0.45359237;
++const fail = (message, statusCode = 400) => { throw Object.assign(new Error(message), { statusCode }); };
++const available = async connection => {
++  const [rows] = await connection.query(`SELECT COUNT(*) AS prescription_consultation_tables
++    FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'receta_consulta'`);
++  return Number(rows[0]?.prescription_consultation_tables) === 1;
++};
++const weightKg = weight => {
++  if (weight === null || weight === undefined) return null;
++  if (!weight || !['kg', 'lb'].includes(weight.unit) || !['string', 'number'].includes(typeof weight.value)
++    || !String(weight.value).trim()) fail('Indique un peso válido en kg o lb');
++  const value = Number(weight.value), kg = weight.unit === 'lb' ? value * KG_PER_LB : value;
++  if (!Number.isFinite(kg) || kg < 0.000001 || kg > 9999.999999) fail('El peso debe ser positivo y menor que 10000 kg');
++  return Math.round(kg * 1e6) / 1e6;
++};
++const parseProcedures = value => typeof value === 'string' ? JSON.parse(value) : value;
++const totals = procedures => {
++  const items = procedures.map(item => ({ ...item, subtotal: Math.round(item.unitPrice * 100) * item.quantity / 100 }));
++  return { procedures: items, procedureTotal: items.reduce((sum, item) => sum + Math.round(item.subtotal * 100), 0) / 100 };
++};
++const readDetails = async (connection, ids) => {
++  if (!ids.length || !(await available(connection))) return new Map();
++  const [rows] = await connection.query('SELECT receta_id, peso_kg, procedimientos FROM receta_consulta WHERE receta_id IN (?)', [ids]);
++  return new Map(rows.map(row => [String(row.receta_id), { consultationVersion: 1,
++    weightKg: row.peso_kg === null ? null : Number(row.peso_kg), ...totals(parseProcedures(row.procedimientos)) }]));
++};
++const enrich = async (connection, recipes) => {
++  const details = await readDetails(connection, recipes.map(recipe => recipe.id));
++  return recipes.map(recipe => details.has(recipe.id) ? { ...recipe, ...details.get(recipe.id) } : recipe);
++};
++const prepare = async (connection, body, { id, patientChanged = false } = {}) => {
++  const requested = body.consultationVersion !== undefined || body.weight !== undefined || body.procedures !== undefined;
++  if (!(await available(connection))) {
++    if (requested) fail('Se requiere primero la migración de peso y procedimientos de recetas', 503);
++    return null;
++  }
++  const old = id ? (await readDetails(connection, [id])).get(String(id)) : null;
++  if (id && !old) {
++    if (requested) fail('Las recetas anteriores conservan su formato original. Emita una nueva receta para registrar peso y procedimientos');
++    return null;
++  }
++  if (body.consultationVersion !== undefined && body.consultationVersion !== 1) fail('Versión de receta no válida');
++  if (patientChanged && body.weight === undefined) fail('Al cambiar de paciente debe indicar o borrar expresamente el peso');
++  const kg = body.weight === undefined ? old?.weightKg ?? null : weightKg(body.weight);
++  if (body.procedures === undefined) return { kg, procedures: old?.procedures.map(({ subtotal, ...item }) => item) || [] };
++  if (!Array.isArray(body.procedures) || body.procedures.length > 100) fail('La receta admite un máximo de 100 procedimientos');
++  const seen = new Set(), procedures = [];
++  for (const item of body.procedures) {
++    const serviceId = String(item?.serviceId || '');
++    if (!/^[1-9]\d*$/.test(serviceId) || seen.has(serviceId)) fail('Seleccione servicios válidos sin duplicarlos');
++    seen.add(serviceId);
++    const quantity = Number(item.quantity);
++    if (!['string', 'number'].includes(typeof item.quantity) || !Number.isInteger(quantity) || quantity < 1 || quantity > 1000) fail('La cantidad del procedimiento debe estar entre 1 y 1000');
++    const saved = old?.procedures.find(procedure => procedure.serviceId === serviceId);
++    if (saved) {
++      procedures.push({ serviceId, name: saved.name, description: saved.description, unitPrice: saved.unitPrice, quantity });
++    } else {
++      const [rows] = await connection.query(`SELECT s.nombre, s.descripcion, s.precio_base FROM servicio s
++        INNER JOIN categoria_servicio c ON c.categoria_servicio_id = s.categoria_servicio_id
++        WHERE s.servicio_id = ? AND s.activo = 1 AND c.activo = 1 LIMIT 1`, [serviceId]);
++      if (!rows.length) fail('El servicio seleccionado no está disponible');
++      const price = Number(rows[0].precio_base);
++      if (rows[0].precio_base === null || !Number.isFinite(price) || price < 0 || price > 99999999.99) fail('El precio del catálogo no es válido');
++      procedures.push({ serviceId, name: rows[0].nombre, description: rows[0].descripcion || '', unitPrice: Math.round(price * 100) / 100, quantity });
++    }
++  }
++  return { kg, procedures };
++};
++const save = async (connection, id, details) => {
++  if (!details) return;
++  await connection.query(`INSERT INTO receta_consulta (receta_id, peso_kg, procedimientos) VALUES (?, ?, ?)
++    ON DUPLICATE KEY UPDATE peso_kg = VALUES(peso_kg), procedimientos = VALUES(procedimientos)`,
++  [id, details.kg, JSON.stringify(details.procedures)]);
++};
++module.exports = { KG_PER_LB, available, weightKg, totals, readDetails, enrich, prepare, save };
+diff --git a/backend/src/scripts/prescriptionConsultationMigration.sql b/backend/src/scripts/prescriptionConsultationMigration.sql
+new file mode 100644
+--- /dev/null
++++ b/backend/src/scripts/prescriptionConsultationMigration.sql
+@@ -0,0 +1,8 @@
++-- Migración aditiva para revisión; nunca se ejecuta al iniciar el servidor.
++-- No altera ni rellena recetas, pacientes, historiales, inventario o ventas.
++CREATE TABLE IF NOT EXISTS receta_consulta (
++  receta_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
++  peso_kg DECIMAL(10,6) NULL,
++  procedimientos JSON NOT NULL,
++  CONSTRAINT fk_receta_consulta_receta FOREIGN KEY (receta_id) REFERENCES receta(receta_id)
++) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+diff --git a/src/app/utils/prescriptionConsultation.ts b/src/app/utils/prescriptionConsultation.ts
+new file mode 100644
+--- /dev/null
++++ b/src/app/utils/prescriptionConsultation.ts
+@@ -0,0 +1,73 @@
++import type { jsPDF } from 'jspdf';
++import type { Prescription } from './types';
++
++export interface PrescriptionProcedure {
++  serviceId: string;
++  name: string;
++  description: string;
++  unitPrice: number;
++  quantity: number;
++  subtotal?: number;
++}
++export interface PrescriptionConsultation extends Prescription {
++  consultationVersion?: 1;
++  weightKg?: number | null;
++  procedures?: PrescriptionProcedure[];
++  procedureTotal?: number;
++}
++
++export const KG_PER_LB = 0.45359237;
++export const prescriptionWeightKg = (value: string, unit: 'kg' | 'lb') => {
++  if (!value.trim()) return null;
++  const kg = Number(value) * (unit === 'lb' ? KG_PER_LB : 1);
++  return Number.isFinite(kg) && kg >= 0.000001 && kg <= 9999.999999 ? Math.round(kg * 1e6) / 1e6 : NaN;
++};
++export const prescriptionWeightText = (kg: number | null | undefined) => {
++  if (kg === null || kg === undefined) return 'No registrado';
++  const format = (value: number) => value.toLocaleString('es-GT', { maximumFractionDigits: 6 });
++  return `${format(kg)} kg / ${format(kg / KG_PER_LB)} lb`;
++};
++export const procedureSubtotal = (item: PrescriptionProcedure) => Math.round(item.unitPrice * 100) * item.quantity / 100;
++export const procedureTotal = (items: PrescriptionProcedure[]) => items.reduce((sum, item) => sum + Math.round(procedureSubtotal(item) * 100), 0) / 100;
++
++export function drawPrescriptionProcedures(doc: jsPDF, items: PrescriptionProcedure[], startY: number, nextPage: () => number) {
++  let y = startY;
++  const money = (value: number) => `Q ${value.toFixed(2)}`;
++  const heading = () => {
++    doc.setTextColor('#2F2924'); doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
++    doc.text('Servicios y procedimientos realizados', 15, y); y += 7;
++    doc.setFillColor('#6B6258'); doc.rect(15, y, 180, 9, 'F');
++    doc.setTextColor('#FFFFFF'); doc.setFontSize(9);
++    doc.text('Descripción', 18, y + 6); doc.text('Cant.', 125, y + 6, { align: 'right' });
++    doc.text('Precio', 157, y + 6, { align: 'right' }); doc.text('Subtotal', 192, y + 6, { align: 'right' }); y += 9;
++  };
++  if (y > 222) y = nextPage();
++  heading();
++  for (const item of items) {
++    const lines = doc.splitTextToSize(`${item.name}${item.description ? `: ${item.description}` : ''}`, 97) as string[];
++    if (y + lines.length * 5 + 4 > 250 && lines.length * 5 + 4 <= 190) {
++      y = nextPage(); heading();
++    }
++    let offset = 0;
++    while (offset < lines.length) {
++      if (y > 240) { y = nextPage(); heading(); }
++      const count = Math.min(lines.length - offset, Math.max(1, Math.floor((250 - y - 4) / 5)));
++      const height = count * 5 + 4;
++      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor('#2F2924');
++      doc.setDrawColor('#D8D2C8'); doc.setLineWidth(0.25); doc.rect(15, y, 180, height);
++      doc.text(lines.slice(offset, offset + count), 18, y + 6);
++      if (!offset) {
++        doc.text(String(item.quantity), 125, y + 6, { align: 'right' });
++        doc.text(money(item.unitPrice), 157, y + 6, { align: 'right' });
++        doc.text(money(procedureSubtotal(item)), 192, y + 6, { align: 'right' });
++      }
++      offset += count; y += height;
++    }
++  }
++  if (y > 226) y = nextPage();
++  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor('#2F2924');
++  const total = money(procedureTotal(items));
++  doc.text(`Subtotal de procedimientos: ${total}`, 195, y + 8, { align: 'right' });
++  doc.text(`Total de procedimientos: ${total}`, 195, y + 15, { align: 'right' });
++  return y + 28;
++}
