@@ -1,0 +1,39 @@
+{
+  "verifiedAtUtc": "2026-11-14T10:53:24.078965+00:00",
+  "gitVersion": "git version 2.43.0",
+  "generation": "git diff --binary --full-index --no-ext-diff --no-renames",
+  "freshProductionCopy": true,
+  "consecutiveApplyChecks": [
+    {
+      "package": "caja-fondos",
+      "applyCheck": true,
+      "applied": true,
+      "patchSha256": "f9234e6ee2aea1ea7e4b6bd35830aa2f515b8faccb2f6c5066ecbddb5b70877b"
+    },
+    {
+      "package": "grooming-rutas",
+      "applyCheck": true,
+      "applied": true,
+      "patchSha256": "64cfdd52360e7854d2ea81d5191684ce1e4c1e2b95b74ff5d1cbd8e3cc524c40"
+    },
+    {
+      "package": "recetas-consulta",
+      "applyCheck": true,
+      "applied": true,
+      "patchSha256": "258a9f9d0732156fe09bb10c6664ad5cef745d2e08668b86512b0af6a2dbd433"
+    }
+  ],
+  "expectedChangedFiles": 20,
+  "actualChangedFiles": 20,
+  "sourceHashesMatched": 29,
+  "sourceHashesUnchanged": true,
+  "sqlExecuted": false,
+  "servicesStopped": false,
+  "deploymentExecuted": false,
+  "preservedCrlfFiles": [
+    "backend/src/controllers/groomingController.js",
+    "src/app/pages/Grooming.tsx",
+    "src/app/pages/Prescriptions.tsx"
+  ],
+  "patchHashesUseRawBytes": true
+}

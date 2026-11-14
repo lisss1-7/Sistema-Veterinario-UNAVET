@@ -19,7 +19,7 @@
       "migrations": [],
       "artifacts": {
         "deploy/caja-fondos/manifest.json": "9af3cf3ebabc8f44172b69393d9fd80845069753e938de34904450231a7cadac",
-        "deploy/caja-fondos/production.patch": "ac62e57b1bb17be9db56cf53ab942ab3ffd259854fe9cd3588431ffaf02d2c09"
+        "deploy/caja-fondos/production.patch": "f9234e6ee2aea1ea7e4b6bd35830aa2f515b8faccb2f6c5066ecbddb5b70877b"
       }
     },
     {
@@ -31,7 +31,7 @@
       ],
       "artifacts": {
         "deploy/grooming-rutas/manifest.json": "7610faf44203fa7b678d072866d8ad8f00e558441e469edcd265656d20b5e192",
-        "deploy/grooming-rutas/production.patch": "47783cc430507d65e1ea189e8212a5d8aec358947ea10dc165993efc61497b32",
+        "deploy/grooming-rutas/production.patch": "64cfdd52360e7854d2ea81d5191684ce1e4c1e2b95b74ff5d1cbd8e3cc524c40",
         "backend/src/scripts/groomingTransportMigration.sql": "0849ff2b7ce3c572319c0eca6a0f94f6cf3bceec1a89c15c6081a7953fe2ac8e"
       }
     },
@@ -44,7 +44,7 @@
       ],
       "artifacts": {
         "deploy/recetas-consulta/manifest.json": "5a16daabce29824b5180e73173da0b51dca314f5fdd9ada3773e2b2bb5a42331",
-        "deploy/recetas-consulta/production.patch": "a4239ebef61900be7cae0fa16569f1d0fec4aba164873d7e2b6153212aa42194",
+        "deploy/recetas-consulta/production.patch": "258a9f9d0732156fe09bb10c6664ad5cef745d2e08668b86512b0af6a2dbd433",
         "backend/src/scripts/prescriptionConsultationMigration.sql": "328fe1b73247608b56dc9648e305a6f1a296798f8770ce3b44d5ceb308dd5305"
       }
     }
@@ -52,5 +52,10 @@
   "activation": {
     "variable": "CASH_FUND_ACCOUNTING_START_AFTER_SALE_ID",
     "rule": "Permanent global sale ID captured after draining writes; never recalculate or remove on recovery."
+  },
+  "patchFormatVerification": {
+    "repairedCommit": "aad1971796c061b8b9d3ccc4300b8b2a767d9dab",
+    "report": "deploy/actualizacion-controlada/LINUX-VERIFICATION.json",
+    "sha256": "e9ebcafee04d88b1515b675549aed5691910d5447788c097c9185692d7d3c2be"
   }
 }

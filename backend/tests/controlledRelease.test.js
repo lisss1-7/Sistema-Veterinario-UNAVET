@@ -4,8 +4,27 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { execFileSync } = require('node:child_process');
-const { inspectRelease, verifyTarget } = require('../../deploy/actualizacion-controlada/verify.cjs');
+const { inspectRelease, verifyTarget, validatePatch, digest } = require('../../deploy/actualizacion-controlada/verify.cjs');
 const root = path.resolve(__dirname, '../..');
+
+test('el formato exige prefijo en contextos vacíos y conserva los hashes funcionales verificados en Linux', () => {
+  const valid = 'diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1,2 +1,2 @@\n \n-before\n+after\n';
+  assert.equal(validatePatch(valid), 1);
+  assert.throws(() => validatePatch(valid.replace('\n \n', '\n\n')), /Parche malformado/);
+  assert.throws(() => validatePatch(valid.replace('-1,2', '-1,3')), /Parche malformado/);
+  const { release } = inspectRelease();
+  const report = JSON.parse(fs.readFileSync(path.join(root, release.patchFormatVerification.report), 'utf8'));
+  assert.equal(report.gitVersion, 'git version 2.43.0');
+  assert.equal(report.actualChangedFiles, 20); assert.equal(report.sourceHashesMatched, 29);
+  assert.equal(report.freshProductionCopy, true); assert.equal(report.sourceHashesUnchanged, true);
+  assert.equal(report.patchHashesUseRawBytes, true);
+  assert.equal(report.sqlExecuted, false); assert.equal(report.servicesStopped, false);
+  assert.equal(report.deploymentExecuted, false);
+  for (const item of report.consecutiveApplyChecks) {
+    assert.equal(item.applyCheck, true); assert.equal(item.applied, true);
+    assert.equal(digest(path.join(root, `deploy/${item.package}/production.patch`)), item.patchSha256);
+  }
+});
 
 test('entrega conjunta: ocho mejoras, veinte archivos y migraciones auxiliares compatibles', () => {
   const result = verifyTarget(root, 'after');
@@ -25,6 +44,8 @@ test('entrega conjunta: ocho mejoras, veinte archivos y migraciones auxiliares c
 
 test('los tres parches se aplican juntos a la base verificada sin incorporar otros módulos', { timeout: 30000 }, () => {
   const { release, files, changed } = inspectRelease();
+  const report = JSON.parse(fs.readFileSync(path.join(root, release.patchFormatVerification.report), 'utf8'));
+  const crlfFiles = new Set(report.preservedCrlfFiles);
   const parent = fs.realpathSync(os.tmpdir());
   const target = fs.mkdtempSync(path.join(parent, 'unavet-release-'));
   const git = args => execFileSync('git', ['-C', target, ...args], { encoding: 'utf8', stdio: 'pipe' });
@@ -32,7 +53,8 @@ test('los tres parches se aplican juntos a la base verificada sin incorporar otr
     for (const [name] of files) {
       const destination = path.join(target, name);
       fs.mkdirSync(path.dirname(destination), { recursive: true });
-      fs.writeFileSync(destination, fs.readFileSync(path.join(root, name), 'utf8').replace(/\r\n/g, '\n'));
+      const source = fs.readFileSync(path.join(root, name), 'utf8').replace(/\r\n/g, '\n');
+      fs.writeFileSync(destination, crlfFiles.has(name) ? source.replace(/\n/g, '\r\n') : source);
     }
     const untouched = path.join(target, 'modulo-ajeno.txt');
     fs.writeFileSync(untouched, 'Debe conservarse exactamente.\n');

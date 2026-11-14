@@ -3,14 +3,43 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const packageRoot = path.resolve(__dirname, '../..');
-const digest = file => fs.existsSync(file)
-  ? createHash('sha256').update(fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n')).digest('hex') : null;
+const digest = file => {
+  if (!fs.existsSync(file)) return null;
+  const bytes = fs.readFileSync(file);
+  return createHash('sha256').update(file.endsWith('.patch') ? bytes : bytes.toString('utf8').replace(/\r\n/g, '\n')).digest('hex');
+};
 const safePath = (root, name) => {
   if (!name || path.isAbsolute(name) || name.split(/[\\/]/).includes('..')) throw new Error('Ruta de paquete no válida');
   return path.join(root, name);
 };
+function validatePatch(patch, name = 'patch') {
+  let oldRemaining = 0, newRemaining = 0, hunks = 0;
+  const invalid = line => { throw new Error(`Parche malformado: ${name}, línea ${line}`); };
+  const lines = patch.replace(/\r\n/g, '\n').split('\n');
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    const hunk = line.match(/^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/);
+    if (hunk) {
+      if (oldRemaining || newRemaining) invalid(index + 1);
+      oldRemaining = Number(hunk[1] ?? 1); newRemaining = Number(hunk[2] ?? 1); hunks++;
+    } else if (line === '\\ No newline at end of file') {
+      continue;
+    } else if (oldRemaining || newRemaining) {
+      if (line[0] === ' ') { oldRemaining--; newRemaining--; }
+      else if (line[0] === '-') oldRemaining--;
+      else if (line[0] === '+') newRemaining--;
+      else invalid(index + 1);
+      if (oldRemaining < 0 || newRemaining < 0) invalid(index + 1);
+    } else if (line.startsWith('@@')) invalid(index + 1);
+  }
+  if (oldRemaining || newRemaining || !hunks) invalid(lines.length);
+  return hunks;
+}
 function inspectRelease(root = packageRoot) {
   const release = JSON.parse(fs.readFileSync(path.join(root, 'deploy/actualizacion-controlada/release.json'), 'utf8'));
+  if (release.patchFormatVerification && digest(safePath(root, release.patchFormatVerification.report)) !== release.patchFormatVerification.sha256) {
+    throw new Error('Informe de verificación Linux alterado');
+  }
   const files = new Map(), changed = new Set();
   for (const item of release.packages) {
     for (const [name, expected] of Object.entries(item.artifacts)) {
@@ -18,6 +47,7 @@ function inspectRelease(root = packageRoot) {
     }
     const manifest = JSON.parse(fs.readFileSync(safePath(root, item.manifest), 'utf8'));
     const patch = fs.readFileSync(safePath(root, item.patch), 'utf8').replace(/\r\n/g, '\n');
+    validatePatch(patch, item.patch);
     const patched = [...patch.matchAll(/^diff --git a\/(.+) b\/(.+)$/gm)].map(match => {
       if (match[1] !== match[2]) throw new Error('El paquete no admite renombrar archivos');
       safePath(root, match[1]); return match[1];
@@ -49,4 +79,4 @@ if (require.main === module) {
     console.log(`Entrega conjunta verificada (${state}): ${result.release.improvements.length} mejoras, ${result.changed.size} archivos en los parches.`);
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }
-module.exports = { digest, inspectRelease, verifyTarget };
+module.exports = { digest, inspectRelease, verifyTarget, validatePatch };

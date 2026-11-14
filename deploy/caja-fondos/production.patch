@@ -1,4 +1,5 @@
 diff --git a/backend/src/controllers/cierreVentasController.js b/backend/src/controllers/cierreVentasController.js
+index b9f6e322bea9a0d471281387030b27d6ae32856f..d0d8cf43642624c6d2d7bd5d651119de0fc582c2 100644
 --- a/backend/src/controllers/cierreVentasController.js
 +++ b/backend/src/controllers/cierreVentasController.js
 @@ -1,5 +1,6 @@
@@ -8,10 +9,10 @@ diff --git a/backend/src/controllers/cierreVentasController.js b/backend/src/con
  const {
    getProductAndLots,
    consumeLots,
-@@ -43,16 +44,24 @@
+@@ -43,16 +44,24 @@ const throwIfSalesDayIsClosed = (day) => {
    throw error;
  };
-
+ 
 -const mapVenta = (row) => ({
 -  id: String(row.venta_id),
 -  date: row.fecha,
@@ -40,13 +41,13 @@ diff --git a/backend/src/controllers/cierreVentasController.js b/backend/src/con
 +    hasSales: items.some(item => !item.isCashFund),
 +    payments: splitCashFundPayments(sale.payments, sale.total, cashFundTotal) };
 +};
-
+ 
  const listarVentas = async (req, res) => {
    const connection = await pool.getConnection();
-@@ -74,6 +83,10 @@
+@@ -74,6 +83,10 @@ const listarVentas = async (req, res) => {
      );
      if (ventas.length === 0) return res.json([]);
-
+ 
 +    const cutoff = await getAccountingCutoff(connection);
 +    const shifts = await listSalesShifts(connection, fecha);
 +    const versions = new Map(ventas.map(venta => [String(venta.venta_id), saleAccountingVersion(venta.venta_id, shifts, cutoff)]));
@@ -54,7 +55,7 @@ diff --git a/backend/src/controllers/cierreVentasController.js b/backend/src/con
      const ids = ventas.map((venta) => venta.venta_id);
      const [detalles] = await connection.query(
        `SELECT
-@@ -85,8 +98,9 @@
+@@ -85,8 +98,9 @@ const listarVentas = async (req, res) => {
           descripcion,
           cantidad,
           precio_unitario,
@@ -66,7 +67,7 @@ diff --git a/backend/src/controllers/cierreVentasController.js b/backend/src/con
         WHERE venta_id IN (?)
         ORDER BY detalle_id`,
        [ids]
-@@ -122,6 +136,7 @@
+@@ -122,6 +136,7 @@ const listarVentas = async (req, res) => {
          quantity: Number(item.cantidad),
          unitPrice: Number(item.precio_unitario),
          subtotal: Number(item.subtotal),
@@ -74,7 +75,7 @@ diff --git a/backend/src/controllers/cierreVentasController.js b/backend/src/con
        });
        return result;
      }, {});
-@@ -143,7 +158,7 @@
+@@ -143,7 +158,7 @@ const listarVentas = async (req, res) => {
            ...venta,
            items: itemsBySale[String(venta.venta_id)] || [],
            payments: paymentsBySale[String(venta.venta_id)] || [],
@@ -83,7 +84,76 @@ diff --git a/backend/src/controllers/cierreVentasController.js b/backend/src/con
        )
      );
    } catch (error) {
+diff --git a/backend/src/utils/salesAccounting.js b/backend/src/utils/salesAccounting.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..206d1523a41dec11310d58a6a6a5caa345ff9ae2
+--- /dev/null
++++ b/backend/src/utils/salesAccounting.js
+@@ -0,0 +1,62 @@
++// El nombre del concepto se guarda desde el catálogo al registrar el detalle.
++// Usar esa copia conserva la clasificación de Caja aunque se edite el catálogo.
++const cashFundCondition = (alias) =>
++  `(${alias}.tipo = 'Servicio' AND TRIM(${alias}.descripcion) = 'Caja')`;
++
++const roundMoney = (value) => Math.round(Number(value) * 100) / 100;
++
++// Mantener los pagos originales y separar su parte de fondo en centavos.
++// El reparto acumulado evita perder centavos en comprobantes con pagos mixtos.
++const splitCashFundPayments = (payments, total, cashFundTotal) => {
++  const amounts = payments.map((payment) => Math.round(Number(payment.amount) * 100));
++  const paid = amounts.reduce((sum, amount) => sum + amount, 0);
++  const ratio = total > 0 ? Math.min(1, Math.max(0, cashFundTotal / total)) : 0;
++  const fund = Math.round(paid * ratio);
++  let processed = 0;
++  let allocated = 0;
++  return payments.map((payment, index) => {
++    processed += amounts[index];
++    const through = paid > 0 ? Math.round(fund * processed / paid) : 0;
++    const cashFundAmount = (through - allocated) / 100;
++    allocated = through;
++    return { ...payment, cashFundAmount };
++  });
++};
++
++const parseCutoff = (value) => {
++  if (value === undefined || value === null || value === '') return null;
++  if (!/^(0|[1-9]\d*)$/.test(String(value)) || BigInt(value) > 18446744073709551615n) {
++    throw new Error('El límite de activación de fondos debe ser un ID MySQL válido');
++  }
++  return String(value);
++};
++
++// No inferir la activación de la hora de arranque: cambiaría tras reiniciar.
++// Los nuevos snapshots conservan el límite incluso si se omite la variable.
++const getAccountingCutoff = async (connection) => {
++  const configured = parseCutoff(process.env.CASH_FUND_ACCOUNTING_START_AFTER_SALE_ID);
++  const [rows] = await connection.query(`
++    SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(resumen, '$.accountingStartAfterSaleId')) AS accounting_cutoff
++    FROM cierre_venta_turno
++    WHERE JSON_EXTRACT(resumen, '$.accountingVersion') = 2`);
++  const saved = rows.map(row => parseCutoff(row.accounting_cutoff));
++  if (saved.some(value => value === null) || new Set(saved).size > 1 ||
++      (configured !== null && saved.length && configured !== saved[0])) {
++    throw new Error('El límite de fondos no coincide con los cierres guardados; revise la configuración');
++  }
++  return saved[0] ?? configured;
++};
++
++const saleAccountingVersion = (id, shifts, cutoff) => {
++  const saleId = BigInt(id);
++  const shift = shifts.find(row => saleId > BigInt(row.afterSaleId) && saleId <= BigInt(row.throughSaleId));
++  // Un snapshot sin versión siempre conserva el cálculo original.
++  if (shift) {
++    if (shift.summary.accountingVersion !== 2) return 1;
++    cutoff = parseCutoff(shift.summary.accountingStartAfterSaleId);
++    if (cutoff === null) throw new Error('El cierre nuevo no contiene su límite de activación');
++  }
++  return cutoff !== null && saleId > BigInt(cutoff) ? 2 : 1;
++};
++
++module.exports = { cashFundCondition, roundMoney, splitCashFundPayments, parseCutoff, getAccountingCutoff, saleAccountingVersion };
 diff --git a/backend/src/utils/salesShift.js b/backend/src/utils/salesShift.js
+index 0eb5ab0429dc1fa14f71ef06e75e3dec33fa396b..1ac69b86c44cdc86de5acacebb7f84c23d350e98 100644
 --- a/backend/src/utils/salesShift.js
 +++ b/backend/src/utils/salesShift.js
 @@ -1,3 +1,5 @@
@@ -92,10 +162,10 @@ diff --git a/backend/src/utils/salesShift.js b/backend/src/utils/salesShift.js
  const mapShift = (row) => ({
    id: String(row.turno_id),
    number: Number(row.numero),
-@@ -39,36 +41,94 @@
+@@ -39,36 +41,94 @@ const closeSalesShift = async (connection, { date, userId, expectedNumber, label
    const throughSaleId = String(Math.max(Number(bounds[0]?.hasta_venta_id || 0), Number(afterSaleId)));
    if (onlyIfPending && latest && String(throughSaleId) === String(afterSaleId)) return null;
-
+ 
 -  // Algunas instalaciones anteriores todavía no tienen anulación lógica.
 -  const [columns] = await connection.query(`
 -    SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
@@ -211,11 +281,24 @@ diff --git a/backend/src/utils/salesShift.js b/backend/src/utils/salesShift.js
 +  [date, number, label || (summary.shiftPeriod === 'diurno' ? 'Diurno' : summary.shiftPeriod === 'nocturno' ? 'Nocturno' : null), afterSaleId, throughSaleId, userId || null, JSON.stringify(summary)]);
    return { id: String(result.insertId), number, summary };
  };
-
+ 
+diff --git a/src/app/components/SaleDetailsModal.tsx b/src/app/components/SaleDetailsModal.tsx
+index c62ccf44141384149c4922b805fd264239f960d8..c4629a94e96610ca65ba5fb573ff840d4108a31c 100644
+--- a/src/app/components/SaleDetailsModal.tsx
++++ b/src/app/components/SaleDetailsModal.tsx
+@@ -35,6 +35,7 @@ export default function SaleDetailsModal({ sale, onClose, onPdf, pdfBusy }: {
+     <h3 className="mb-2 mt-5 font-semibold text-foreground">Formas de pago</h3>
+     <div className="space-y-2">{sale.payments.map((payment, index) => <div key={`${payment.code}-${index}`} className="flex flex-wrap justify-between gap-2 rounded-xl bg-muted p-3 text-sm text-foreground"><span className="min-w-0 flex-1 break-words">{payment.name}</span><span className="shrink-0 font-semibold">{inventoryMoney(payment.amount)}</span></div>)}</div>
+     <p className="mt-4 flex flex-wrap justify-between gap-2 text-lg font-semibold text-foreground"><span>Importe registrado</span><span>{inventoryMoney(sale.total)}</span></p>
++    {sale.accountingVersion === 2 && <p className="mt-2 text-sm text-muted-foreground">Fondo de caja: {inventoryMoney(sale.cashFundTotal || 0)} ? Ingreso por ventas: {inventoryMoney(sale.total - (sale.cashFundTotal || 0))}</p>}
+     {sale.canceled && <p className="mt-1 text-sm text-muted-foreground">Esta venta está excluida de los totales vigentes del día.</p>}
+     <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+       <button type="button" disabled={pdfBusy} onClick={onPdf} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50"><FileText className="h-4 w-4" />{pdfBusy ? 'Generando PDF…' : 'Vista previa PDF'}</button>
 diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosing.tsx
+index 1eb501b502d1805a84927c655be254020ecebd29..b2acdaa59e427b1a77d535968c857b460a431f83 100644
 --- a/src/app/components/SalesClosing.tsx
 +++ b/src/app/components/SalesClosing.tsx
-@@ -19,10 +19,12 @@
+@@ -19,10 +19,12 @@ import ThemedSelect from './ThemedSelect';
  import { CreateButton } from './ModuleHeader';
  import { API_URL } from '../config/api';
  import { getAuthHeaders } from '../utils/apiClient';
@@ -226,9 +309,9 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
  import { createSalesClosingPdf } from '../utils/salesClosingPdf';
 +import { createSalesShiftPdf, salesShiftTitle } from '../utils/salesShiftPdf';
  import { getUnavetLogoBase64 } from '../utils/pdfBranding';
-
+ 
  type SaleItem = {
-@@ -43,10 +45,14 @@
+@@ -43,10 +45,14 @@ type Sale = {
      code: string;
      name: string;
      amount: number;
@@ -243,7 +326,7 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
    canceled?: boolean;
    items: Array<SaleItem & { id: string; subtotal: number }>;
  };
-@@ -55,14 +61,21 @@
+@@ -55,14 +61,21 @@ type SalesShift = {
    id: string;
    number: number;
    label: string;
@@ -264,8 +347,8 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
 +    paymentBreakdown?: Array<{ code: string; name: string; salesAmount: number; cashFundAmount: number; receivedAmount: number }>;
    };
  };
-
-@@ -238,7 +251,7 @@
+ 
+@@ -238,7 +251,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
    const [showShiftConfirm, setShowShiftConfirm] = useState(false);
    const [shiftLabel, setShiftLabel] = useState('');
    const [closingShift, setClosingShift] = useState(false);
@@ -274,7 +357,7 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
    const [finalizingDay, setFinalizingDay] = useState(false);
    const [sales, setSales] = useState<Sale[]>([]);
    const [salesKnown, setSalesKnown] = useState(false);
-@@ -435,36 +448,35 @@
+@@ -435,36 +448,35 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
      link.href = pdfPreview.url; link.download = pdfPreview.filename;
      document.body.appendChild(link); link.click(); link.remove();
    };
@@ -315,7 +398,7 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
 +  const totals = useMemo(() => calculateSalesTotals(sales), [sales]);
 +  const hasNewAccounting = sales.some(sale => sale.accountingVersion === 2) || shifts.some(shift => shift.summary.accountingVersion === 2);
 +  const currentShiftName = hasNewAccounting && currentShiftNumber <= 2 ? (currentShiftNumber === 1 ? 'Diurno' : 'Nocturno') : String(currentShiftNumber);
-
+ 
    const currentShiftTotals = useMemo(() => {
      const active = sales.filter((sale) => Number(sale.id) > Number(afterSaleId) && !sale.canceled);
 -    const payments = new Map<string, { code: string; name: string; amount: number }>();
@@ -334,9 +417,9 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
 +    return { ...totals, corrected: active.some(sale => sale.accountingVersion === 2),
 +      payments: Object.entries(totals.byMethod).map(([code, amount]) => ({ code, name: names.get(code) || code, amount })) };
    }, [sales, afterSaleId]);
-
+ 
    const saleTotal = items.reduce(
-@@ -694,7 +706,7 @@
+@@ -694,7 +706,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
        setShowShiftConfirm(false);
        setShiftLabel('');
        await Promise.all([loadSales(), loadDayStatus(), loadShifts()]);
@@ -345,9 +428,9 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
      } catch (error) {
        setShowShiftConfirm(false);
        await Promise.all([loadDayStatus(), loadShifts()]);
-@@ -769,8 +781,8 @@
+@@ -769,8 +781,8 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
        )}
-
+ 
        <div className="mb-4 grid grid-cols-1 gap-2 min-[400px]:grid-cols-2 lg:grid-cols-3 min-[400px]:[&>div:last-child]:col-span-2 lg:[&>div:last-child]:col-span-1">
 -        <SummaryCard label="Ventas registradas" value={String(sales.length)} />
 -        <SummaryCard label="Total del día" value={money(totals.total)} />
@@ -356,10 +439,10 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
          <SummaryCard
            label="Productos vendidos"
            value={String(
-@@ -781,11 +793,13 @@
+@@ -781,11 +793,13 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
          />
        </div>
-
+ 
 +      {hasNewAccounting && <p className="mb-4 text-sm text-muted-foreground">Fondos agregados: {money(totals.cashFundTotal)} · Total recibido: {money(totals.receivedTotal)}</p>}
 +
        <section className="mb-4 min-w-0 rounded-2xl border border-border bg-card p-4 shadow-sm" aria-label="Cierres de turno">
@@ -371,7 +454,7 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
              <p className="text-sm text-muted-foreground">Cerrar turno permite continuar vendiendo en el siguiente. Finalizar día cierra toda la jornada.</p>
            </div>
          </div>
-@@ -793,7 +807,11 @@
+@@ -793,7 +807,11 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
          {!isDayClosed && shiftsKnown && !loading && !loadingShifts && <>
            <div className="grid gap-2 sm:grid-cols-3">
              <SummaryCard label="Ventas de este turno" value={String(currentShiftTotals.saleCount)} />
@@ -384,7 +467,7 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
              <SummaryCard label="Productos de este turno" value={String(currentShiftTotals.productQuantity)} />
            </div>
            <div className="mt-2 flex flex-wrap gap-2">
-@@ -805,12 +823,14 @@
+@@ -805,12 +823,14 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
          <div className="grid gap-3 xl:grid-cols-2">
            {shifts.map((shift) => <article key={shift.id} className="min-w-0 rounded-xl border border-border bg-muted/40 p-3">
              <div className="flex flex-wrap items-center justify-between gap-2">
@@ -400,7 +483,7 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
            </article>)}
          </div>
          {!!shifts.length && <p className="mt-3 text-xs text-muted-foreground">Los cierres conservan el resumen del momento. Los cambios posteriores en ventas se reflejan en el total del día.</p>}
-@@ -860,7 +880,7 @@
+@@ -860,7 +880,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
            </p>
          )}
          <div className="rounded-xl border border-border bg-muted p-3 text-sm text-foreground">
@@ -409,7 +492,7 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
              {paymentOptions.map((payment) => (
                <span key={payment.id}>{payment.nombre}: {money(totals.byMethod[payment.codigo] || 0)}</span>
-@@ -934,7 +954,7 @@
+@@ -934,7 +954,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
                    value={totals.byMethod[payment.codigo] || 0}
                  />
                ))}
@@ -418,7 +501,7 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
              </tr>
            </tfoot>
          </table>
-@@ -1093,11 +1113,11 @@
+@@ -1093,11 +1113,11 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
          <div className="modal-backdrop fixed inset-0 z-[80] flex items-center justify-center p-4">
            <div role="dialog" aria-modal="true" aria-labelledby="shift-confirm-title" className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl">
              <Clock3 className="mx-auto mb-3 h-12 w-12 text-primary" />
@@ -433,7 +516,7 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
              <div className="flex flex-wrap gap-3">
                <button type="button" disabled={closingShift} onClick={() => setShowShiftConfirm(false)} className="min-h-11 flex-1 rounded-xl bg-muted px-3 text-foreground disabled:opacity-50">Cancelar</button>
                <button type="button" disabled={closingShift || loading || loadingShifts || !shiftsKnown} onClick={finalizeShift} className="min-h-11 flex-1 rounded-xl bg-primary px-3 text-primary-foreground disabled:opacity-50">{closingShift ? 'Cerrando…' : 'Sí, cerrar turno'}</button>
-@@ -1109,7 +1129,7 @@
+@@ -1109,7 +1129,7 @@ export default function SalesClosing({ inventory, permissions, onInventoryChange
        {shiftSuccess && <div className="modal-backdrop fixed inset-0 z-[80] flex items-center justify-center p-4">
          <div role="dialog" aria-modal="true" aria-labelledby="shift-success-title" className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 text-center shadow-2xl">
            <CheckCircle className="mx-auto mb-3 h-12 w-12 text-primary" />
@@ -442,96 +525,12 @@ diff --git a/src/app/components/SalesClosing.tsx b/src/app/components/SalesClosi
            <p className="my-3 text-muted-foreground">Total registrado: {money(shiftSuccess.total)}. El día sigue abierto para el siguiente turno.</p>
            <button type="button" onClick={() => setShiftSuccess(null)} className="min-h-11 w-full rounded-xl bg-primary text-primary-foreground">Continuar</button>
          </div>
-diff --git a/src/app/components/SaleDetailsModal.tsx b/src/app/components/SaleDetailsModal.tsx
---- a/src/app/components/SaleDetailsModal.tsx
-+++ b/src/app/components/SaleDetailsModal.tsx
-@@ -35,6 +35,7 @@
-     <h3 className="mb-2 mt-5 font-semibold text-foreground">Formas de pago</h3>
-     <div className="space-y-2">{sale.payments.map((payment, index) => <div key={`${payment.code}-${index}`} className="flex flex-wrap justify-between gap-2 rounded-xl bg-muted p-3 text-sm text-foreground"><span className="min-w-0 flex-1 break-words">{payment.name}</span><span className="shrink-0 font-semibold">{inventoryMoney(payment.amount)}</span></div>)}</div>
-     <p className="mt-4 flex flex-wrap justify-between gap-2 text-lg font-semibold text-foreground"><span>Importe registrado</span><span>{inventoryMoney(sale.total)}</span></p>
-+    {sale.accountingVersion === 2 && <p className="mt-2 text-sm text-muted-foreground">Fondo de caja: {inventoryMoney(sale.cashFundTotal || 0)} ? Ingreso por ventas: {inventoryMoney(sale.total - (sale.cashFundTotal || 0))}</p>}
-     {sale.canceled && <p className="mt-1 text-sm text-muted-foreground">Esta venta está excluida de los totales vigentes del día.</p>}
-     <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
-       <button type="button" disabled={pdfBusy} onClick={onPdf} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50"><FileText className="h-4 w-4" />{pdfBusy ? 'Generando PDF…' : 'Vista previa PDF'}</button>
-diff --git a/src/app/utils/salesClosingPdf.ts b/src/app/utils/salesClosingPdf.ts
---- a/src/app/utils/salesClosingPdf.ts
-+++ b/src/app/utils/salesClosingPdf.ts
-@@ -10,9 +10,12 @@
-   invoiceNit: string;
-   invoiceName: string;
-   total: number;
-+  accountingVersion?: number;
-+  cashFundTotal?: number;
-+  hasSales?: boolean;
-   canceled?: boolean;
-   cancellationReason?: string;
--  payments: Array<{ code: string; name: string; amount: number }>;
-+  payments: Array<{ code: string; name: string; amount: number; cashFundAmount?: number }>;
-   items: Array<{ type: string; description: string; quantity: number; unitPrice: number; subtotal: number }>;
- };
-
-@@ -21,7 +24,7 @@
-   label: string;
-   closedAt: string;
-   responsible: string;
--  summary: { saleCount: number; total: number; productQuantity: number; payments: Array<{ name: string; amount: number }> };
-+  summary: { accountingVersion?: number; cashFundTotal?: number; receivedTotal?: number; saleCount: number; total: number; productQuantity: number; payments: Array<{ name: string; amount: number }> };
- };
-
- type SalesDocument = {
-@@ -69,12 +72,18 @@
-   section(individual ? 'Resumen de la venta' : 'Resumen del día');
-   text(`Ventas vigentes: ${totals.saleCount} | Anuladas: ${report.sales.filter(sale => sale.canceled).length}`);
-   text(`Unidades de productos vendidas: ${totals.productQuantity}`);
--  text(`Total vigente: ${money(totals.total)}`, true);
-+  const corrected = report.sales.some(sale => sale.accountingVersion === 2) || (!individual && report.shifts.some(shift => shift.summary.accountingVersion === 2));
-+  text(`${corrected ? 'Ingresos por ventas' : 'Total vigente'}: ${money(totals.total)}`, true);
-+  if (corrected) {
-+    text(`Fondos agregados: ${money(totals.cashFundTotal)} | Total recibido: ${money(totals.receivedTotal)}`);
-+  }
-   const payments = new Map<string, { name: string; amount: number }>();
-   for (const sale of report.sales.filter(sale => !sale.canceled)) {
-     for (const payment of sale.payments) {
-       const entry = payments.get(payment.code) || { name: payment.name, amount: 0 };
--      entry.amount += Number(payment.amount); payments.set(payment.code, entry);
-+      const amount = Number(payment.amount) - (sale.accountingVersion === 2 ? Number(payment.cashFundAmount || 0) : 0);
-+      if (sale.accountingVersion === 2 && amount === 0 && payment.cashFundAmount) continue;
-+      entry.amount += amount; payments.set(payment.code, entry);
-     }
-   }
-   section('Desglose de pagos vigentes');
-@@ -89,6 +98,10 @@
-       text(`Turno ${shift.number}: ${shift.label}`, true);
-       text(`Responsable: ${shift.responsible || 'No registrado'} | Cierre: ${time(new Date(shift.closedAt))}`);
-       text(`${shift.summary.saleCount} ventas | ${shift.summary.productQuantity} unidades | Total: ${money(shift.summary.total)}`);
-+      if (shift.summary.accountingVersion === 2) {
-+        text(`Ingresos por ventas: ${money(shift.summary.total)}`);
-+        text(`Fondos agregados: ${money(shift.summary.cashFundTotal || 0)} | Total recibido: ${money(shift.summary.receivedTotal || 0)}`);
-+      }
-       for (const payment of shift.summary.payments) text(`${payment.name}: ${money(payment.amount)}`);
-       y += 2;
-     }
-@@ -116,6 +129,7 @@
-       `NIT: ${sale.invoiceNit || 'No registrado'} | Nombre para factura: ${sale.invoiceName || 'No registrado'}`,
-       ...(sale.canceled ? [`Motivo de anulación: ${sale.cancellationReason || 'No registrado'}`] : []),
-       ...sale.payments.map(payment => `Pago registrado: ${payment.name} - ${money(payment.amount)}`),
-+      ...(sale.accountingVersion === 2 ? [`Fondo de caja: ${money(sale.cashFundTotal || 0)} | Ingreso por ventas: ${money(sale.total - (sale.cashFundTotal || 0))}`] : []),
-     ];
-     const metadataHeight = metadata.reduce((height, value) => height + doc.splitTextToSize(value, width).length * 5, 0);
-     font(false, 8);
-@@ -129,6 +143,7 @@
-     text(`NIT: ${sale.invoiceNit || 'No registrado'} | Nombre para factura: ${sale.invoiceName || 'No registrado'}`);
-     if (sale.canceled) text(`Motivo de anulación: ${sale.cancellationReason || 'No registrado'}`);
-     for (const payment of sale.payments) text(`Pago registrado: ${payment.name} - ${money(payment.amount)}`);
-+    if (sale.accountingVersion === 2) text(`Fondo de caja: ${money(sale.cashFundTotal || 0)} | Ingreso por ventas: ${money(sale.total - (sale.cashFundTotal || 0))}`);
-     ensure(17); tableHeader();
-     for (const [itemIndex, item] of sale.items.entries()) {
-       font(false, 8);
 diff --git a/src/app/utils/inventoryOperations.ts b/src/app/utils/inventoryOperations.ts
+index ad3c88b6d32aeebcb15a05823026ead12a3c3024..42b9fe46ca695eefc956c095d0728a08fe8bc5e2 100644
 --- a/src/app/utils/inventoryOperations.ts
 +++ b/src/app/utils/inventoryOperations.ts
-@@ -58,16 +58,28 @@
-
+@@ -58,16 +58,28 @@ export const inventoryError = (error: unknown) => error instanceof Error ? error
+ 
  type SummarySale = {
    canceled?: boolean;
 +  accountingVersion?: number;
@@ -542,7 +541,7 @@ diff --git a/src/app/utils/inventoryOperations.ts b/src/app/utils/inventoryOpera
 +  payments: Array<{ code: string; amount: number; cashFundAmount?: number }>;
    items: Array<{ type: string; quantity: number }>;
  };
-
+ 
  export const calculateSalesTotals = (sales: SummarySale[]) => sales.reduce((result, sale) => {
    if (sale.canceled) return result;
 -  result.saleCount += 1;
@@ -564,75 +563,84 @@ diff --git a/src/app/utils/inventoryOperations.ts b/src/app/utils/inventoryOpera
    return result;
 -}, { byMethod: {} as Record<string, number>, total: 0, saleCount: 0, productQuantity: 0 });
 +}, { byMethod: {} as Record<string, number>, total: 0, cashFundTotal: 0, receivedTotal: 0, saleCount: 0, productQuantity: 0 });
-diff --git a/backend/src/utils/salesAccounting.js b/backend/src/utils/salesAccounting.js
-new file mode 100644
---- /dev/null
-+++ b/backend/src/utils/salesAccounting.js
-@@ -0,0 +1,62 @@
-+// El nombre del concepto se guarda desde el catálogo al registrar el detalle.
-+// Usar esa copia conserva la clasificación de Caja aunque se edite el catálogo.
-+const cashFundCondition = (alias) =>
-+  `(${alias}.tipo = 'Servicio' AND TRIM(${alias}.descripcion) = 'Caja')`;
-+
-+const roundMoney = (value) => Math.round(Number(value) * 100) / 100;
-+
-+// Mantener los pagos originales y separar su parte de fondo en centavos.
-+// El reparto acumulado evita perder centavos en comprobantes con pagos mixtos.
-+const splitCashFundPayments = (payments, total, cashFundTotal) => {
-+  const amounts = payments.map((payment) => Math.round(Number(payment.amount) * 100));
-+  const paid = amounts.reduce((sum, amount) => sum + amount, 0);
-+  const ratio = total > 0 ? Math.min(1, Math.max(0, cashFundTotal / total)) : 0;
-+  const fund = Math.round(paid * ratio);
-+  let processed = 0;
-+  let allocated = 0;
-+  return payments.map((payment, index) => {
-+    processed += amounts[index];
-+    const through = paid > 0 ? Math.round(fund * processed / paid) : 0;
-+    const cashFundAmount = (through - allocated) / 100;
-+    allocated = through;
-+    return { ...payment, cashFundAmount };
-+  });
-+};
-+
-+const parseCutoff = (value) => {
-+  if (value === undefined || value === null || value === '') return null;
-+  if (!/^(0|[1-9]\d*)$/.test(String(value)) || BigInt(value) > 18446744073709551615n) {
-+    throw new Error('El límite de activación de fondos debe ser un ID MySQL válido');
+diff --git a/src/app/utils/salesClosingPdf.ts b/src/app/utils/salesClosingPdf.ts
+index 5f2f636088983bbe2ab87aff016c5a4e2dfc2080..774f71dcf0cb15597d7cce4194a4c719118ce859 100644
+--- a/src/app/utils/salesClosingPdf.ts
++++ b/src/app/utils/salesClosingPdf.ts
+@@ -10,9 +10,12 @@ export type SalesDocumentSale = {
+   invoiceNit: string;
+   invoiceName: string;
+   total: number;
++  accountingVersion?: number;
++  cashFundTotal?: number;
++  hasSales?: boolean;
+   canceled?: boolean;
+   cancellationReason?: string;
+-  payments: Array<{ code: string; name: string; amount: number }>;
++  payments: Array<{ code: string; name: string; amount: number; cashFundAmount?: number }>;
+   items: Array<{ type: string; description: string; quantity: number; unitPrice: number; subtotal: number }>;
+ };
+ 
+@@ -21,7 +24,7 @@ export type SalesDocumentShift = {
+   label: string;
+   closedAt: string;
+   responsible: string;
+-  summary: { saleCount: number; total: number; productQuantity: number; payments: Array<{ name: string; amount: number }> };
++  summary: { accountingVersion?: number; cashFundTotal?: number; receivedTotal?: number; saleCount: number; total: number; productQuantity: number; payments: Array<{ name: string; amount: number }> };
+ };
+ 
+ type SalesDocument = {
+@@ -69,12 +72,18 @@ export function createSalesClosingPdf(report: SalesDocument, logo: string) {
+   section(individual ? 'Resumen de la venta' : 'Resumen del día');
+   text(`Ventas vigentes: ${totals.saleCount} | Anuladas: ${report.sales.filter(sale => sale.canceled).length}`);
+   text(`Unidades de productos vendidas: ${totals.productQuantity}`);
+-  text(`Total vigente: ${money(totals.total)}`, true);
++  const corrected = report.sales.some(sale => sale.accountingVersion === 2) || (!individual && report.shifts.some(shift => shift.summary.accountingVersion === 2));
++  text(`${corrected ? 'Ingresos por ventas' : 'Total vigente'}: ${money(totals.total)}`, true);
++  if (corrected) {
++    text(`Fondos agregados: ${money(totals.cashFundTotal)} | Total recibido: ${money(totals.receivedTotal)}`);
 +  }
-+  return String(value);
-+};
-+
-+// No inferir la activación de la hora de arranque: cambiaría tras reiniciar.
-+// Los nuevos snapshots conservan el límite incluso si se omite la variable.
-+const getAccountingCutoff = async (connection) => {
-+  const configured = parseCutoff(process.env.CASH_FUND_ACCOUNTING_START_AFTER_SALE_ID);
-+  const [rows] = await connection.query(`
-+    SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(resumen, '$.accountingStartAfterSaleId')) AS accounting_cutoff
-+    FROM cierre_venta_turno
-+    WHERE JSON_EXTRACT(resumen, '$.accountingVersion') = 2`);
-+  const saved = rows.map(row => parseCutoff(row.accounting_cutoff));
-+  if (saved.some(value => value === null) || new Set(saved).size > 1 ||
-+      (configured !== null && saved.length && configured !== saved[0])) {
-+    throw new Error('El límite de fondos no coincide con los cierres guardados; revise la configuración');
-+  }
-+  return saved[0] ?? configured;
-+};
-+
-+const saleAccountingVersion = (id, shifts, cutoff) => {
-+  const saleId = BigInt(id);
-+  const shift = shifts.find(row => saleId > BigInt(row.afterSaleId) && saleId <= BigInt(row.throughSaleId));
-+  // Un snapshot sin versión siempre conserva el cálculo original.
-+  if (shift) {
-+    if (shift.summary.accountingVersion !== 2) return 1;
-+    cutoff = parseCutoff(shift.summary.accountingStartAfterSaleId);
-+    if (cutoff === null) throw new Error('El cierre nuevo no contiene su límite de activación');
-+  }
-+  return cutoff !== null && saleId > BigInt(cutoff) ? 2 : 1;
-+};
-+
-+module.exports = { cashFundCondition, roundMoney, splitCashFundPayments, parseCutoff, getAccountingCutoff, saleAccountingVersion };
+   const payments = new Map<string, { name: string; amount: number }>();
+   for (const sale of report.sales.filter(sale => !sale.canceled)) {
+     for (const payment of sale.payments) {
+       const entry = payments.get(payment.code) || { name: payment.name, amount: 0 };
+-      entry.amount += Number(payment.amount); payments.set(payment.code, entry);
++      const amount = Number(payment.amount) - (sale.accountingVersion === 2 ? Number(payment.cashFundAmount || 0) : 0);
++      if (sale.accountingVersion === 2 && amount === 0 && payment.cashFundAmount) continue;
++      entry.amount += amount; payments.set(payment.code, entry);
+     }
+   }
+   section('Desglose de pagos vigentes');
+@@ -89,6 +98,10 @@ export function createSalesClosingPdf(report: SalesDocument, logo: string) {
+       text(`Turno ${shift.number}: ${shift.label}`, true);
+       text(`Responsable: ${shift.responsible || 'No registrado'} | Cierre: ${time(new Date(shift.closedAt))}`);
+       text(`${shift.summary.saleCount} ventas | ${shift.summary.productQuantity} unidades | Total: ${money(shift.summary.total)}`);
++      if (shift.summary.accountingVersion === 2) {
++        text(`Ingresos por ventas: ${money(shift.summary.total)}`);
++        text(`Fondos agregados: ${money(shift.summary.cashFundTotal || 0)} | Total recibido: ${money(shift.summary.receivedTotal || 0)}`);
++      }
+       for (const payment of shift.summary.payments) text(`${payment.name}: ${money(payment.amount)}`);
+       y += 2;
+     }
+@@ -116,6 +129,7 @@ export function createSalesClosingPdf(report: SalesDocument, logo: string) {
+       `NIT: ${sale.invoiceNit || 'No registrado'} | Nombre para factura: ${sale.invoiceName || 'No registrado'}`,
+       ...(sale.canceled ? [`Motivo de anulación: ${sale.cancellationReason || 'No registrado'}`] : []),
+       ...sale.payments.map(payment => `Pago registrado: ${payment.name} - ${money(payment.amount)}`),
++      ...(sale.accountingVersion === 2 ? [`Fondo de caja: ${money(sale.cashFundTotal || 0)} | Ingreso por ventas: ${money(sale.total - (sale.cashFundTotal || 0))}`] : []),
+     ];
+     const metadataHeight = metadata.reduce((height, value) => height + doc.splitTextToSize(value, width).length * 5, 0);
+     font(false, 8);
+@@ -129,6 +143,7 @@ export function createSalesClosingPdf(report: SalesDocument, logo: string) {
+     text(`NIT: ${sale.invoiceNit || 'No registrado'} | Nombre para factura: ${sale.invoiceName || 'No registrado'}`);
+     if (sale.canceled) text(`Motivo de anulación: ${sale.cancellationReason || 'No registrado'}`);
+     for (const payment of sale.payments) text(`Pago registrado: ${payment.name} - ${money(payment.amount)}`);
++    if (sale.accountingVersion === 2) text(`Fondo de caja: ${money(sale.cashFundTotal || 0)} | Ingreso por ventas: ${money(sale.total - (sale.cashFundTotal || 0))}`);
+     ensure(17); tableHeader();
+     for (const [itemIndex, item] of sale.items.entries()) {
+       font(false, 8);
 diff --git a/src/app/utils/salesShiftPdf.ts b/src/app/utils/salesShiftPdf.ts
 new file mode 100644
+index 0000000000000000000000000000000000000000..2df346a3b922bd17441d342737a76bae4c2c9db9
 --- /dev/null
 +++ b/src/app/utils/salesShiftPdf.ts
 @@ -0,0 +1,145 @@

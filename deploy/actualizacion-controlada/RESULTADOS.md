@@ -1,5 +1,15 @@
 # Validación conjunta de UNAVET
 
+## Corrección del paquete para Linux
+
+Los tres `.patch` se regeneraron mediante `git diff --binary --full-index --no-ext-diff --no-renames`, con Git **2.43.0 en Linux**, sobre una copia nueva y limpia de las fuentes reales de producción. Cada `git apply --check` y su aplicación consecutiva pasaron sin forzar opciones. Los **20 archivos resultantes** y los nueve archivos de control coinciden con los hashes esperados; también se comprobó que los demás archivos de la copia no cambiaron.
+
+No cambió la lógica, ningún archivo de aplicación ni ambos SQL. Los manifiestos de fuentes mantienen sus hashes anteriores y posteriores; se actualizaron las huellas de los parches en `release.json`. `LINUX-VERIFICATION.json` registra la evidencia de Linux y las nuevas huellas. Nueve pruebas específicas del paquete pasaron, incluida una regresión que rechaza una línea de contexto vacía sin prefijo.
+
+Esta corrección solo leyó las fuentes activas y trabajó en un directorio privado separado de preparación. No detuvo servicios, ejecutó migraciones, consultó/modificó datos ni publicó una actualización. Para la próxima ventana se capturarán todos los cierres que existan en ese momento (la última inspección registraba 43); ni 42 ni 43 son un límite de validación. Los casos de 42 cierres citados más abajo son únicamente fixtures sintéticos de las pruebas funcionales anteriores.
+
+## Validación funcional anterior, sin repetir cambios
+
 Resultado final: **247 pruebas aprobadas, 0 fallos, 0 omitidas**. Se ejecutó `npm test` con las integraciones MySQL locales habilitadas y el archivo local existente de desarrollo. No se copió ni modificó ningún archivo de entorno.
 
 | Comprobación | Resultado |
@@ -43,6 +53,6 @@ Las compilaciones mantienen el aviso previo de Vite sobre algunos bundles mayore
 
 Los manifiestos se basan en las fuentes y tipos de esquema inspeccionados previamente en producción mediante lectura. Las pruebas conjuntas verifican las huellas, el alcance de los parches, sus rutas/permisos y las migraciones usando MySQL local. Se reconstruyó la base a partir de los parches y se contrastaron sus huellas originales antes de aplicar los tres en orden, preservando un archivo ajeno como control.
 
-No se conectaron estas pruebas a AWS. No se modificaron ni verificaron mediante escrituras los 42 cierres reales, los datos clínicos de producción o la configuración de Lightsail. Su comparación efectiva antes/después, el respaldo con restauración ensayada, la construcción/verificación de la imagen final y la aplicación de SQL pertenecen a la ventana futura descrita en `README.md`.
+Las pruebas funcionales anteriores no se conectaron a AWS. No se modificaron ni verificaron mediante escrituras los cierres reales, los datos clínicos de producción o la configuración de Lightsail. Su comparación efectiva antes/después abarcará todos los registros existentes al iniciar la ventana, sin fijar el número de cierres. El respaldo con restauración ensayada, la construcción/verificación de la imagen final y la aplicación de SQL pertenecen a la ventana futura descrita en `README.md`.
 
 En esta entrega no cambió ningún controlador, ruta, componente o cálculo de ejecución: se corrigieron las pruebas y se preparó la guía y el verificador conjunto. Los parches de Caja, Grooming y Recetas y sus SQL permanecen intactos. No se ejecutaron despliegues ni migraciones sobre tablas reales de la clínica.
