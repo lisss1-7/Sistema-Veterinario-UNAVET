@@ -1154,6 +1154,7 @@ export default function Prescriptions() {
                         <Search className="ml-3 h-4 w-4 shrink-0 text-primary" />
                         <input id="prescription-service-search" type="search" value={serviceSearch}
                           onChange={event => { setServiceSearch(event.target.value); setSelectedService(''); }}
+                          onKeyDown={event => { if (event.key === 'Enter') event.preventDefault(); }}
                           placeholder="Escriba el nombre, categoría o descripción..."
                           className="w-full bg-transparent px-3 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none" />
                       </div>

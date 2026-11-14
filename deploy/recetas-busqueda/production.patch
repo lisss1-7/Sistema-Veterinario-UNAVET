@@ -1,5 +1,5 @@
 diff --git a/src/app/pages/Prescriptions.tsx b/src/app/pages/Prescriptions.tsx
-index 82e5973832a098806a32c3aca852dc50caac40f5..12451ea7de0133771389fa4fe157f791e5d0b249 100644
+index 82e5973832a098806a32c3aca852dc50caac40f5..a534018473c391a63abfd96874c537d069fe9f24 100644
 --- a/src/app/pages/Prescriptions.tsx
 +++ b/src/app/pages/Prescriptions.tsx
 @@ -39,6 +39,15 @@ type CatalogItem = {
@@ -46,7 +46,7 @@ index 82e5973832a098806a32c3aca852dc50caac40f5..12451ea7de0133771389fa4fe157f791
    const filteredPrescriptions = prescriptions.filter((p) =>
      (p.tutorName || '').toLowerCase().includes(searchTerm.toLowerCase())
    );
-@@ -1136,11 +1148,22 @@ export default function Prescriptions() {
+@@ -1136,11 +1148,23 @@ export default function Prescriptions() {
                    <div className="border-t border-border pt-4 space-y-3">
                      <h3 className="text-foreground text-lg">Servicios y procedimientos realizados</h3>
                      {serviceError && <p className="text-destructive text-sm">{serviceError} <button type="button" onClick={() => void loadServices()} className="underline">Reintentar</button></p>}
@@ -56,6 +56,7 @@ index 82e5973832a098806a32c3aca852dc50caac40f5..12451ea7de0133771389fa4fe157f791
 +                        <Search className="ml-3 h-4 w-4 shrink-0 text-primary" />
 +                        <input id="prescription-service-search" type="search" value={serviceSearch}
 +                          onChange={event => { setServiceSearch(event.target.value); setSelectedService(''); }}
++                          onKeyDown={event => { if (event.key === 'Enter') event.preventDefault(); }}
 +                          placeholder="Escriba el nombre, categoría o descripción..."
 +                          className="w-full bg-transparent px-3 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none" />
 +                      </div>

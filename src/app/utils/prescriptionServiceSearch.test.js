@@ -27,3 +27,10 @@ test('la búsqueda filtra el catálogo existente y deja la selección y precios 
   assert.match(source, /disabled=\{service\.precio_base === null\}/);
   assert.match(source, /No se encontraron servicios con esa búsqueda/);
 });
+test('Enter en el buscador no guarda la receta accidentalmente', () => {
+  const handler = source.match(/onKeyDown=\{event => \{ (if \(event\.key === 'Enter'\) event\.preventDefault\(\);) \}\}/)[1];
+  for (const key of ['Enter', 'ArrowDown', 'Escape', 'a']) {
+    let prevented = false; new Function('event', handler)({ key, preventDefault() { prevented = true; } });
+    assert.equal(prevented, key === 'Enter');
+  }
+});
