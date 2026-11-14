@@ -5,6 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { execFileSync } = require('node:child_process');
 const { inspectRelease, verifyTarget, validatePatch, digest } = require('../../deploy/actualizacion-controlada/verify.cjs');
+const { verifyTarget: verifyExtendedTarget } = require('../../deploy/grooming-mascotas-nuevas/verify.cjs');
 const root = path.resolve(__dirname, '../..');
 
 test('el formato exige prefijo en contextos vacíos y conserva los hashes funcionales verificados en Linux', () => {
@@ -27,7 +28,7 @@ test('el formato exige prefijo en contextos vacíos y conserva los hashes funcio
 });
 
 test('entrega conjunta: ocho mejoras, veinte archivos y migraciones auxiliares compatibles', () => {
-  const result = verifyTarget(root, 'after');
+  const result = verifyExtendedTarget(root, 'after');
   assert.equal(result.release.improvements.length, 8);
   assert.equal(new Set(result.release.improvements).size, 8);
   assert.equal(result.changed.size, 20);
@@ -60,6 +61,10 @@ test('los tres parches se aplican juntos a la base verificada sin incorporar otr
     fs.writeFileSync(untouched, 'Debe conservarse exactamente.\n');
     git(['init', '-q']);
     git(['config', 'core.autocrlf', 'false']);
+    // La nueva funcionalidad se entrega como un delta; el paquete original es inmutable.
+    const extensionPatch = path.join(root, 'deploy/grooming-mascotas-nuevas/production.patch');
+    git(['apply', '--reverse', '--check', extensionPatch]);
+    git(['apply', '--reverse', extensionPatch]);
     // Reconstruir el original y contrastar con las huellas de AWS guardadas;
     // después aplicar la secuencia real. No se ejecuta ningún SQL.
     for (const item of [...release.packages].reverse()) {
@@ -72,6 +77,10 @@ test('los tres parches se aplican juntos a la base verificada sin incorporar otr
       git(['apply', path.join(root, item.patch)]);
     }
     verifyTarget(target, 'after');
+    verifyExtendedTarget(target, 'before');
+    git(['apply', '--check', extensionPatch]);
+    git(['apply', extensionPatch]);
+    verifyExtendedTarget(target, 'after');
     assert.equal(fs.readFileSync(untouched, 'utf8'), 'Debe conservarse exactamente.\n');
     const expected = [...files.keys(), 'modulo-ajeno.txt'].sort();
     const actual = fs.readdirSync(target, { recursive: true, withFileTypes: true })

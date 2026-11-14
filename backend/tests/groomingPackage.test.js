@@ -5,10 +5,14 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const root = path.resolve(__dirname, '../..');
 const manifest = require('../../deploy/grooming-rutas/manifest.json');
+const extension = require('../../deploy/grooming-mascotas-nuevas/manifest.json');
 const read = name => fs.readFileSync(path.join(root, name), 'utf8').replace(/\r\n/g, '\n');
 
 test('la entrega coincide con las fuentes probadas y se limita a siete archivos de Grooming', () => {
-  for (const [name, hashes] of Object.entries(manifest.files)) assert.equal(createHash('sha256').update(read(name)).digest('hex'), hashes.after, name);
+  for (const [name, hashes] of Object.entries(manifest.files)) {
+    if (extension.files[name]) assert.equal(extension.files[name].before, hashes.after, name);
+    assert.equal(createHash('sha256').update(read(name)).digest('hex'), extension.files[name]?.after || hashes.after, name);
+  }
   const files = [...read('deploy/grooming-rutas/production.patch').matchAll(/^diff --git a\/(.+) b\/(.+)$/gm)].map(match => {
     assert.equal(match[1], match[2]); return match[1];
   });

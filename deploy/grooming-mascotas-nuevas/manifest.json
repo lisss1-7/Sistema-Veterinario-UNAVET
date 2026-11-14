@@ -1,0 +1,16 @@
+{
+  "baseCommit": "ef7552e389d7f7642725f928094db96c0276548a",
+  "productionFunctionalCommit": "09c6fdfc0708cbf104271abc2e36b54e30459577",
+  "migrationRequired": false,
+  "files": {
+    "backend/src/controllers/groomingController.js": {
+      "before": "9f73a82e525eedafd5b61728977c0b7823b997dfb0cac8acbacc829b9484c927",
+      "after": "e493e9a2e80f046c77b48a57504740d4d8896291e1157f1788afb073b5fe28e2"
+    },
+    "src/app/pages/Grooming.tsx": {
+      "before": "bf2cf254df2a910a0d92990f94a4ed36e9b69e39972d8e503694ca25418a3eee",
+      "after": "f62e3eaa5b088f9646a334df4e04c14fe08154bec249facd4eab9f887e5c9ac5"
+    }
+  },
+  "patchSha256": "88deeef7baccdcea0cbd763ce86cd67adbcae49d28c513825655e994b223bc2a"
+}

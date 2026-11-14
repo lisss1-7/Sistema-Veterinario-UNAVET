@@ -1,0 +1,195 @@
+diff --git a/backend/src/controllers/groomingController.js b/backend/src/controllers/groomingController.js
+index 0114995abfea038f886fd6c054273343b457767c..b07a7800a1551c3ddd00a9e031ca68a6cdfce100 100644
+--- a/backend/src/controllers/groomingController.js
++++ b/backend/src/controllers/groomingController.js
+@@ -9,6 +9,7 @@ const {
+ } = require('../utils/personName');
+ const {
+   isTodayOrFuture,
++  isValidPetName,
+   isValidAgeSpacing,
+ } = require('../utils/inputValidation');
+ 
+@@ -432,8 +433,8 @@ const crearGrooming = async (req, res) => {
+ 
+     await connection.beginTransaction();
+     const additionalPets = req.body.additionalPets || [];
+-    if (!Array.isArray(additionalPets) || additionalPets.some(pet => !pet || typeof pet !== 'object') || additionalPets.length > 3 || (additionalPets.length && !patientId)) {
+-      transport.fail('Seleccione una mascota registrada y un máximo de tres mascotas adicionales');
++    if (!Array.isArray(additionalPets) || additionalPets.some(pet => !pet || typeof pet !== 'object' || Array.isArray(pet)) || additionalPets.length > 3) {
++      transport.fail('La ruta admite una mascota principal y un máximo de tres mascotas adicionales');
+     }
+     const operations = await transport.operationsAvailable(connection);
+     if (req.body.paymentMethod || additionalPets.length) transport.requireOperations(operations);
+@@ -546,13 +547,29 @@ const crearGrooming = async (req, res) => {
+ 
+     const pets = [{ pacienteId, nombreMascota, raza, edadMascota, sizeId: sizeCatalog.tamano_animal_id, cost: Number(groomingCost) || 0 }];
+     for (const extra of additionalPets) {
+-      if (!extra.patientId || pets.some(pet => String(pet.pacienteId) === String(extra.patientId))) transport.fail('No repita mascotas en la misma ruta');
+-      const patient = await obtenerTutorPorPaciente(connection, extra.patientId);
+-      if (!patient || String(patient.tutor_id) !== String(tutorId)) transport.fail('Todas las mascotas de una ruta deben pertenecer al mismo tutor');
+       const size = await obtenerTamanoAnimal(connection, extra.animalSize);
+       if (!size) transport.fail('Seleccione un tamaño válido para cada mascota');
+-      pets.push({ pacienteId: extra.patientId, nombreMascota: patient.nombre_mascota, raza: patient.raza,
+-        edadMascota: patient.edad, sizeId: size.tamano_animal_id, cost: transport.money(extra.groomingCost) });
++      const cost = transport.money(extra.groomingCost);
++      if (extra.patientId) {
++        if (pets.some(pet => String(pet.pacienteId) === String(extra.patientId))) transport.fail('No repita mascotas en la misma ruta');
++        const patient = await obtenerTutorPorPaciente(connection, extra.patientId);
++        if (!patient || String(patient.tutor_id) !== String(tutorId)) transport.fail('Todas las mascotas de una ruta deben pertenecer al mismo tutor');
++        pets.push({ pacienteId: extra.patientId, nombreMascota: patient.nombre_mascota, raza: patient.raza,
++          edadMascota: patient.edad, sizeId: size.tamano_animal_id, cost });
++      } else {
++        if (!isValidPetName(extra.petName) || typeof extra.age !== 'string' || extra.age.trim().length > 50 || !isValidAgeSpacing(extra.age)) {
++          transport.fail('Indique un nombre válido y la edad de cada mascota nueva, por ejemplo: 2 años');
++        }
++        if (typeof extra.species !== 'string' || !extra.species.trim() || typeof extra.breed !== 'string' ||
++            !extra.breed.trim() || extra.breed.trim().length > 80 || extra.breed.trim().toLocaleLowerCase('es') === 'otra') {
++          transport.fail('Seleccione la especie y especifique la raza de cada mascota nueva');
++        }
++        const speciesCatalog = await obtenerEspeciePorNombre(connection, extra.species);
++        if (!speciesCatalog) transport.fail('La especie seleccionada no pertenece al catálogo');
++        await registrarRazaEnCatalogo(connection, speciesCatalog.especie_id, extra.breed.trim());
++        pets.push({ pacienteId: null, nombreMascota: extra.petName.trim(), raza: extra.breed.trim(),
++          edadMascota: extra.age.trim(), sizeId: size.tamano_animal_id, cost });
++      }
+     }
+     if (operations) pets[0].cost = transport.money(groomingCost);
+     const methodId = operations ? await transport.paymentId(connection, req.body.paymentMethod) : null;
+diff --git a/src/app/pages/Grooming.tsx b/src/app/pages/Grooming.tsx
+index 1de5867537745d8e15bbe9751a34efcc52f4f413..497dd09ce9351a0d048b68869d098f743c7bb13e 100644
+--- a/src/app/pages/Grooming.tsx
++++ b/src/app/pages/Grooming.tsx
+@@ -48,7 +48,10 @@ type GroomingFormData = Partial<GroomingAppointment> & {
+   patientId?: string;
+   species?: string;
+ };
+-type AdditionalPet = { patientId: string; animalSize: string; groomingCost: number | '' };
++type AdditionalPet = {
++  patientId: string; animalSize: string; groomingCost: number | '';
++  clientId?: string; petName?: string; species?: string; breed?: string; age?: string;
++};
+ type Companion = { id: string; petName: string; breed?: string; age?: string };
+ type PaymentOption = { codigo: string; nombre: string };
+ 
+@@ -549,8 +552,10 @@ export default function Grooming() {
+     if (isTransportType(formData.type) && !editingGrooming && !formData.paymentMethod) {
+       setFormError({ title: 'Falta la forma de pago', message: 'Seleccione una forma de pago del catálogo.' }); return;
+     }
+-    if (additionalPets.some(pet => !pet.animalSize || !isNonNegativeNumber(pet.groomingCost))) {
+-      setFormError({ title: 'Revise las mascotas adicionales', message: 'Cada mascota requiere su tamaño y costo de grooming.' }); return;
++    if (additionalPets.length > 3 || additionalPets.some(pet => !pet.animalSize || !isNonNegativeNumber(pet.groomingCost) ||
++      (!pet.patientId && (!isValidPetName(pet.petName) || !pet.species || !pet.breed?.trim() || pet.breed.trim().length > 80 ||
++        pet.breed.trim().toLocaleLowerCase('es') === 'otra' || !isValidAgeSpacing(pet.age) || String(pet.age || '').trim().length > 50)))) {
++      setFormError({ title: 'Revise las mascotas adicionales', message: 'Máximo cuatro mascotas en total. Cada una requiere tamaño y costo; las nuevas también necesitan nombre, especie, raza y edad.' }); return;
+     }
+     try {
+       setSaving(true);
+@@ -562,7 +567,7 @@ export default function Grooming() {
+       const groomingPayload = {
+         ...formData,
+         age: String(formData.age || '').trim(),
+-        additionalPets: !editingGrooming && isTransportType(formData.type) ? additionalPets : [],
++        additionalPets: !editingGrooming && isTransportType(formData.type) ? additionalPets.map(({ clientId, ...pet }) => pet) : [],
+       };
+ 
+       const response = await fetch(url, {
+@@ -1697,10 +1702,10 @@ export default function Grooming() {
+                     />
+                   </div>
+                   {sharedRouteUnchanged && <p className="md:col-span-2 text-xs text-muted-foreground">La ruta compartida conserva su costo. Para reprogramar solo esta mascota, cambie la fecha u hora; las demás citas permanecerán en su ruta.</p>}
+-                  {!editingGrooming && formData.patientId && companions.length > 1 && <div className="md:col-span-2 rounded-xl border border-border bg-muted/40 p-3">
++                  {!editingGrooming && <div className="md:col-span-2 rounded-xl border border-border bg-muted/40 p-3">
+                     <p className="mb-2 text-sm font-semibold text-foreground">Otras mascotas del mismo tutor en esta ruta</p>
+                     <p className="mb-3 text-xs text-muted-foreground">Comparten domicilio, fecha y hora. Máximo cuatro mascotas; cada una conserva su cita y costo de grooming.</p>
+-                    {companions.filter(pet => pet.id !== formData.patientId).map(pet => {
++                    {companions.filter(pet => formData.patientId && pet.id !== formData.patientId).map(pet => {
+                       const selected = additionalPets.find(item => item.patientId === pet.id);
+                       return <div key={pet.id} className="mb-3 rounded-lg border border-border bg-card p-3">
+                         <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={Boolean(selected)} disabled={!selected && additionalPets.length >= 3} onChange={event => setAdditionalPets(event.target.checked ? [...additionalPets, { patientId: pet.id, animalSize: '', groomingCost: '' }] : additionalPets.filter(item => item.patientId !== pet.id))} />{pet.petName}</label>
+@@ -1710,6 +1715,17 @@ export default function Grooming() {
+                         </div>}
+                       </div>;
+                     })}
++                    {additionalPets.filter(pet => !pet.patientId).map(pet => <NewTransportPetEditor
++                      key={pet.clientId} pet={pet} speciesOptions={speciesOptions} animalSizeOptions={animalSizeOptions}
++                      onChange={updated => setAdditionalPets(additionalPets.map(item => item.clientId === pet.clientId ? updated : item))}
++                      onRemove={() => setAdditionalPets(additionalPets.filter(item => item.clientId !== pet.clientId))}
++                    />)}
++                    <button type="button" disabled={additionalPets.length >= 3} onClick={() => setAdditionalPets([...additionalPets, {
++                      patientId: '', clientId: crypto.randomUUID(), petName: '', species: '', breed: '', age: '', animalSize: '', groomingCost: '',
++                    }])} className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50">
++                      <Plus className="h-4 w-4" />Agregar mascota nueva al transporte
++                    </button>
++                    <p className="mt-2 text-xs text-muted-foreground">Las mascotas nuevas se registran solo en Grooming, sin crear un expediente clínico. El costo de transporte es único para toda la ruta.</p>
+                   </div>}
+                 </div>
+               )}
+@@ -1915,6 +1931,67 @@ export default function Grooming() {
+   );
+ }
+ 
++function NewTransportPetEditor({ pet, speciesOptions, animalSizeOptions, onChange, onRemove }: {
++  pet: AdditionalPet;
++  speciesOptions: CatalogItem[];
++  animalSizeOptions: string[];
++  onChange: (pet: AdditionalPet) => void;
++  onRemove: () => void;
++}) {
++  const [breeds, setBreeds] = useState<Array<{ nombre: string }>>([]);
++  const [breedOption, setBreedOption] = useState('');
++  const [breedError, setBreedError] = useState('');
++  const [loadingBreeds, setLoadingBreeds] = useState(false);
++  const [retry, setRetry] = useState(0);
++  useEffect(() => {
++    let active = true;
++    setBreeds([]); setBreedError(''); setLoadingBreeds(false);
++    const species = speciesOptions.find(item => item.nombre === pet.species);
++    if (!species) return;
++    setLoadingBreeds(true);
++    void fetch(`${API_URL}/catalogos/razas/${species.especie_id}`, { headers: getAuthHeaders() })
++      .then(async response => {
++        const data = await response.json();
++        if (!response.ok || !Array.isArray(data)) throw new Error('No se pudieron cargar las razas.');
++        if (active) setBreeds(data);
++      })
++      .catch(() => { if (active) setBreedError('No se pudieron cargar las razas.'); })
++      .finally(() => { if (active) setLoadingBreeds(false); });
++    return () => { active = false; };
++  }, [pet.species, speciesOptions, retry]);
++  const selectClass = 'w-full rounded-lg border border-border bg-secondary px-4 py-2 text-foreground disabled:opacity-60';
++  return <div className="mb-3 rounded-lg border border-border bg-card p-3">
++    <div className="mb-3 flex items-center justify-between gap-2">
++      <p className="text-sm font-semibold text-foreground">Mascota nueva{pet.petName ? `: ${pet.petName}` : ''}</p>
++      <button type="button" onClick={onRemove} aria-label={`Quitar mascota nueva ${pet.petName || ''}`} className="rounded-lg p-2 text-muted-foreground hover:bg-secondary"><X className="h-4 w-4" /></button>
++    </div>
++    <div className="grid gap-3 sm:grid-cols-2">
++      <FormInput label="Nombre de la mascota nueva" value={pet.petName || ''} required minLength={2} maxLength={80} onChange={value => onChange({ ...pet, petName: sanitizePetName(value) })} />
++      <div><label className="mb-2 block text-sm text-foreground">Especie</label>
++        <ThemedSelect required value={pet.species || ''} onChange={event => { setBreedOption(''); onChange({ ...pet, species: event.target.value, breed: '' }); }} className={selectClass}>
++          <option value="">Seleccionar especie</option>{speciesOptions.map(species => <option key={species.especie_id} value={species.nombre}>{species.nombre}</option>)}
++        </ThemedSelect>
++      </div>
++      <div><label className="mb-2 block text-sm text-foreground">Raza</label>
++        <ThemedSelect required value={breedOption} disabled={!pet.species || loadingBreeds || Boolean(breedError)} onChange={event => { setBreedOption(event.target.value); onChange({ ...pet, breed: event.target.value === 'Otra' ? '' : event.target.value }); }} className={selectClass}>
++          <option value="">{loadingBreeds ? 'Cargando razas...' : 'Seleccionar raza'}</option>
++          {breeds.filter(breed => breed.nombre.toLocaleLowerCase('es') !== 'otra').map(breed => <option key={breed.nombre} value={breed.nombre}>{breed.nombre}</option>)}
++          <option value="Otra">Otra</option>
++        </ThemedSelect>
++        {breedError && <div role="alert" className="mt-2 text-sm text-destructive">{breedError} <button type="button" onClick={() => setRetry(value => value + 1)} className="underline">Reintentar</button></div>}
++        {breedOption === 'Otra' && <div className="mt-3"><FormInput label="Especifique la raza" required minLength={2} maxLength={80} value={pet.breed || ''} onChange={value => onChange({ ...pet, breed: sanitizeName(value) })} /></div>}
++      </div>
++      <FormInput label="Edad" value={pet.age || ''} required maxLength={50} onChange={value => onChange({ ...pet, age: sanitizeAgeText(value) })} />
++      <div><label className="mb-2 block text-sm text-foreground">Tamaño de la mascota</label>
++        <ThemedSelect required value={pet.animalSize} onChange={event => onChange({ ...pet, animalSize: event.target.value })} className={selectClass}>
++          <option value="">Seleccionar tamaño</option>{animalSizeOptions.map(size => <option key={size} value={size}>{size}</option>)}
++        </ThemedSelect>
++      </div>
++      <FormInput label="Costo del servicio de grooming, Q" type="number" required min={0} step="0.01" value={pet.groomingCost} onChange={value => onChange({ ...pet, groomingCost: value === '' ? '' : Number(value) })} />
++    </div>
++  </div>;
++}
++
+ function FormInput({
+   label,
+   value,

@@ -48,7 +48,10 @@ type GroomingFormData = Partial<GroomingAppointment> & {
   patientId?: string;
   species?: string;
 };
-type AdditionalPet = { patientId: string; animalSize: string; groomingCost: number | '' };
+type AdditionalPet = {
+  patientId: string; animalSize: string; groomingCost: number | '';
+  clientId?: string; petName?: string; species?: string; breed?: string; age?: string;
+};
 type Companion = { id: string; petName: string; breed?: string; age?: string };
 type PaymentOption = { codigo: string; nombre: string };
 
@@ -549,8 +552,10 @@ export default function Grooming() {
     if (isTransportType(formData.type) && !editingGrooming && !formData.paymentMethod) {
       setFormError({ title: 'Falta la forma de pago', message: 'Seleccione una forma de pago del catálogo.' }); return;
     }
-    if (additionalPets.some(pet => !pet.animalSize || !isNonNegativeNumber(pet.groomingCost))) {
-      setFormError({ title: 'Revise las mascotas adicionales', message: 'Cada mascota requiere su tamaño y costo de grooming.' }); return;
+    if (additionalPets.length > 3 || additionalPets.some(pet => !pet.animalSize || !isNonNegativeNumber(pet.groomingCost) ||
+      (!pet.patientId && (!isValidPetName(pet.petName) || !pet.species || !pet.breed?.trim() || pet.breed.trim().length > 80 ||
+        pet.breed.trim().toLocaleLowerCase('es') === 'otra' || !isValidAgeSpacing(pet.age) || String(pet.age || '').trim().length > 50)))) {
+      setFormError({ title: 'Revise las mascotas adicionales', message: 'Máximo cuatro mascotas en total. Cada una requiere tamaño y costo; las nuevas también necesitan nombre, especie, raza y edad.' }); return;
     }
     try {
       setSaving(true);
@@ -562,7 +567,7 @@ export default function Grooming() {
       const groomingPayload = {
         ...formData,
         age: String(formData.age || '').trim(),
-        additionalPets: !editingGrooming && isTransportType(formData.type) ? additionalPets : [],
+        additionalPets: !editingGrooming && isTransportType(formData.type) ? additionalPets.map(({ clientId, ...pet }) => pet) : [],
       };
 
       const response = await fetch(url, {
@@ -1697,10 +1702,10 @@ export default function Grooming() {
                     />
                   </div>
                   {sharedRouteUnchanged && <p className="md:col-span-2 text-xs text-muted-foreground">La ruta compartida conserva su costo. Para reprogramar solo esta mascota, cambie la fecha u hora; las demás citas permanecerán en su ruta.</p>}
-                  {!editingGrooming && formData.patientId && companions.length > 1 && <div className="md:col-span-2 rounded-xl border border-border bg-muted/40 p-3">
+                  {!editingGrooming && <div className="md:col-span-2 rounded-xl border border-border bg-muted/40 p-3">
                     <p className="mb-2 text-sm font-semibold text-foreground">Otras mascotas del mismo tutor en esta ruta</p>
                     <p className="mb-3 text-xs text-muted-foreground">Comparten domicilio, fecha y hora. Máximo cuatro mascotas; cada una conserva su cita y costo de grooming.</p>
-                    {companions.filter(pet => pet.id !== formData.patientId).map(pet => {
+                    {companions.filter(pet => formData.patientId && pet.id !== formData.patientId).map(pet => {
                       const selected = additionalPets.find(item => item.patientId === pet.id);
                       return <div key={pet.id} className="mb-3 rounded-lg border border-border bg-card p-3">
                         <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={Boolean(selected)} disabled={!selected && additionalPets.length >= 3} onChange={event => setAdditionalPets(event.target.checked ? [...additionalPets, { patientId: pet.id, animalSize: '', groomingCost: '' }] : additionalPets.filter(item => item.patientId !== pet.id))} />{pet.petName}</label>
@@ -1710,6 +1715,17 @@ export default function Grooming() {
                         </div>}
                       </div>;
                     })}
+                    {additionalPets.filter(pet => !pet.patientId).map(pet => <NewTransportPetEditor
+                      key={pet.clientId} pet={pet} speciesOptions={speciesOptions} animalSizeOptions={animalSizeOptions}
+                      onChange={updated => setAdditionalPets(additionalPets.map(item => item.clientId === pet.clientId ? updated : item))}
+                      onRemove={() => setAdditionalPets(additionalPets.filter(item => item.clientId !== pet.clientId))}
+                    />)}
+                    <button type="button" disabled={additionalPets.length >= 3} onClick={() => setAdditionalPets([...additionalPets, {
+                      patientId: '', clientId: crypto.randomUUID(), petName: '', species: '', breed: '', age: '', animalSize: '', groomingCost: '',
+                    }])} className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50">
+                      <Plus className="h-4 w-4" />Agregar mascota nueva al transporte
+                    </button>
+                    <p className="mt-2 text-xs text-muted-foreground">Las mascotas nuevas se registran solo en Grooming, sin crear un expediente clínico. El costo de transporte es único para toda la ruta.</p>
                   </div>}
                 </div>
               )}
@@ -1913,6 +1929,67 @@ export default function Grooming() {
       )}
     </div>
   );
+}
+
+function NewTransportPetEditor({ pet, speciesOptions, animalSizeOptions, onChange, onRemove }: {
+  pet: AdditionalPet;
+  speciesOptions: CatalogItem[];
+  animalSizeOptions: string[];
+  onChange: (pet: AdditionalPet) => void;
+  onRemove: () => void;
+}) {
+  const [breeds, setBreeds] = useState<Array<{ nombre: string }>>([]);
+  const [breedOption, setBreedOption] = useState('');
+  const [breedError, setBreedError] = useState('');
+  const [loadingBreeds, setLoadingBreeds] = useState(false);
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setBreeds([]); setBreedError(''); setLoadingBreeds(false);
+    const species = speciesOptions.find(item => item.nombre === pet.species);
+    if (!species) return;
+    setLoadingBreeds(true);
+    void fetch(`${API_URL}/catalogos/razas/${species.especie_id}`, { headers: getAuthHeaders() })
+      .then(async response => {
+        const data = await response.json();
+        if (!response.ok || !Array.isArray(data)) throw new Error('No se pudieron cargar las razas.');
+        if (active) setBreeds(data);
+      })
+      .catch(() => { if (active) setBreedError('No se pudieron cargar las razas.'); })
+      .finally(() => { if (active) setLoadingBreeds(false); });
+    return () => { active = false; };
+  }, [pet.species, speciesOptions, retry]);
+  const selectClass = 'w-full rounded-lg border border-border bg-secondary px-4 py-2 text-foreground disabled:opacity-60';
+  return <div className="mb-3 rounded-lg border border-border bg-card p-3">
+    <div className="mb-3 flex items-center justify-between gap-2">
+      <p className="text-sm font-semibold text-foreground">Mascota nueva{pet.petName ? `: ${pet.petName}` : ''}</p>
+      <button type="button" onClick={onRemove} aria-label={`Quitar mascota nueva ${pet.petName || ''}`} className="rounded-lg p-2 text-muted-foreground hover:bg-secondary"><X className="h-4 w-4" /></button>
+    </div>
+    <div className="grid gap-3 sm:grid-cols-2">
+      <FormInput label="Nombre de la mascota nueva" value={pet.petName || ''} required minLength={2} maxLength={80} onChange={value => onChange({ ...pet, petName: sanitizePetName(value) })} />
+      <div><label className="mb-2 block text-sm text-foreground">Especie</label>
+        <ThemedSelect required value={pet.species || ''} onChange={event => { setBreedOption(''); onChange({ ...pet, species: event.target.value, breed: '' }); }} className={selectClass}>
+          <option value="">Seleccionar especie</option>{speciesOptions.map(species => <option key={species.especie_id} value={species.nombre}>{species.nombre}</option>)}
+        </ThemedSelect>
+      </div>
+      <div><label className="mb-2 block text-sm text-foreground">Raza</label>
+        <ThemedSelect required value={breedOption} disabled={!pet.species || loadingBreeds || Boolean(breedError)} onChange={event => { setBreedOption(event.target.value); onChange({ ...pet, breed: event.target.value === 'Otra' ? '' : event.target.value }); }} className={selectClass}>
+          <option value="">{loadingBreeds ? 'Cargando razas...' : 'Seleccionar raza'}</option>
+          {breeds.filter(breed => breed.nombre.toLocaleLowerCase('es') !== 'otra').map(breed => <option key={breed.nombre} value={breed.nombre}>{breed.nombre}</option>)}
+          <option value="Otra">Otra</option>
+        </ThemedSelect>
+        {breedError && <div role="alert" className="mt-2 text-sm text-destructive">{breedError} <button type="button" onClick={() => setRetry(value => value + 1)} className="underline">Reintentar</button></div>}
+        {breedOption === 'Otra' && <div className="mt-3"><FormInput label="Especifique la raza" required minLength={2} maxLength={80} value={pet.breed || ''} onChange={value => onChange({ ...pet, breed: sanitizeName(value) })} /></div>}
+      </div>
+      <FormInput label="Edad" value={pet.age || ''} required maxLength={50} onChange={value => onChange({ ...pet, age: sanitizeAgeText(value) })} />
+      <div><label className="mb-2 block text-sm text-foreground">Tamaño de la mascota</label>
+        <ThemedSelect required value={pet.animalSize} onChange={event => onChange({ ...pet, animalSize: event.target.value })} className={selectClass}>
+          <option value="">Seleccionar tamaño</option>{animalSizeOptions.map(size => <option key={size} value={size}>{size}</option>)}
+        </ThemedSelect>
+      </div>
+      <FormInput label="Costo del servicio de grooming, Q" type="number" required min={0} step="0.01" value={pet.groomingCost} onChange={value => onChange({ ...pet, groomingCost: value === '' ? '' : Number(value) })} />
+    </div>
+  </div>;
 }
 
 function FormInput({

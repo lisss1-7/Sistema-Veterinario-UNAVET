@@ -67,3 +67,28 @@ test('un límite de rutas devuelto por el servidor conserva el formulario y libe
   assert.deepEqual(state.info, ['transportLimit']); assert.deepEqual(state.saving, [true, false]);
   assert.equal(state.success.length, 0);
 });
+
+const unregistered = { patientId: '', clientId: 'local-key', petName: 'Nube Nueva', species: 'Perro', breed: 'Mestiza', age: '2 años', animalSize: 'Pequeño', groomingCost: 45 };
+test('permite una principal nueva y hasta tres nuevas adicionales sin exigir expediente', async () => {
+  const additional = [unregistered, { ...unregistered, clientId: 'next', petName: 'Otra Nueva', groomingCost: 65 }];
+  const { state, run } = setup({ data: { ...form, patientId: '' }, additional }); await run({ preventDefault() {} });
+  assert.equal(state.requests.length, 1);
+  const payload = JSON.parse(state.requests[0].init.body);
+  assert.equal(payload.patientId, ''); assert.equal(payload.additionalPets.length, 2);
+  assert.deepEqual(payload.additionalPets.map(pet => pet.groomingCost), [45, 65]);
+  assert(payload.additionalPets.every(pet => !('clientId' in pet)));
+  assert.equal(payload.transportCost, 30);
+});
+test('reserva mixta conserva los identificadores registrados y los datos de mascotas nuevas', async () => {
+  const { state, run } = setup({ additional: [extra, unregistered] }); await run({ preventDefault() {} });
+  const payload = JSON.parse(state.requests[0].init.body);
+  assert.equal(payload.additionalPets[0].patientId, '2'); assert.equal(payload.additionalPets[1].petName, 'Nube Nueva');
+});
+test('bloquea mascotas nuevas incompletas y más de cuatro mascotas antes de enviar', async () => {
+  for (const changes of [{ petName: '' }, { species: '' }, { breed: '' }, { age: '' }, { age: '2años' }, { animalSize: '' }, { groomingCost: '' }]) {
+    const { state, run } = setup({ additional: [{ ...unregistered, ...changes }] }); await run({ preventDefault() {} });
+    assert.equal(state.requests.length, 0); assert.equal(state.errors.length, 1);
+  }
+  const { state, run } = setup({ additional: [unregistered, unregistered, unregistered, unregistered] }); await run({ preventDefault() {} });
+  assert.equal(state.requests.length, 0); assert.equal(state.errors.length, 1);
+});

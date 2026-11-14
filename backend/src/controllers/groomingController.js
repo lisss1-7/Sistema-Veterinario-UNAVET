@@ -9,6 +9,7 @@ const {
 } = require('../utils/personName');
 const {
   isTodayOrFuture,
+  isValidPetName,
   isValidAgeSpacing,
 } = require('../utils/inputValidation');
 
@@ -432,8 +433,8 @@ const crearGrooming = async (req, res) => {
 
     await connection.beginTransaction();
     const additionalPets = req.body.additionalPets || [];
-    if (!Array.isArray(additionalPets) || additionalPets.some(pet => !pet || typeof pet !== 'object') || additionalPets.length > 3 || (additionalPets.length && !patientId)) {
-      transport.fail('Seleccione una mascota registrada y un máximo de tres mascotas adicionales');
+    if (!Array.isArray(additionalPets) || additionalPets.some(pet => !pet || typeof pet !== 'object' || Array.isArray(pet)) || additionalPets.length > 3) {
+      transport.fail('La ruta admite una mascota principal y un máximo de tres mascotas adicionales');
     }
     const operations = await transport.operationsAvailable(connection);
     if (req.body.paymentMethod || additionalPets.length) transport.requireOperations(operations);
@@ -546,13 +547,29 @@ const crearGrooming = async (req, res) => {
 
     const pets = [{ pacienteId, nombreMascota, raza, edadMascota, sizeId: sizeCatalog.tamano_animal_id, cost: Number(groomingCost) || 0 }];
     for (const extra of additionalPets) {
-      if (!extra.patientId || pets.some(pet => String(pet.pacienteId) === String(extra.patientId))) transport.fail('No repita mascotas en la misma ruta');
-      const patient = await obtenerTutorPorPaciente(connection, extra.patientId);
-      if (!patient || String(patient.tutor_id) !== String(tutorId)) transport.fail('Todas las mascotas de una ruta deben pertenecer al mismo tutor');
       const size = await obtenerTamanoAnimal(connection, extra.animalSize);
       if (!size) transport.fail('Seleccione un tamaño válido para cada mascota');
-      pets.push({ pacienteId: extra.patientId, nombreMascota: patient.nombre_mascota, raza: patient.raza,
-        edadMascota: patient.edad, sizeId: size.tamano_animal_id, cost: transport.money(extra.groomingCost) });
+      const cost = transport.money(extra.groomingCost);
+      if (extra.patientId) {
+        if (pets.some(pet => String(pet.pacienteId) === String(extra.patientId))) transport.fail('No repita mascotas en la misma ruta');
+        const patient = await obtenerTutorPorPaciente(connection, extra.patientId);
+        if (!patient || String(patient.tutor_id) !== String(tutorId)) transport.fail('Todas las mascotas de una ruta deben pertenecer al mismo tutor');
+        pets.push({ pacienteId: extra.patientId, nombreMascota: patient.nombre_mascota, raza: patient.raza,
+          edadMascota: patient.edad, sizeId: size.tamano_animal_id, cost });
+      } else {
+        if (!isValidPetName(extra.petName) || typeof extra.age !== 'string' || extra.age.trim().length > 50 || !isValidAgeSpacing(extra.age)) {
+          transport.fail('Indique un nombre válido y la edad de cada mascota nueva, por ejemplo: 2 años');
+        }
+        if (typeof extra.species !== 'string' || !extra.species.trim() || typeof extra.breed !== 'string' ||
+            !extra.breed.trim() || extra.breed.trim().length > 80 || extra.breed.trim().toLocaleLowerCase('es') === 'otra') {
+          transport.fail('Seleccione la especie y especifique la raza de cada mascota nueva');
+        }
+        const speciesCatalog = await obtenerEspeciePorNombre(connection, extra.species);
+        if (!speciesCatalog) transport.fail('La especie seleccionada no pertenece al catálogo');
+        await registrarRazaEnCatalogo(connection, speciesCatalog.especie_id, extra.breed.trim());
+        pets.push({ pacienteId: null, nombreMascota: extra.petName.trim(), raza: extra.breed.trim(),
+          edadMascota: extra.age.trim(), sizeId: size.tamano_animal_id, cost });
+      }
     }
     if (operations) pets[0].cost = transport.money(groomingCost);
     const methodId = operations ? await transport.paymentId(connection, req.body.paymentMethod) : null;

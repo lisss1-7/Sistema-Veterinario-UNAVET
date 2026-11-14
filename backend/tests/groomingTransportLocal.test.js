@@ -13,7 +13,7 @@ test('MySQL local: rutas compartidas, pagos, cancelación, reprogramación e his
   const connection = await pool.getConnection();
   const originalQuery = pool.query, originalGet = pool.getConnection;
   try {
-    const [[species]] = await connection.query('SELECT especie_id FROM especie LIMIT 1');
+    const [[species]] = await connection.query('SELECT especie_id, nombre FROM especie LIMIT 1');
     const [[sex]] = await connection.query('SELECT sexo_id FROM sexo LIMIT 1');
     const [[user]] = await connection.query('SELECT usuario_id FROM usuario LIMIT 1');
     const [[module]] = await connection.query("SELECT modulo_id FROM modulo_sistema WHERE codigo = 'grooming'");
@@ -30,7 +30,7 @@ test('MySQL local: rutas compartidas, pagos, cancelación, reprogramación e his
     const [[salesBefore]] = await connection.query('SELECT COUNT(*) AS count FROM cierre_venta');
     const [[paymentsBefore]] = await connection.query('SELECT COUNT(*) AS count FROM venta_pago');
     // No se crean ni modifican tablas persistentes. Los catálogos se leen únicamente.
-    for (const table of ['cita_grooming', 'historial_clinico', 'paciente', 'tutor', 'horario_atencion', 'forma_pago']) {
+    for (const table of ['cita_grooming', 'historial_clinico', 'paciente', 'tutor', 'horario_atencion', 'forma_pago', 'raza']) {
       await connection.query(`CREATE TEMPORARY TABLE grooming_test_${table} LIKE ${table}`);
       if (table === 'forma_pago') await connection.query('INSERT INTO grooming_test_forma_pago SELECT * FROM forma_pago');
       await connection.query(`ALTER TABLE grooming_test_${table} RENAME TO ${table}`);
@@ -45,10 +45,12 @@ test('MySQL local: rutas compartidas, pagos, cancelación, reprogramación e his
     await connection.beginTransaction();
     let enhanced = false;
     let failHistoryAt = 0, historyWrites = 0;
+    let failAppointmentAt = 0, appointmentWrites = 0;
     const adapter = {
       query: (sql, values) => {
         if (sql.includes('grooming_operations_tables')) return Promise.resolve([[{ grooming_operations_tables: enhanced ? 2 : 0 }]]);
         if (failHistoryAt && sql.includes('INSERT INTO historial_clinico') && ++historyWrites === failHistoryAt) throw new Error('Fallo simulado del historial individual');
+        if (failAppointmentAt && sql.includes('INSERT INTO cita_grooming') && ++appointmentWrites === failAppointmentAt) throw new Error('Fallo simulado de cita nueva');
         return connection.query(sql, values);
       },
       beginTransaction: () => connection.query('SAVEPOINT grooming_request'),
@@ -57,7 +59,7 @@ test('MySQL local: rutas compartidas, pagos, cancelación, reprogramación e his
     };
     pool.query = adapter.query; pool.getConnection = async () => adapter;
     const controller = require('../src/controllers/groomingController');
-    for (let id = 1; id <= 3; id++) await connection.query('INSERT INTO tutor (tutor_id, telefono, primer_nombre, primer_apellido) VALUES (?, ?, ?, ?)', [id, `5555555${id}`, 'Tutor', `Prueba ${id}`]);
+    for (let id = 1; id <= 3; id++) await connection.query('INSERT INTO tutor (tutor_id, telefono, primer_nombre, primer_apellido) VALUES (?, ?, ?, ?)', [id, `5555555${id}`, 'Tutor', ['Prueba', 'Segunda', 'Tercera'][id - 1]]);
     for (let id = 1; id <= 7; id++) await connection.query(`INSERT INTO paciente
       (paciente_id, tutor_id, especie_id, nombre, fecha_registro, sexo_id, edad, activo) VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
     [id, id === 5 ? 2 : id === 6 ? 3 : 1, species.especie_id, `Mascota ${id}`, '2099-01-01', sex.sexo_id, '3 años']);
@@ -171,6 +173,64 @@ test('MySQL local: rutas compartidas, pagos, cancelación, reprogramación e his
     await create(1, { date: '2099-10-10', additionalPets: [extra(2), extra(3), extra(4)] }, 500);
     failHistoryAt = 0;
     assert.deepEqual(await batchCounts(), beforeFailure, 'Un fallo individual revierte toda la reserva y su ruta');
+
+    const newPet = (name, cost = 25) => ({ petName: name, species: species.nombre, breed: 'Mestiza', age: '2 años', animalSize: size.nombre, groomingCost: cost });
+    const newPrimary = { patientId: '', petName: 'Luna Nueva', species: species.nombre, breed: 'Mestiza' };
+    const [[patientsBefore]] = await connection.query('SELECT COUNT(*) AS count FROM paciente');
+    const fresh = await create(1, { ...newPrimary, date: '2099-11-10', additionalPets: [newPet('Nube Nueva', 45), newPet('Simba Nuevo', 60)] });
+    assert.equal(fresh.ids.length, 3);
+    const freshRows = await Promise.all(fresh.ids.map(get));
+    assert(freshRows.every(row => row.patientId === '' && row.routeId === fresh.routeId && row.routeMembers.length === 3));
+    assert.deepEqual(freshRows.map(row => row.groomingCost), [100, 45, 60]);
+    assert.deepEqual(freshRows.map(row => row.petName), ['Luna Nueva', 'Nube Nueva', 'Simba Nuevo']);
+    assert.equal(freshRows.reduce((sum, row) => sum + row.transportCost, 0), 30);
+    const [[freshHistories]] = await connection.query('SELECT COUNT(*) AS count FROM historial_clinico WHERE grooming_id IN (?)', [fresh.ids]);
+    assert.equal(freshHistories.count, 0, 'Solo Grooming no crea expedientes ni historiales clínicos');
+    const lastNew = await create(1, { ...newPrimary, petName: 'Estrella Nueva', date: '2099-11-10' });
+    assert.equal(lastNew.routeId, fresh.routeId);
+    assert.equal((await get(lastNew.id)).routeMembers.length, 4);
+    await create(1, { ...newPrimary, petName: 'Quinta Nueva', date: '2099-11-10' }, 409);
+    const freshFour = await create(1, { ...newPrimary, date: '2099-11-11', additionalPets: [newPet('Nueva Dos'), newPet('Nueva Tres'), newPet('Nueva Cuatro')] });
+    assert.equal(freshFour.ids.length, 4);
+    assert.equal(new Set((await Promise.all(freshFour.ids.map(get))).map(row => row.routeId)).size, 1);
+    const mixed = await create(1, { date: '2099-11-12', additionalPets: [extra(2), newPet('Nueva Mixta')] });
+    const mixedRows = await Promise.all(mixed.ids.map(get));
+    assert.deepEqual(mixedRows.map(row => row.patientId), ['1', '2', '']);
+    const freshWithRegistered = await create(1, { ...newPrimary, date: '2099-11-13', additionalPets: [extra(2)] });
+    assert.deepEqual((await Promise.all(freshWithRegistered.ids.map(get))).map(row => row.patientId), ['', '2']);
+    for (const invalid of [{ petName: '' }, { age: '' }, { age: '2años' }, { species: 'Especie inexistente' }, { breed: '' }, { animalSize: '' }, { groomingCost: -1 }]) {
+      const beforeInvalid = await batchCounts();
+      await create(1, { ...newPrimary, date: '2099-11-14', additionalPets: [{ ...newPet('Nueva Inválida'), ...invalid }] }, 400);
+      assert.deepEqual(await batchCounts(), beforeInvalid, 'Datos inválidos no dejan citas ni rutas parciales');
+    }
+    await create(1, { ...newPrimary, date: '2099-11-14', additionalPets: [extra(5)] }, 400);
+    await create(1, { ...newPrimary, date: '2099-11-14', additionalPets: [newPet('Dos'), newPet('Tres'), newPet('Cuatro'), newPet('Cinco')] }, 400);
+    await call(controller.cambiarEstadoGrooming, { params: { id: fresh.ids[0] }, body: { status: cancelled.nombre } });
+    const activeNew = await Promise.all([...fresh.ids, lastNew.id].map(get));
+    assert.equal(activeNew[0].transportCost, 0);
+    assert.equal(activeNew.reduce((sum, row) => sum + row.transportCost, 0), 30);
+    const peerNew = await get(fresh.ids[2]);
+    const moveNew = await get(fresh.ids[1]);
+    await call(controller.actualizarGrooming, { params: { id: moveNew.id }, body: { ...moveNew, date: '2099-11-15', time: '10:00', transportCost: moveNew.routeTransportCost } });
+    assert.notEqual((await get(moveNew.id)).routeId, fresh.routeId);
+    const peerNewAfter = await get(peerNew.id);
+    assert.equal(peerNewAfter.date, peerNew.date); assert.equal(peerNewAfter.time, peerNew.time);
+    assert.equal(peerNewAfter.groomingCost, peerNew.groomingCost); assert.equal(peerNewAfter.routeId, peerNew.routeId);
+    const beforeNewFailure = await batchCounts();
+    failAppointmentAt = 3; appointmentWrites = 0;
+    await create(1, { ...newPrimary, date: '2099-11-16', additionalPets: [newPet('Nueva Dos'), newPet('Nueva Tres')] }, 500);
+    failAppointmentAt = 0;
+    assert.deepEqual(await batchCounts(), beforeNewFailure, 'Si falla la tercera mascota, se revierte toda la reserva');
+    const firstTimeTutor = await create(1, { ...newPrimary, date: '2099-11-17', tutorFirstName: 'Maria', tutorFirstSurname: 'Nueva', tutorPhone: '66666661',
+      paymentMethod: transfer.codigo, additionalPets: [newPet('Nueva Dos'), newPet('Nueva Tres'), newPet('Nueva Cuatro')] });
+    const firstTimeRows = await Promise.all(firstTimeTutor.ids.map(get));
+    assert.equal(firstTimeRows.length, 4);
+    assert.equal(new Set(firstTimeRows.map(row => row.tutorId)).size, 1);
+    assert(firstTimeRows.every(row => !row.patientId && row.routeId === firstTimeTutor.routeId && row.paymentMethod === transfer.codigo));
+    const [[newTutors]] = await connection.query("SELECT COUNT(*) AS count FROM tutor WHERE telefono = '66666661'");
+    assert.equal(newTutors.count, 1, 'Un tutor nuevo y cuatro mascotas generan un solo tutor y una sola ruta');
+    const [[patientsAfter]] = await connection.query('SELECT COUNT(*) AS count FROM paciente');
+    assert.deepEqual(patientsAfter, patientsBefore);
     assert.equal(await snapshot(), originalRows);
     assert.deepEqual(await get(legacy.id), originalApi);
     const [[salesAfter]] = await connection.query('SELECT COUNT(*) AS count FROM cierre_venta');
