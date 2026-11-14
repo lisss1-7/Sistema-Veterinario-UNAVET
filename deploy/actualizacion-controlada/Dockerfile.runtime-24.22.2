@@ -1,0 +1,7 @@
+FROM unavet:release-09c6fdf-20261114t110042z AS approved
+FROM unavet:preserved-runtime-24.22.2-20261114t110042z
+USER root
+RUN rm -rf /app/dist /app/backend/src
+COPY --from=approved --chown=node:node /app/backend/src /app/backend/src
+COPY --from=approved --chown=node:node /app/dist /app/dist
+USER node
