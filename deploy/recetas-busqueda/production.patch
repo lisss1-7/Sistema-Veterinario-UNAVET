@@ -1,0 +1,72 @@
+diff --git a/src/app/pages/Prescriptions.tsx b/src/app/pages/Prescriptions.tsx
+index 82e5973832a098806a32c3aca852dc50caac40f5..12451ea7de0133771389fa4fe157f791e5d0b249 100644
+--- a/src/app/pages/Prescriptions.tsx
++++ b/src/app/pages/Prescriptions.tsx
+@@ -39,6 +39,15 @@ type CatalogItem = {
+ 
+ type ServiceOption = { id: string | number; nombre: string; descripcion: string | null; precio_base: number | string | null; categoria: string };
+ 
++const filterProcedureServices = (services: ServiceOption[], query: string) => {
++  const normalize = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es').trim();
++  const terms = normalize(query).split(/\s+/).filter(Boolean);
++  return services.filter(service => {
++    const text = normalize(`${service.nombre} ${service.categoria || ''} ${service.descripcion || ''}`);
++    return terms.every(term => text.includes(term));
++  });
++};
++
+ export default function Prescriptions() {
+   const [searchParams] = useSearchParams();
+   const { permissions } = useModulePermissions('prescriptions');
+@@ -73,6 +82,7 @@ export default function Prescriptions() {
+   const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([]);
+   const [serviceError, setServiceError] = useState('');
+   const [selectedService, setSelectedService] = useState('');
++  const [serviceSearch, setServiceSearch] = useState('');
+   const [saving, setSaving] = useState(false);
+   const supportsConsultation = !editingPrescription || editingPrescription.consultationVersion === 1;
+   const currentWeightKg = prescriptionWeightKg(weightValue, weightUnit);
+@@ -237,7 +247,7 @@ export default function Prescriptions() {
+     }
+   };
+   const resetConsultation = () => {
+-    setWeightValue(''); setWeightUnit('kg'); setProcedures([]); setSelectedService('');
++    setWeightValue(''); setWeightUnit('kg'); setProcedures([]); setSelectedService(''); setServiceSearch('');
+   };
+   const addProcedure = () => {
+     const service = serviceOptions.find(item => String(item.id) === selectedService);
+@@ -252,8 +262,10 @@ export default function Prescriptions() {
+     setProcedures([...procedures, saved ? { ...saved, quantity: 1 } : { serviceId: selectedService,
+       name: service.nombre, description: service.descripcion || '', unitPrice: Number(service.precio_base), quantity: 1 }]);
+     setSelectedService('');
++    setServiceSearch('');
+   };
+ 
++  const filteredServiceOptions = filterProcedureServices(serviceOptions, serviceSearch);
+   const filteredPrescriptions = prescriptions.filter((p) =>
+     (p.tutorName || '').toLowerCase().includes(searchTerm.toLowerCase())
+   );
+@@ -1136,11 +1148,22 @@ export default function Prescriptions() {
+                   <div className="border-t border-border pt-4 space-y-3">
+                     <h3 className="text-foreground text-lg">Servicios y procedimientos realizados</h3>
+                     {serviceError && <p className="text-destructive text-sm">{serviceError} <button type="button" onClick={() => void loadServices()} className="underline">Reintentar</button></p>}
++                    <div>
++                      <label htmlFor="prescription-service-search" className="mb-2 block text-sm text-foreground">Buscar servicio o procedimiento</label>
++                      <div className="flex items-center rounded-lg border border-border bg-secondary focus-within:ring-2 focus-within:ring-primary">
++                        <Search className="ml-3 h-4 w-4 shrink-0 text-primary" />
++                        <input id="prescription-service-search" type="search" value={serviceSearch}
++                          onChange={event => { setServiceSearch(event.target.value); setSelectedService(''); }}
++                          placeholder="Escriba el nombre, categoría o descripción..."
++                          className="w-full bg-transparent px-3 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none" />
++                      </div>
++                      {serviceSearch.trim() && <p role="status" className="mt-1 text-sm text-muted-foreground">{filteredServiceOptions.length ? `${filteredServiceOptions.length} servicios encontrados. Seleccione uno en la lista.` : 'No se encontraron servicios con esa búsqueda.'}</p>}
++                    </div>
+                     <div className="flex flex-col md:flex-row gap-2">
+                       <ThemedSelect aria-label="Servicio médico" value={selectedService} onChange={e => setSelectedService(e.target.value)}
+                         className="w-full px-4 py-2 bg-secondary border border-border rounded-lg text-foreground">
+                         <option value="">Seleccionar servicio del catálogo</option>
+-                        {serviceOptions.map(service => <option key={service.id} value={String(service.id)} disabled={service.precio_base === null}>
++                        {filteredServiceOptions.map(service => <option key={service.id} value={String(service.id)} disabled={service.precio_base === null}>
+                           {service.categoria} · {service.nombre} · {service.precio_base === null ? 'Sin precio' : `Q${Number(service.precio_base).toFixed(2)}`}
+                         </option>)}
+                       </ThemedSelect>

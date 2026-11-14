@@ -63,6 +63,9 @@ test('los tres parches se aplican juntos a la base verificada sin incorporar otr
     git(['config', 'core.autocrlf', 'false']);
     // La nueva funcionalidad se entrega como un delta; el paquete original es inmutable.
     const extensionPatch = path.join(root, 'deploy/grooming-mascotas-nuevas/production.patch');
+    const searchPatch = path.join(root, 'deploy/recetas-busqueda/production.patch');
+    git(['apply', '--reverse', '--check', searchPatch]);
+    git(['apply', '--reverse', searchPatch]);
     git(['apply', '--reverse', '--check', extensionPatch]);
     git(['apply', '--reverse', extensionPatch]);
     // Reconstruir el original y contrastar con las huellas de AWS guardadas;
@@ -80,6 +83,8 @@ test('los tres parches se aplican juntos a la base verificada sin incorporar otr
     verifyExtendedTarget(target, 'before');
     git(['apply', '--check', extensionPatch]);
     git(['apply', extensionPatch]);
+    git(['apply', '--check', searchPatch]);
+    git(['apply', searchPatch]);
     verifyExtendedTarget(target, 'after');
     assert.equal(fs.readFileSync(untouched, 'utf8'), 'Debe conservarse exactamente.\n');
     const expected = [...files.keys(), 'modulo-ajeno.txt'].sort();

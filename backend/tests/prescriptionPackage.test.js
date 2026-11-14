@@ -6,9 +6,13 @@ const { createHash } = require('node:crypto');
 const root = path.resolve(__dirname, '../..');
 const read = name => fs.readFileSync(path.join(root, name), 'utf8').replace(/\r\n/g, '\n');
 const manifest = require('../../deploy/recetas-consulta/manifest.json');
+const search = require('../../deploy/recetas-busqueda/manifest.json');
 
 test('paquete de Recetas coincide con las fuentes probadas y cambia solo cinco archivos del módulo', () => {
-  for (const [name, hashes] of Object.entries(manifest.files)) assert.equal(createHash('sha256').update(read(name)).digest('hex'), hashes.after, name);
+  for (const [name, hashes] of Object.entries(manifest.files)) {
+    if (search.files[name]) assert.equal(search.files[name].before, hashes.after, name);
+    assert.equal(createHash('sha256').update(read(name)).digest('hex'), search.files[name]?.after || hashes.after, name);
+  }
   const files = [...read('deploy/recetas-consulta/production.patch').matchAll(/^diff --git a\/(.+) b\/(.+)$/gm)].map(match => {
     assert.equal(match[1], match[2]); return match[1];
   });

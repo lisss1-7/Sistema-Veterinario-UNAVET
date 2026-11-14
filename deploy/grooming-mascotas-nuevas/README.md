@@ -1,6 +1,6 @@
 # Grooming: mascotas nuevas en una misma ruta
 
-Implementado y probado localmente. **Esta extensión todavía no se publicó en AWS.** No se detuvieron servicios ni se modificó la base de producción durante este cambio.
+Implementado y probado localmente en `6ae4a32`. La entrega actual coordina su publicación con la búsqueda de servicios de Recetas descrita en `../recetas-busqueda/README.md`; el acta de esa ventana registra el estado efectivo en AWS.
 
 ## Uso
 
@@ -36,7 +36,7 @@ git -C /ruta/copia apply /ruta/entrega/deploy/grooming-mascotas-nuevas/productio
 node /ruta/entrega/deploy/grooming-mascotas-nuevas/verify.cjs /ruta/copia after
 ```
 
-El verificador es de solo lectura y contrasta 29 archivos de ejecución y control de los paquetes anteriores, sustituyendo únicamente las dos huellas aprobadas de esta extensión. Una incompatibilidad debe investigarse antes de publicar. No aplicar nuevamente los tres parches antiguos ni ejecutar SQL.
+El verificador es de solo lectura y contrasta 29 archivos de ejecución y control. La entrega conjunta actual sustituye las dos huellas aprobadas de esta extensión y la huella de `Prescriptions.tsx` del paquete `recetas-busqueda`; seguir la secuencia completa de su README. Una incompatibilidad debe investigarse antes de publicar. No aplicar nuevamente los tres parches antiguos ni ejecutar SQL.
 
 La construcción debe partir de las fuentes reales con este delta, conservar Node.js **24.22.2**, las dependencias y la configuración vigentes, y generar frontend y backend juntos. No desplegar el checkout completo ni hacer un `git pull` general: la rama contiene fuentes locales ajenas al alcance, como en la entrega anterior. Respaldo, ventana, controles de integridad y recuperación siguen el procedimiento de `../actualizacion-controlada/README.md`, considerando todas las operaciones nuevas que puedan existir desde la actualización anterior. No restaurar un respaldo antiguo sobre la base activa.
 
