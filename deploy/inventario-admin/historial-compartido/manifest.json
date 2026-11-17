@@ -1,0 +1,13 @@
+{
+  "files": {
+    "backend/src/routes/inventarioRoutes.js": {
+      "before": "4e7b5ab74b9a6bf6ef4829795fa346488c8d8989bfb26a4a21f0e7336655324a",
+      "after": "cfefb4e5167a148f2dbce25a407a6a8eabff63195c95c58f22e391144fec7dc1"
+    },
+    "src/app/pages/Inventory.tsx": {
+      "before": "cb48d6dbc906fe4c133105cffcac89929b8d1fc1b1e11f4de2baf4d002e9b14d",
+      "after": "43a4e91ac1ba6b106e0ddfb3d421a9d84582ef307516578c3eccdb5d6c0df903"
+    }
+  },
+  "patchSha256": "47d0cae1c9d3575205a3d126c72c0bfbbe1fbf13844b0559173909e326b9b235"
+}

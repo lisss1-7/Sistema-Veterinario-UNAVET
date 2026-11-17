@@ -1,6 +1,6 @@
-﻿# Inventario: acceso exclusivo para la cuenta admin
+# Inventario: acceso exclusivo para la cuenta admin
 
-Publica Proveedores, Compras, Movimientos e Historial de cambios para la cuenta activa cuyo identificador de acceso es exactamente `admin`. La contraseña no se incorpora al código ni se cambia. Se mantienen JWT y los permisos de Inventario para cada acción. El servidor resuelve la cuenta en MySQL; los demás administradores también reciben 403 en estas API. La comprobación de interfaz falla cerrada.
+El paquete base public? inicialmente los cuatro apartados para la cuenta activa cuyo identificador de acceso es exactamente `admin`. La contraseña no se incorpora al código ni se cambia. Se mantienen JWT y los permisos de Inventario para cada acción. El servidor resuelve la cuenta en MySQL; los demás administradores también reciben 403 en estas API. La comprobación de interfaz falla cerrada.
 
 ## Entrega limitada
 

@@ -1,0 +1,49 @@
+diff --git a/backend/src/routes/inventarioRoutes.js b/backend/src/routes/inventarioRoutes.js
+index 3f94852..85c1ca1 100644
+--- a/backend/src/routes/inventarioRoutes.js
++++ b/backend/src/routes/inventarioRoutes.js
+@@ -26,7 +26,7 @@ router.post('/compras', verificarToken, verificarPermiso('inventory', 'crear'),
+ router.post('/compras/:id/anular', verificarToken, verificarPermiso('inventory', 'eliminar'), verificarAdminInventario, operaciones.anularCompra);
+ router.get('/movimientos', verificarToken, verificarPermiso('inventory', 'ver'), verificarAdminInventario, operaciones.listarMovimientos);
+ 
+-router.get('/historial', verificarToken, verificarPermiso('inventory', 'ver'), verificarAdminInventario, listarHistorial);
++router.get('/historial', verificarToken, verificarPermiso('inventory', 'ver'), listarHistorial);
+ router.get('/', verificarToken, verificarPermiso('inventory', 'ver'), listarProductos);
+ router.post('/auditorias/finalizar', verificarToken, verificarPermiso('inventory', 'editar'), finalizarAuditoria);
+ router.get('/:id', verificarToken, verificarPermiso('inventory', 'ver'), obtenerProductoPorId);
+diff --git a/src/app/pages/Inventory.tsx b/src/app/pages/Inventory.tsx
+index 7a72ccc..a150fc3 100644
+--- a/src/app/pages/Inventory.tsx
++++ b/src/app/pages/Inventory.tsx
+@@ -519,13 +519,21 @@ export default function Inventory() {
+           </button>
+           {canAccessOperations && ([
+             ['suppliers', 'Proveedores'], ['purchases', 'Compras'],
+-            ['movements', 'Movimientos'], ['history', 'Historial de cambios'],
++            ['movements', 'Movimientos'],
+           ] as const).map(([section, label]) => (
+             <button key={section} type="button" aria-pressed={activeSection === section}
+               onClick={() => setActiveSection(section)}
+               className={`flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${activeSection === section ? 'border-primary bg-primary text-[#F7EFE6]' : 'border-border bg-card text-foreground hover:bg-muted'}`}
+             >{label}</button>
+           ))}
++          <button
++            type="button"
++            aria-pressed={activeSection === 'history'}
++            onClick={() => setActiveSection('history')}
++            className={`flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${activeSection === 'history' ? 'border-primary bg-primary text-[#F7EFE6]' : 'border-border bg-card text-foreground hover:bg-muted'}`}
++          >
++            Historial de cambios
++          </button>
+         </nav>
+       )}
+ 
+@@ -537,7 +545,7 @@ export default function Inventory() {
+           onBack={() => setActiveSection('inventory')}
+           onCompleted={loadInventory}
+         />
+-      ) : activeSection === 'history' && canAccessOperations ? (
++      ) : activeSection === 'history' ? (
+         <InventoryHistory inventory={inventory} />
+       ) : activeSection === 'suppliers' && canAccessOperations ? (
+         <InventorySuppliers permissions={permissions} />

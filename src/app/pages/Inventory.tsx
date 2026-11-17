@@ -519,13 +519,21 @@ export default function Inventory() {
           </button>
           {canAccessOperations && ([
             ['suppliers', 'Proveedores'], ['purchases', 'Compras'],
-            ['movements', 'Movimientos'], ['history', 'Historial de cambios'],
+            ['movements', 'Movimientos'],
           ] as const).map(([section, label]) => (
             <button key={section} type="button" aria-pressed={activeSection === section}
               onClick={() => setActiveSection(section)}
               className={`flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${activeSection === section ? 'border-primary bg-primary text-[#F7EFE6]' : 'border-border bg-card text-foreground hover:bg-muted'}`}
             >{label}</button>
           ))}
+          <button
+            type="button"
+            aria-pressed={activeSection === 'history'}
+            onClick={() => setActiveSection('history')}
+            className={`flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${activeSection === 'history' ? 'border-primary bg-primary text-[#F7EFE6]' : 'border-border bg-card text-foreground hover:bg-muted'}`}
+          >
+            Historial de cambios
+          </button>
         </nav>
       )}
 
@@ -537,7 +545,7 @@ export default function Inventory() {
           onBack={() => setActiveSection('inventory')}
           onCompleted={loadInventory}
         />
-      ) : activeSection === 'history' && canAccessOperations ? (
+      ) : activeSection === 'history' ? (
         <InventoryHistory inventory={inventory} />
       ) : activeSection === 'suppliers' && canAccessOperations ? (
         <InventorySuppliers permissions={permissions} />
