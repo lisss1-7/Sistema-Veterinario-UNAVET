@@ -26,7 +26,7 @@ import SalesClosing from '../components/SalesClosing';
 import InventorySuppliers from '../components/inventory/InventorySuppliers';
 import InventoryPurchases from '../components/inventory/InventoryPurchases';
 import InventoryMovements from '../components/inventory/InventoryMovements';
-import { Field, inputClass, OperationModal, OperationNotice, primaryButton } from '../components/inventory/OperationUi';
+import { useAuth } from '../context/AuthContext';
 import ThemedSelect from '../components/ThemedSelect';
 import { useModulePermissions } from '../hooks/useModulePermissions';
 import InformationCard from '../components/InformationCard';
@@ -72,6 +72,24 @@ const formatAuditMonth = (value: string) => {
 
 export default function Inventory() {
   const { permissions } = useModulePermissions('inventory');
+  const { user } = useAuth();
+  const [operationsUserId, setOperationsUserId] = useState<number | null>(null);
+  const canAccessOperations = Boolean(user && operationsUserId === user.id);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setOperationsUserId(null);
+    if (user) {
+      void fetch(`${API_URL}/inventario/operaciones-acceso`, {
+        headers: getAuthHeaders(), signal: controller.signal, cache: 'no-store',
+      }).then(async (response) => {
+        if (!response.ok) return;
+        const result = await response.json();
+        if (!controller.signal.aborted && result.canAccessOperations === true) setOperationsUserId(user.id);
+      }).catch(() => { /* Keep the additional sections inaccessible when verification fails. */ });
+    }
+    return () => controller.abort();
+  }, [user?.id]);
   const [inventory, setInventory] = useState<InventoryProduct[]>([]);
   const [activeSection, setActiveSection] =
     useState<'inventory' | 'audit' | 'sales' | 'suppliers' | 'purchases' | 'movements' | 'history'>('inventory');
@@ -108,13 +126,6 @@ export default function Inventory() {
 
   const [showStockModal, setShowStockModal] = useState(false);
   const [stockMessage, setStockMessage] = useState('');
-  const [stockTarget, setStockTarget] = useState<InventoryProduct | null>(null);
-  const [stockDirection, setStockDirection] = useState(1);
-  const [stockQuantity, setStockQuantity] = useState(1);
-  const [stockReason, setStockReason] = useState('');
-  const [stockOperation, setStockOperation] = useState('adjustment');
-  const [stockBusy, setStockBusy] = useState(false);
-  const [stockError, setStockError] = useState('');
 
   const mapCatalogNames = (items: CatalogItem[]) => {
     if (!Array.isArray(items)) {
@@ -364,30 +375,60 @@ export default function Inventory() {
     setShowDeleteSuccessModal(false);
   };
 
-  const adjustStock = (id: string, direction: number) => {
-    const product = inventory.find((item) => item.id === id);
-    if (!product) return;
-    setStockTarget(product); setStockDirection(direction); setStockQuantity(1);
-    setStockReason(''); setStockOperation('adjustment'); setStockError('');
-  };
-
-  const submitStock = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!stockTarget || stockBusy || !permissions.canEdit) return;
-    setStockBusy(true); setStockError('');
+  const adjustStock = async (
+    id: string,
+    adjustment: number
+  ) => {
     try {
-      const adjustment = stockDirection * stockQuantity;
-      const response = await fetch(`${API_URL}/inventario/${stockTarget.id}/stock`, {
-        method: 'PATCH', headers: getAuthHeaders(),
-        body: JSON.stringify({ adjustment, reason: stockReason, operation: stockOperation }),
-      });
+      const product = inventory.find(
+        (item) => item.id === id
+      );
+
+      const response = await fetch(
+        `${API_URL}/inventario/${id}/stock`,
+        {
+          method: 'PATCH',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            adjustment,
+            reason:
+              adjustment > 0
+                ? 'Entrada manual desde inventario'
+                : 'Salida manual desde inventario',
+          }),
+        }
+      );
+
       const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'No se pudo registrar el movimiento');
+
+      if (!response.ok) {
+        throw new Error(
+          data.message || 'Error al actualizar stock'
+        );
+      }
+
       await loadInventory();
-      setStockMessage(`Movimiento registrado para ${stockTarget.name}. Existencia actual: ${data.stock}.`);
-      setStockTarget(null); setShowStockModal(true);
-    } catch (error) { setStockError(error instanceof Error ? error.message : 'No se pudo registrar el movimiento'); }
-    finally { setStockBusy(false); }
+
+      setStockMessage(
+        adjustment > 0
+          ? `Se agregó 1 unidad al stock de ${
+              product?.name || 'producto'
+            }.`
+          : `Se descontó 1 unidad del stock de ${
+              product?.name || 'producto'
+            }.`
+      );
+
+      setShowStockModal(true);
+    } catch (error) {
+      console.error('Error al ajustar stock:', error);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo actualizar el stock.'
+      );
+    }
   };
 
   const closeStockModal = () => {
@@ -398,18 +439,12 @@ export default function Inventory() {
   const openModal = (product?: InventoryProduct) => {
     if (product) {
       setEditingProduct(product);
-      setFormData({
-        ...product,
-        status: normalizeText(product.status) === 'inactivo'
-          ? product.status
-          : statusOptions.find(isActiveStatus) || statusOptions[0] || '',
-      });
+      setFormData(product);
     } else {
       setEditingProduct(null);
 
       setFormData({
         category: '',
-        currentStock: 0,
         status: statusOptions[0] || '',
       });
     }
@@ -482,9 +517,9 @@ export default function Inventory() {
             <ReceiptText className="h-4 w-4 shrink-0" />
             Cierre de ventas
           </button>
-          {([
-            ['suppliers', 'Proveedores'], ['purchases', 'Compras'], ['movements', 'Movimientos'],
-            ['history', 'Historial de cambios'],
+          {canAccessOperations && ([
+            ['suppliers', 'Proveedores'], ['purchases', 'Compras'],
+            ['movements', 'Movimientos'], ['history', 'Historial de cambios'],
           ] as const).map(([section, label]) => (
             <button key={section} type="button" aria-pressed={activeSection === section}
               onClick={() => setActiveSection(section)}
@@ -502,20 +537,20 @@ export default function Inventory() {
           onBack={() => setActiveSection('inventory')}
           onCompleted={loadInventory}
         />
+      ) : activeSection === 'history' && canAccessOperations ? (
+        <InventoryHistory inventory={inventory} />
+      ) : activeSection === 'suppliers' && canAccessOperations ? (
+        <InventorySuppliers permissions={permissions} />
+      ) : activeSection === 'purchases' && canAccessOperations ? (
+        <InventoryPurchases inventory={inventory} permissions={permissions} onInventoryChanged={loadInventory} />
+      ) : activeSection === 'movements' && canAccessOperations ? (
+        <InventoryMovements inventory={inventory} />
       ) : activeSection === 'sales' ? (
         <SalesClosing
           inventory={inventory}
           permissions={permissions}
           onInventoryChanged={loadInventory}
         />
-      ) : activeSection === 'suppliers' ? (
-        <InventorySuppliers permissions={permissions} />
-      ) : activeSection === 'purchases' ? (
-        <InventoryPurchases inventory={inventory} permissions={permissions} onInventoryChanged={loadInventory} />
-      ) : activeSection === 'history' ? (
-        <InventoryHistory inventory={inventory} />
-      ) : activeSection === 'movements' ? (
-        <InventoryMovements inventory={inventory} />
       ) : (
         <>
       <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-3 [&>article:last-child]:col-span-2 md:[&>article:last-child]:col-span-1">
@@ -661,7 +696,7 @@ export default function Inventory() {
                   type="button"
                   onClick={() => adjustStock(product.id, 1)}
                   className="px-3 py-2 bg-green-100 hover:bg-green-200 text-green-800 rounded-xl text-sm"
-                  title="Registrar ajuste de entrada"
+                  title="Entrada +1"
                 >
                   +1
                 </button>}
@@ -671,7 +706,7 @@ export default function Inventory() {
                   onClick={() => adjustStock(product.id, -1)}
                   disabled={currentStock <= 0}
                   className="px-3 py-2 bg-red-100 hover:bg-red-200 disabled:opacity-50 disabled:cursor-not-allowed text-red-800 rounded-xl text-sm"
-                  title="Registrar ajuste o consumo"
+                  title="Salida -1"
                 >
                   -1
                 </button>}
@@ -840,7 +875,7 @@ export default function Inventory() {
                             adjustStock(product.id, 1)
                           }
                           className="px-2 py-1 bg-green-100 hover:bg-green-200 text-green-800 rounded text-sm"
-                          title="Registrar ajuste de entrada"
+                          title="Entrada +1"
                         >
                           +
                         </button>}
@@ -852,7 +887,7 @@ export default function Inventory() {
                           }
                           disabled={currentStock <= 0}
                           className="px-2 py-1 bg-red-100 hover:bg-red-200 disabled:opacity-50 disabled:cursor-not-allowed text-red-800 rounded text-sm"
-                          title="Registrar ajuste o consumo"
+                          title="Salida -1"
                         >
                           -
                         </button>}
@@ -1012,8 +1047,19 @@ export default function Inventory() {
 
                 <FormInput
                   label="Stock actual"
-                  value={formData.currentStock ?? 0}
-                  readOnly
+                  type="number"
+                  min="0"
+                  value={formData.currentStock ?? ''}
+                  onChange={(value) =>
+                    setFormData({
+                      ...formData,
+                      currentStock:
+                        value === ''
+                          ? 0
+                          : Number.parseInt(value, 10),
+                    })
+                  }
+                  required
                 />
 
                 <FormInput
@@ -1053,14 +1099,27 @@ export default function Inventory() {
 
                 <FormInput
                   label="Fecha de vencimiento"
+                  type="date"
                   value={formData.expirationDate || ''}
-                  readOnly
+                  onChange={(value) =>
+                    setFormData({
+                      ...formData,
+                      expirationDate: value,
+                    })
+                  }
+                  required
                 />
 
                 <FormInput
                   label="Proveedor"
                   value={formData.supplier || ''}
-                  readOnly
+                  onChange={(value) =>
+                    setFormData({
+                      ...formData,
+                      supplier: value,
+                    })
+                  }
+                  required
                 />
 
                 <div>
@@ -1097,7 +1156,6 @@ export default function Inventory() {
                 </div>
               </div>
 
-              <p className="text-sm text-muted-foreground">Las existencias se registran mediante compras, ventas y movimientos. Proveedor y vencimiento se consultan desde los lotes; no se cambian al editar la ficha.</p>
               <div className="flex flex-col sm:flex-row sm:justify-start gap-4 pt-4">
                 <button
                   type="submit"
@@ -1260,17 +1318,6 @@ export default function Inventory() {
         </>
       )}
 
-      {stockTarget && <OperationModal title={`Registrar movimiento: ${stockTarget.name}`} busy={stockBusy} onClose={() => setStockTarget(null)}>
-        <OperationNotice message={stockError} error />
-        <form className="patient-form space-y-4" onSubmit={submitStock}>
-          <p className="text-sm text-muted-foreground">Existencia actual: {stockTarget.currentStock}. Para recibir productos de un proveedor, registra una compra.</p>
-          {stockDirection < 0 && <Field label="Tipo de salida"><ThemedSelect aria-label="Tipo de salida" disabled={stockBusy} className={inputClass} value={stockOperation} onChange={(event) => setStockOperation(event.target.value)}><option value="adjustment">Ajuste de existencias</option><option value="consumption">Consumo interno de la clínica</option></ThemedSelect></Field>}
-          <Field label={stockDirection > 0 ? 'Cantidad a agregar por ajuste' : 'Cantidad a descontar'}><input type="number" required min={1} max={stockDirection < 0 ? stockTarget.currentStock : 2147483647} step={1} disabled={stockBusy} className={inputClass} value={Number.isFinite(stockQuantity) ? stockQuantity : ''} onChange={(event) => setStockQuantity(event.target.valueAsNumber)} /></Field>
-          <Field label="Motivo obligatorio"><textarea required maxLength={200} disabled={stockBusy} className={inputClass} value={stockReason} onChange={(event) => setStockReason(event.target.value)} placeholder="Explica por qué cambia la existencia" /></Field>
-          <button disabled={stockBusy || !stockReason.trim()} className={primaryButton}>{stockBusy ? 'Guardando...' : 'Registrar movimiento'}</button>
-        </form>
-      </OperationModal>}
-
       {showAuditDateModal && (
         <div className="modal-backdrop fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="patient-form-shell max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-[30px] border border-border/80 bg-card p-6 shadow-2xl">
@@ -1346,16 +1393,14 @@ function FormInput({
   step,
   min,
   required = false,
-  readOnly = false,
 }: {
   label: string;
   value: string | number;
-  onChange?: (value: string) => void;
+  onChange: (value: string) => void;
   type?: string;
   step?: string;
   min?: string;
   required?: boolean;
-  readOnly?: boolean;
 }) {
   return (
     <div>
@@ -1369,11 +1414,10 @@ function FormInput({
         min={min}
         value={value}
         onChange={(event) =>
-          onChange?.(event.target.value)
+          onChange(event.target.value)
         }
         className="w-full rounded-xl border border-border bg-secondary/80 px-4 py-2.5 text-foreground shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
         required={required}
-        readOnly={readOnly}
       />
     </div>
   );

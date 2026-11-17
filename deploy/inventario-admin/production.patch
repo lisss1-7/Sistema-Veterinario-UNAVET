@@ -1,0 +1,885 @@
+diff --git a/backend/src/controllers/inventarioOperacionesController.js b/backend/src/controllers/inventarioOperacionesController.js
+new file mode 100644
+index 0000000..8fc5ee7
+--- /dev/null
++++ b/backend/src/controllers/inventarioOperacionesController.js
+@@ -0,0 +1,265 @@
++const { createHash } = require('crypto');
++const pool = require('../config/db');
++const { getProductAndLots, recordMovement } = require('../utils/inventoryLots');
++
++const fail = (message, statusCode = 400) => {
++  const error = new Error(message);
++  error.statusCode = statusCode;
++  throw error;
++};
++const text = (value, max, label, required = false) => {
++  if (value != null && typeof value !== 'string') fail(`${label} debe ser texto`);
++  const result = String(value || '').trim();
++  if ((required && !result) || result.length > max) fail(`${label} no es válido (máximo ${max} caracteres)`);
++  return result;
++};
++const id = (value) => {
++  const result = Number(value);
++  if (!Number.isSafeInteger(result) || result <= 0) fail('Identificador inválido');
++  return result;
++};
++const isDate = (value) => {
++  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
++  const date = new Date(`${value}T12:00:00Z`);
++  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
++};
++const today = () => new Intl.DateTimeFormat('en-CA', {
++  timeZone: 'America/Guatemala', year: 'numeric', month: '2-digit', day: '2-digit',
++}).format(new Date());
++const respondError = (res, error, fallback) => res.status(error.statusCode || 500).json({
++  message: error.statusCode ? error.message : fallback,
++});
++const mapSupplier = (row) => ({
++  id: String(row.proveedor_id), name: row.nombre, phone: row.telefono || '',
++  email: row.correo || '', address: row.direccion || '', active: Boolean(row.activo),
++});
++const normalizeSupplier = (body) => {
++  const supplier = {
++    name: text(body.name, 150, 'Nombre', true),
++    phone: text(body.phone, 30, 'Teléfono'),
++    email: text(body.email, 150, 'Correo'),
++    address: text(body.address, 255, 'Dirección'),
++    active: body.active ?? true,
++  };
++  if (typeof supplier.active !== 'boolean') fail('Estado del proveedor inválido');
++  if (supplier.email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(supplier.email)) fail('Correo inválido');
++  if (supplier.phone && !/^\d{8,12}$/.test(supplier.phone)) fail('El teléfono debe contener entre 8 y 12 dígitos');
++  return supplier;
++};
++
++const listarProveedores = async (_req, res) => {
++  try {
++    const [rows] = await pool.query('SELECT * FROM proveedor ORDER BY nombre, proveedor_id');
++    res.json(rows.map(mapSupplier));
++  } catch (error) { respondError(res, error, 'Error al listar proveedores'); }
++};
++const guardarProveedor = async (req, res) => {
++  try {
++    const supplier = normalizeSupplier(req.body);
++    const values = [supplier.name, supplier.phone || null, supplier.email || null, supplier.address || null, supplier.active ? 1 : 0];
++    if (req.params.id) {
++      const supplierId = id(req.params.id);
++      const [existing] = await pool.query('SELECT proveedor_id FROM proveedor WHERE proveedor_id = ?', [supplierId]);
++      if (!existing.length) fail('Proveedor no encontrado', 404);
++      await pool.query('UPDATE proveedor SET nombre = ?, telefono = ?, correo = ?, direccion = ?, activo = ? WHERE proveedor_id = ?', [...values, supplierId]);
++      res.json({ message: 'Proveedor actualizado correctamente', id: String(supplierId) });
++    } else {
++      const [result] = await pool.query('INSERT INTO proveedor (nombre, telefono, correo, direccion, activo) VALUES (?, ?, ?, ?, ?)', values);
++      res.status(201).json({ message: 'Proveedor creado correctamente', id: String(result.insertId) });
++    }
++  } catch (error) {
++    if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'Ya existe un proveedor con ese nombre' });
++    respondError(res, error, 'Error al guardar proveedor');
++  }
++};
++
++const normalizePurchase = (body) => {
++  const purchase = {
++    supplierId: id(body.supplierId), date: body.date,
++    receipt: text(body.receipt, 100, 'Comprobante'), notes: text(body.notes, 500, 'Observaciones'),
++    requestKey: text(body.requestKey, 64, 'Clave de envío', true),
++  };
++  if (!/^[\w-]{16,64}$/.test(purchase.requestKey)) fail('Clave de envío inválida');
++  if (!isDate(purchase.date) || purchase.date > today()) fail('La fecha de recepción debe ser válida y no futura');
++  if (!Array.isArray(body.items) || !body.items.length || body.items.length > 200) fail('Agregue entre 1 y 200 productos');
++  purchase.items = body.items.map((item) => {
++    if (!item || typeof item !== 'object') fail('Detalle de compra inválido');
++    const quantity = Number(item.quantity);
++    const cost = Number(item.unitCost);
++    if (item.quantity === '' || item.quantity == null || !Number.isInteger(quantity) || quantity <= 0 || quantity > 2147483647) fail('La cantidad debe ser un entero positivo');
++    if (item.unitCost === '' || item.unitCost == null || !Number.isFinite(cost) || cost < 0 || cost > 99999999.99 || Math.abs(cost * 100 - Math.round(cost * 100)) > 0.00001) fail('El costo debe ser positivo o cero, con hasta dos decimales');
++    const expirationDate = item.expirationDate || '';
++    if (expirationDate && (!isDate(expirationDate) || expirationDate < purchase.date)) fail('El vencimiento no puede ser anterior a la recepción');
++    return { productId: id(item.productId), quantity, unitCost: cost, lotCode: text(item.lotCode, 80, 'Lote'), expirationDate };
++  }).sort((a, b) => a.productId - b.productId);
++  purchase.totalCents = purchase.items.reduce((sum, item) => sum + item.quantity * Math.round(item.unitCost * 100), 0);
++  if (!Number.isSafeInteger(purchase.totalCents) || purchase.totalCents > 99999999999999) fail('Total de compra fuera del límite permitido');
++  return purchase;
++};
++
++const listarCompras = async (req, res) => {
++  try {
++    const where = [], values = [];
++    if (req.query.supplierId) { where.push('c.proveedor_id = ?'); values.push(id(req.query.supplierId)); }
++    for (const [param, operator] of [['from', '>='], ['to', '<=']]) {
++      if (req.query[param]) {
++        if (!isDate(req.query[param])) fail('Filtro de fecha inválido');
++        where.push(`c.fecha ${operator} ?`); values.push(req.query[param]);
++      }
++    }
++    const [rows] = await pool.query(`SELECT c.*, DATE_FORMAT(c.fecha, '%Y-%m-%d') AS fecha,
++      CONCAT_WS(' ', u.primer_nombre, u.segundo_nombre, u.primer_apellido, u.segundo_apellido) AS responsable
++      FROM compra_inventario c LEFT JOIN usuario u ON u.usuario_id = c.usuario_id
++      ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY c.fecha DESC, c.compra_id DESC`, values);
++    if (!rows.length) return res.json([]);
++    const [details] = await pool.query(`SELECT d.*, l.codigo_lote,
++      DATE_FORMAT(l.fecha_vencimiento, '%Y-%m-%d') AS vencimiento
++      FROM compra_inventario_detalle d JOIN lote_producto l ON l.producto_lote_id = d.producto_lote_id
++      WHERE d.compra_id IN (?) ORDER BY d.detalle_id`, [rows.map((row) => row.compra_id)]);
++    res.json(rows.map((row) => ({
++      id: String(row.compra_id), supplierId: String(row.proveedor_id), supplierName: row.proveedor_nombre,
++      date: row.fecha, receipt: row.comprobante || '', notes: row.observaciones || '',
++      total: Number(row.total), canceled: Boolean(row.anulada), cancellationReason: row.motivo_anulacion || '',
++      responsible: row.responsable || 'Sin responsable registrado',
++      items: details.filter((detail) => String(detail.compra_id) === String(row.compra_id)).map((detail) => ({
++        id: String(detail.detalle_id), productId: String(detail.producto_id), productName: detail.producto_nombre,
++        lotId: String(detail.producto_lote_id), lotCode: detail.codigo_lote || '', expirationDate: detail.vencimiento || '',
++        quantity: Number(detail.cantidad), unitCost: Number(detail.costo_unitario),
++      })),
++    })));
++  } catch (error) { respondError(res, error, 'Error al listar compras'); }
++};
++
++const crearCompra = async (req, res) => {
++  let connection;
++  let purchase, hash;
++  try {
++    purchase = normalizePurchase(req.body);
++    hash = createHash('sha256').update(JSON.stringify(purchase)).digest('hex');
++    connection = await pool.getConnection();
++    await connection.beginTransaction();
++    const [existing] = await connection.query('SELECT compra_id, contenido_hash, usuario_id FROM compra_inventario WHERE clave_envio = ?', [purchase.requestKey]);
++    if (existing.length) {
++      if (existing[0].contenido_hash !== hash || String(existing[0].usuario_id) !== String(req.user.id)) fail('Esta recepción ya se registró con otros datos. Consulte Compras antes de enviar otra recepción', 409);
++      await connection.commit();
++      return res.json({ id: String(existing[0].compra_id), message: 'Esta compra ya fue registrada; no se duplicaron las existencias' });
++    }
++    const [suppliers] = await connection.query('SELECT proveedor_id, nombre, activo FROM proveedor WHERE proveedor_id = ? FOR UPDATE', [purchase.supplierId]);
++    if (!suppliers.length || !suppliers[0].activo) fail('Seleccione un proveedor activo');
++    const [result] = await connection.query(`INSERT INTO compra_inventario
++      (proveedor_id, proveedor_nombre, fecha, comprobante, observaciones, usuario_id, clave_envio, contenido_hash, total)
++      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [purchase.supplierId, suppliers[0].nombre, purchase.date,
++      purchase.receipt || null, purchase.notes || null, req.user.id, purchase.requestKey, hash, purchase.totalCents / 100]);
++    const purchaseId = result.insertId;
++    // Product locks are acquired in a stable order, shared with sales and audits.
++    for (const [index, item] of purchase.items.entries()) {
++      const inventory = await getProductAndLots(connection, item.productId);
++      if (!inventory.product.activo) fail('No se pueden recibir productos inactivos');
++      if (inventory.stock + item.quantity > 2147483647) fail('La existencia excede el límite permitido');
++      const [lot] = await connection.query(`INSERT INTO lote_producto
++        (producto_id, proveedor_id, codigo_lote, fecha_vencimiento, precio_compra, stock)
++        VALUES (?, ?, ?, ?, ?, ?)`, [item.productId, purchase.supplierId, item.lotCode || `COMPRA-${purchaseId}-${index + 1}`,
++        item.expirationDate || null, item.unitCost, item.quantity]);
++      await connection.query(`INSERT INTO compra_inventario_detalle
++        (compra_id, producto_id, producto_nombre, producto_lote_id, cantidad, costo_unitario) VALUES (?, ?, ?, ?, ?, ?)`,
++      [purchaseId, item.productId, inventory.product.nombre, lot.insertId, item.quantity, item.unitCost]);
++      await recordMovement({ connection, productId: item.productId, lotId: lot.insertId, userId: req.user.id,
++        movementType: 'Entrada', quantity: item.quantity, previousStock: inventory.stock,
++        newStock: inventory.stock + item.quantity, reason: `Recepción de compra #${purchaseId}`,
++        referenceType: 'Compra', referenceId: purchaseId });
++    }
++    await connection.commit();
++    res.status(201).json({ id: String(purchaseId), message: 'Compra recibida y existencias actualizadas correctamente' });
++  } catch (error) {
++    if (connection) await connection.rollback();
++    if (error.code === 'ER_DUP_ENTRY' && purchase) {
++      const [rows] = await pool.query('SELECT compra_id, contenido_hash, usuario_id FROM compra_inventario WHERE clave_envio = ?', [purchase.requestKey]);
++      if (rows.length && rows[0].contenido_hash === hash && String(rows[0].usuario_id) === String(req.user.id)) {
++        return res.json({ id: String(rows[0].compra_id), message: 'Esta compra ya fue registrada; no se duplicaron las existencias' });
++      }
++      return res.status(409).json({ message: 'Esta recepción ya se registró con otros datos. Consulte Compras antes de enviar otra recepción' });
++    }
++    respondError(res, error, 'Error al recibir la compra');
++  } finally { connection?.release(); }
++};
++
++const anularCompra = async (req, res) => {
++  let connection;
++  try {
++    const purchaseId = id(req.params.id);
++    const reason = text(req.body.reason, 200, 'Motivo de anulación', true);
++    connection = await pool.getConnection();
++    await connection.beginTransaction();
++    const [purchases] = await connection.query('SELECT compra_id, anulada FROM compra_inventario WHERE compra_id = ? FOR UPDATE', [purchaseId]);
++    if (!purchases.length) fail('Compra no encontrada', 404);
++    if (purchases[0].anulada) fail('La compra ya fue anulada', 409);
++    const [details] = await connection.query('SELECT * FROM compra_inventario_detalle WHERE compra_id = ? ORDER BY producto_id, detalle_id', [purchaseId]);
++    for (const item of details) {
++      const inventory = await getProductAndLots(connection, item.producto_id);
++      const lot = inventory.lots.find((candidate) => Number(candidate.producto_lote_id) === Number(item.producto_lote_id));
++      const quantity = Number(item.cantidad);
++      if (!lot || Number(lot.stock) < quantity) fail('No se puede anular: las unidades de la compra ya no están disponibles en sus lotes', 409);
++      await connection.query('UPDATE lote_producto SET stock = stock - ? WHERE producto_lote_id = ?', [quantity, item.producto_lote_id]);
++      await recordMovement({ connection, productId: item.producto_id, lotId: item.producto_lote_id, userId: req.user.id,
++        movementType: 'Salida', quantity, previousStock: inventory.stock, newStock: inventory.stock - quantity,
++        reason: `Anulación de compra #${purchaseId}: ${reason}`, referenceType: 'Compra', referenceId: purchaseId });
++    }
++    await connection.query('UPDATE compra_inventario SET anulada = 1, motivo_anulacion = ?, anulada_por = ?, anulada_en = NOW() WHERE compra_id = ?', [reason, req.user.id, purchaseId]);
++    await connection.commit();
++    res.json({ message: 'Compra anulada; se conservaron el documento y sus movimientos' });
++  } catch (error) {
++    if (connection) await connection.rollback();
++    respondError(res, error, 'Error al anular la compra');
++  } finally { connection?.release(); }
++};
++
++const listarMovimientos = async (req, res) => {
++  try {
++    const where = [], values = [];
++    if (req.query.productId) { where.push('m.producto_id = ?'); values.push(id(req.query.productId)); }
++    if (req.query.origin) {
++      if (!['Manual', 'Receta', 'Venta', 'Compra', 'Corrección', 'Grooming', 'Historico'].includes(req.query.origin)) fail('Origen inválido');
++      if (req.query.origin === 'Historico') where.push("m.referencia_tipo = 'Compra' AND c.compra_id IS NULL");
++      else { where.push('m.referencia_tipo = ?'); values.push(req.query.origin); }
++    }
++    for (const [param, operator] of [['from', '>='], ['to', '<=']]) {
++      if (req.query[param]) {
++        if (!isDate(req.query[param])) fail('Filtro de fecha inválido');
++        where.push(`m.creado_en ${operator} ?`);
++        values.push(`${req.query[param]} ${param === 'to' ? '23:59:59' : '00:00:00'}`);
++      }
++    }
++    const page = req.query.page === undefined ? 1 : id(req.query.page);
++    const joins = `FROM movimiento_inventario m
++      JOIN producto_inventario p ON p.producto_id = m.producto_id
++      LEFT JOIN lote_producto l ON l.producto_lote_id = m.producto_lote_id
++      LEFT JOIN usuario u ON u.usuario_id = m.usuario_id
++      LEFT JOIN compra_inventario c ON m.referencia_tipo = 'Compra' AND c.compra_id = m.referencia_id
++      LEFT JOIN cierre_venta v ON m.referencia_tipo = 'Venta' AND v.venta_id = m.referencia_id
++      LEFT JOIN receta r ON m.referencia_tipo = 'Receta' AND r.receta_id = m.referencia_id
++      LEFT JOIN auditoria_inventario a ON m.referencia_tipo = 'Corrección' AND a.auditoria_inventario_id = m.referencia_id
++      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}`;
++    const [[count]] = await pool.query(`SELECT COUNT(*) AS total ${joins}`, values);
++    const [rows] = await pool.query(`SELECT m.*, p.nombre AS producto, l.codigo_lote,
++      DATE_FORMAT(m.creado_en, '%Y-%m-%d %H:%i:%s') AS fecha,
++      CONCAT_WS(' ', u.primer_nombre, u.segundo_nombre, u.primer_apellido, u.segundo_apellido) AS responsable,
++      c.compra_id, c.comprobante, v.venta_id, r.receta_id, a.codigo AS auditoria_codigo
++      ${joins} ORDER BY m.movimiento_id DESC LIMIT 50 OFFSET ?`, [...values, (page - 1) * 50]);
++    res.json({ total: Number(count.total), page, pageSize: 50, items: rows.map((row) => {
++      let document = row.referencia_id ? `${row.referencia_tipo} #${row.referencia_id}` : 'Movimiento manual';
++      if (row.referencia_tipo === 'Compra') document = row.compra_id ? `Compra #${row.compra_id}${row.comprobante ? ` · ${row.comprobante}` : ''}` : 'Histórico / saldo previo sin documento';
++      if (row.referencia_tipo === 'Venta' && !row.venta_id) document += ' · documento histórico no disponible';
++      if (row.referencia_tipo === 'Receta' && !row.receta_id) document += ' · documento histórico no disponible';
++      if (row.auditoria_codigo) document = row.auditoria_codigo;
++      return { id: String(row.movimiento_id), productId: String(row.producto_id), productName: row.producto,
++        date: row.fecha, type: row.tipo_movimiento, quantity: Number(row.cantidad),
++        previousStock: Number(row.stock_anterior), newStock: Number(row.stock_nuevo),
++        lotCode: row.codigo_lote || '', responsible: row.responsable || 'Sin responsable registrado',
++        reason: row.motivo, origin: row.referencia_tipo, document,
++        referenceId: row.referencia_id ? String(row.referencia_id) : '',
++      };
++    }) });
++  } catch (error) { respondError(res, error, 'Error al listar movimientos'); }
++};
++
++module.exports = { listarProveedores, guardarProveedor, listarCompras, crearCompra, anularCompra, listarMovimientos, normalizePurchase };
+diff --git a/backend/src/middleware/inventoryOperationsAccess.js b/backend/src/middleware/inventoryOperationsAccess.js
+new file mode 100644
+index 0000000..52f1215
+--- /dev/null
++++ b/backend/src/middleware/inventoryOperationsAccess.js
+@@ -0,0 +1,36 @@
++const pool = require('../config/db');
++
++// Resolve the authenticated account in MySQL; never trust a browser name or JWT role.
++const tieneAccesoOperaciones = async (userId) => {
++  if (!userId) return false;
++  const [rows] = await pool.query(
++    `SELECT u.usuario_id FROM usuario u
++     INNER JOIN estado_usuario eu ON eu.estado_usuario_id = u.estado_usuario_id
++     WHERE u.usuario_id = ? AND BINARY u.correo = BINARY ?
++       AND u.eliminado_en IS NULL AND eu.permite_acceso = 1 LIMIT 1`,
++    [userId, 'admin']
++  );
++  return rows.length === 1;
++};
++
++const verificarAdminInventario = async (req, res, next) => {
++  try {
++    if (!(await tieneAccesoOperaciones(req.user?.id))) {
++      return res.status(403).json({ message: 'Este apartado está disponible únicamente para la cuenta autorizada' });
++    }
++    next();
++  } catch {
++    res.status(500).json({ message: 'No fue posible validar el acceso a operaciones de inventario' });
++  }
++};
++
++const consultarAccesoOperaciones = async (req, res) => {
++  res.set('Cache-Control', 'no-store');
++  try {
++    res.json({ canAccessOperations: await tieneAccesoOperaciones(req.user?.id) });
++  } catch {
++    res.status(500).json({ message: 'No fue posible validar el acceso a operaciones de inventario' });
++  }
++};
++
++module.exports = { verificarAdminInventario, consultarAccesoOperaciones };
+diff --git a/backend/src/routes/inventarioRoutes.js b/backend/src/routes/inventarioRoutes.js
+index 49680d4..3f94852 100644
+--- a/backend/src/routes/inventarioRoutes.js
++++ b/backend/src/routes/inventarioRoutes.js
+@@ -11,10 +11,22 @@ const {
+ const { verificarToken } = require('../middleware/authMiddleware');
+ const { verificarPermiso } = require('../middleware/permissionMiddleware');
+ const { listarHistorial } = require('../controllers/inventarioHistorialController');
++const { verificarAdminInventario, consultarAccesoOperaciones } = require('../middleware/inventoryOperationsAccess');
++const operaciones = require('../controllers/inventarioOperacionesController');
+ 
+ const router = express.Router();
+ 
+-router.get('/historial', verificarToken, verificarPermiso('inventory', 'ver'), listarHistorial);
++router.get('/operaciones-acceso', verificarToken, verificarPermiso('inventory', 'ver'), consultarAccesoOperaciones);
++
++router.get('/proveedores', verificarToken, verificarPermiso('inventory', 'ver'), verificarAdminInventario, operaciones.listarProveedores);
++router.post('/proveedores', verificarToken, verificarPermiso('inventory', 'crear'), verificarAdminInventario, operaciones.guardarProveedor);
++router.put('/proveedores/:id', verificarToken, verificarPermiso('inventory', 'editar'), verificarAdminInventario, operaciones.guardarProveedor);
++router.get('/compras', verificarToken, verificarPermiso('inventory', 'ver'), verificarAdminInventario, operaciones.listarCompras);
++router.post('/compras', verificarToken, verificarPermiso('inventory', 'crear'), verificarAdminInventario, operaciones.crearCompra);
++router.post('/compras/:id/anular', verificarToken, verificarPermiso('inventory', 'eliminar'), verificarAdminInventario, operaciones.anularCompra);
++router.get('/movimientos', verificarToken, verificarPermiso('inventory', 'ver'), verificarAdminInventario, operaciones.listarMovimientos);
++
++router.get('/historial', verificarToken, verificarPermiso('inventory', 'ver'), verificarAdminInventario, listarHistorial);
+ router.get('/', verificarToken, verificarPermiso('inventory', 'ver'), listarProductos);
+ router.post('/auditorias/finalizar', verificarToken, verificarPermiso('inventory', 'editar'), finalizarAuditoria);
+ router.get('/:id', verificarToken, verificarPermiso('inventory', 'ver'), obtenerProductoPorId);
+diff --git a/src/app/components/inventory/InventoryMovements.tsx b/src/app/components/inventory/InventoryMovements.tsx
+new file mode 100644
+index 0000000..cfddbfc
+--- /dev/null
++++ b/src/app/components/inventory/InventoryMovements.tsx
+@@ -0,0 +1,45 @@
++import { useEffect, useState } from 'react';
++import type { InventoryProduct } from '../../utils/types';
++import { requestJson } from '../../utils/apiClient';
++import { inventoryError, type InventoryMovement } from '../../utils/inventoryOperations';
++import ThemedSelect from '../ThemedSelect';
++import { Field, inputClass, OperationNotice, secondaryButton } from './OperationUi';
++
++type Result = { items: InventoryMovement[]; total: number; page: number; pageSize: number };
++
++export default function InventoryMovements({ inventory }: { inventory: InventoryProduct[] }) {
++  const [filters, setFilters] = useState({ productId: '', origin: '', from: '', to: '' });
++  const [query, setQuery] = useState('');
++  const [page, setPage] = useState(1);
++  const [result, setResult] = useState<Result>({ items: [], total: 0, page: 1, pageSize: 50 });
++  const [loading, setLoading] = useState(true);
++  const [error, setError] = useState('');
++  useEffect(() => {
++    let current = true;
++    setLoading(true); setError('');
++    void requestJson<Result>(`inventario/movimientos?${query}&page=${page}`, { defaultError: 'No se pudieron cargar los movimientos' })
++      .then((result) => { if (current) setResult(result); })
++      .catch((error) => { if (current) setError(inventoryError(error)); })
++      .finally(() => { if (current) setLoading(false); });
++    return () => { current = false; };
++  }, [query, page]);
++
++  return <section>
++    <h2 className="mb-4 text-xl font-semibold text-foreground">Historial de movimientos</h2>
++    <OperationNotice message={error} error />
++    <form className="mb-4 grid items-end gap-3 rounded-2xl border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-5" onSubmit={(event) => { event.preventDefault(); setPage(1); setQuery(new URLSearchParams(Object.entries(filters).filter(([, value]) => value)).toString()); }}>
++      <Field label="Producto"><ThemedSelect aria-label="Filtrar producto" className={inputClass} value={filters.productId} onChange={(event) => setFilters({ ...filters, productId: event.target.value })}><option value="">Todos</option>{inventory.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</ThemedSelect></Field>
++      <Field label="Origen"><ThemedSelect aria-label="Filtrar origen" className={inputClass} value={filters.origin} onChange={(event) => setFilters({ ...filters, origin: event.target.value })}><option value="">Todos</option>{['Compra', 'Venta', 'Receta', 'Manual', 'Corrección', 'Grooming'].map((origin) => <option key={origin} value={origin}>{origin}</option>)}<option value="Historico">Saldo previo sin documento</option></ThemedSelect></Field>
++      <Field label="Desde"><input type="date" className={inputClass} value={filters.from} onChange={(event) => setFilters({ ...filters, from: event.target.value })} /></Field>
++      <Field label="Hasta"><input type="date" min={filters.from || undefined} className={inputClass} value={filters.to} onChange={(event) => setFilters({ ...filters, to: event.target.value })} /></Field>
++      <button disabled={loading} className={secondaryButton}>Filtrar movimientos</button>
++    </form>
++    <p className="mb-3 text-sm text-muted-foreground">Las existencias anteriores se conservan como saldo previo. Las entradas antiguas sin compra registrada se identifican como históricas.</p>
++    {loading && <p className="my-4 text-muted-foreground">Cargando movimientos...</p>}
++    <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm"><table className="w-full min-w-[1150px] text-sm"><thead className="bg-muted text-foreground"><tr>{['Fecha', 'Producto / lote', 'Movimiento', 'Cantidad', 'Antes', 'Después', 'Responsable', 'Motivo', 'Documento'].map((label) => <th key={label} className="px-3 py-3 text-left">{label}</th>)}</tr></thead><tbody className="divide-y divide-border">
++      {result.items.map((movement) => <tr key={movement.id} className="text-foreground hover:bg-muted/60"><td className="whitespace-nowrap px-3 py-3">{movement.date}</td><td className="px-3 py-3"><p className="font-semibold">{movement.productName}</p><p className="text-xs text-muted-foreground">{movement.lotCode || 'Sin lote registrado'}</p></td><td className="px-3 py-3"><span className={movement.type === 'Entrada' ? 'text-green-700' : movement.type === 'Salida' ? 'text-red-700' : 'text-primary'}>{movement.type}</span></td><td className="px-3 py-3">{movement.quantity}</td><td className="px-3 py-3">{movement.previousStock}</td><td className="px-3 py-3">{movement.newStock}</td><td className="px-3 py-3">{movement.responsible}</td><td className="max-w-xs break-words px-3 py-3">{movement.reason}</td><td className="px-3 py-3">{movement.document}</td></tr>)}
++      {!loading && !result.items.length && <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">No hay movimientos para estos filtros.</td></tr>}
++    </tbody></table></div>
++    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground"><span>{result.total} movimientos · Página {page} de {Math.max(1, Math.ceil(result.total / result.pageSize))}</span><div className="flex gap-2"><button disabled={loading || page === 1} className={secondaryButton} onClick={() => setPage(page - 1)}>Anterior</button><button disabled={loading || page * result.pageSize >= result.total} className={secondaryButton} onClick={() => setPage(page + 1)}>Siguiente</button></div></div>
++  </section>;
++}
+diff --git a/src/app/components/inventory/InventoryPurchases.tsx b/src/app/components/inventory/InventoryPurchases.tsx
+new file mode 100644
+index 0000000..7fbbeaf
+--- /dev/null
++++ b/src/app/components/inventory/InventoryPurchases.tsx
+@@ -0,0 +1,137 @@
++import { useEffect, useState, type FormEvent } from 'react';
++import type { InventoryProduct } from '../../utils/types';
++import type { ModulePermissions } from '../../hooks/useModulePermissions';
++import { requestJson } from '../../utils/apiClient';
++import { inventoryError, inventoryMoney, inventoryToday, type Purchase, type PurchaseItem, type Supplier } from '../../utils/inventoryOperations';
++import { CreateButton } from '../ModuleHeader';
++import ThemedSelect from '../ThemedSelect';
++import { Field, inputClass, OperationModal, OperationNotice, primaryButton, secondaryButton } from './OperationUi';
++
++type Props = { inventory: InventoryProduct[]; permissions: ModulePermissions; onInventoryChanged: () => Promise<void> };
++const emptyItem = (): PurchaseItem => ({ productId: '', quantity: 1, unitCost: 0, lotCode: '', expirationDate: '' });
++
++export default function InventoryPurchases({ inventory, permissions, onInventoryChanged }: Props) {
++  const [purchases, setPurchases] = useState<Purchase[]>([]);
++  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
++  const [loading, setLoading] = useState(true);
++  const [error, setError] = useState('');
++  const [message, setMessage] = useState('');
++  const [open, setOpen] = useState(false);
++  const [busy, setBusy] = useState(false);
++  const [supplierId, setSupplierId] = useState('');
++  const [date, setDate] = useState(inventoryToday);
++  const [receipt, setReceipt] = useState('');
++  const [notes, setNotes] = useState('');
++  const [items, setItems] = useState<PurchaseItem[]>([emptyItem()]);
++  const [requestKey, setRequestKey] = useState('');
++  const [cancelTarget, setCancelTarget] = useState<Purchase | null>(null);
++  const [reason, setReason] = useState('');
++  const [filters, setFilters] = useState({ supplierId: '', from: '', to: '' });
++  const [appliedFilters, setAppliedFilters] = useState(filters);
++
++  const load = async () => {
++    setLoading(true);
++    try {
++      const query = new URLSearchParams(Object.entries(appliedFilters).filter(([, value]) => value)).toString();
++      const [purchases, suppliers] = await Promise.all([
++        requestJson<Purchase[]>(`inventario/compras?${query}`, { defaultError: 'No se pudieron cargar las compras' }),
++        requestJson<Supplier[]>('inventario/proveedores', { defaultError: 'No se pudieron cargar los proveedores' }),
++      ]);
++      setPurchases(purchases); setSuppliers(suppliers);
++    } catch (error) { setError(inventoryError(error)); }
++    finally { setLoading(false); }
++  };
++  useEffect(() => { void load(); }, [appliedFilters]);
++  const changeItem = (index: number, changes: Partial<PurchaseItem>) => setItems((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...changes } : item));
++  const total = items.reduce((sum, item) => sum + item.quantity * Math.round(item.unitCost * 100), 0) / 100;
++
++  const receive = async (event: FormEvent) => {
++    event.preventDefault();
++    if (busy || !permissions.canCreate) return;
++    if (!supplierId || items.some((item) => !item.productId)) { setError('Seleccione proveedor y todos los productos'); return; }
++    setBusy(true); setError(''); setMessage('');
++    try {
++      const result = await requestJson<{ message: string }>('inventario/compras', { method: 'POST', body: { supplierId, date, receipt, notes, requestKey, items }, defaultError: 'No se pudo registrar la recepción' });
++      setOpen(false); setMessage(result.message);
++      await Promise.all([load(), onInventoryChanged()]);
++    } catch (error) { setError(inventoryError(error)); }
++    finally { setBusy(false); }
++  };
++  const cancel = async (event: FormEvent) => {
++    event.preventDefault();
++    if (!cancelTarget || busy || !permissions.canDelete) return;
++    setBusy(true); setError(''); setMessage('');
++    try {
++      const result = await requestJson<{ message: string }>(`inventario/compras/${cancelTarget.id}/anular`, { method: 'POST', body: { reason }, defaultError: 'No se pudo anular la compra' });
++      setCancelTarget(null); setMessage(result.message);
++      await Promise.all([load(), onInventoryChanged()]);
++    } catch (error) { setError(inventoryError(error)); }
++    finally { setBusy(false); }
++  };
++
++  return <section>
++    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
++      <h2 className="text-xl font-semibold text-foreground">Compras recibidas</h2>
++      {permissions.canCreate && <CreateButton disabled={loading} onClick={() => { setSupplierId(''); setDate(inventoryToday()); setReceipt(''); setNotes(''); setItems([emptyItem()]); setRequestKey(crypto.randomUUID()); setError(''); setOpen(true); }}>Registrar compra</CreateButton>}
++    </div>
++    {!open && !cancelTarget && <OperationNotice message={error} error />}
++    <OperationNotice message={message} />
++    <form className="mb-4 grid items-end gap-3 rounded-2xl border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={(event) => { event.preventDefault(); setError(''); setAppliedFilters({ ...filters }); }}>
++      <Field label="Proveedor"><ThemedSelect aria-label="Filtrar proveedor" className={inputClass} value={filters.supplierId} onChange={(event) => setFilters({ ...filters, supplierId: event.target.value })}><option value="">Todos</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</ThemedSelect></Field>
++      <Field label="Desde"><input type="date" className={inputClass} value={filters.from} onChange={(event) => setFilters({ ...filters, from: event.target.value })} /></Field>
++      <Field label="Hasta"><input type="date" min={filters.from || undefined} className={inputClass} value={filters.to} onChange={(event) => setFilters({ ...filters, to: event.target.value })} /></Field>
++      <button disabled={loading} className={secondaryButton}>Filtrar compras</button>
++    </form>
++    {loading && <p className="my-4 text-muted-foreground">Cargando compras...</p>}
++    <div className="space-y-3">
++      {purchases.map((purchase) => <article key={purchase.id} className="rounded-2xl border border-border bg-card p-4 shadow-sm">
++        <div className="flex flex-wrap items-start justify-between gap-3">
++          <div><h3 className="font-bold text-foreground">Compra #{purchase.id} · {purchase.supplierName}</h3><p className="text-sm text-muted-foreground">{purchase.date} · Comprobante: {purchase.receipt || 'Sin comprobante'} · {purchase.responsible}</p></div>
++          <div className="text-right"><p className="font-bold text-primary">{inventoryMoney(purchase.total)}</p><span className={`text-sm ${purchase.canceled ? 'text-red-700' : 'text-green-700'}`}>{purchase.canceled ? 'Anulada' : 'Recibida'}</span></div>
++        </div>
++        {purchase.notes && <p className="mt-2 break-words text-sm text-muted-foreground">{purchase.notes}</p>}
++        {purchase.canceled && <p className="mt-2 text-sm text-red-700">Motivo de anulación: {purchase.cancellationReason}</p>}
++        <details className="mt-3"><summary className="cursor-pointer text-sm font-semibold text-primary">Ver productos y lotes ({purchase.items.length})</summary>
++          <div className="mt-2 overflow-x-auto"><table className="w-full min-w-[650px] text-sm"><thead className="bg-muted text-foreground"><tr>{['Producto', 'Cantidad', 'Costo unitario', 'Subtotal', 'Lote', 'Vencimiento'].map((label) => <th className="px-3 py-2 text-left" key={label}>{label}</th>)}</tr></thead><tbody className="divide-y divide-border">{purchase.items.map((item) => <tr key={item.id}><td className="px-3 py-2">{item.productName}</td><td className="px-3 py-2">{item.quantity}</td><td className="px-3 py-2">{inventoryMoney(item.unitCost)}</td><td className="px-3 py-2">{inventoryMoney(item.quantity * item.unitCost)}</td><td className="px-3 py-2">{item.lotCode}</td><td className="px-3 py-2">{item.expirationDate || '—'}</td></tr>)}</tbody></table></div>
++        </details>
++        {permissions.canDelete && !purchase.canceled && <button className={`${secondaryButton} mt-3 text-red-700`} onClick={() => { setCancelTarget(purchase); setReason(''); setError(''); }}>Anular compra</button>}
++      </article>)}
++    </div>
++    {!loading && !purchases.length && <p className="py-8 text-center text-muted-foreground">No hay compras recibidas para estos filtros.</p>}
++    {open && <OperationModal title="Registrar compra recibida" busy={busy} onClose={() => setOpen(false)}>
++      <OperationNotice message={error} error />
++      <form className="patient-form space-y-4" onSubmit={receive}>
++        <fieldset disabled={busy} className="space-y-4">
++          <div className="grid gap-4 md:grid-cols-2">
++            <Field label="Proveedor"><ThemedSelect aria-label="Proveedor de la compra" disabled={busy} required className={inputClass} value={supplierId} onChange={(event) => setSupplierId(event.target.value)}><option value="">Seleccionar proveedor</option>{suppliers.filter((supplier) => supplier.active).map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</ThemedSelect></Field>
++            <Field label="Fecha de recepción"><input type="date" required max={inventoryToday()} className={inputClass} value={date} onChange={(event) => setDate(event.target.value)} /></Field>
++            <Field label="Número de comprobante (opcional)"><input maxLength={100} className={inputClass} value={receipt} onChange={(event) => setReceipt(event.target.value)} /></Field>
++            <Field label="Observaciones (opcional)"><textarea maxLength={500} className={inputClass} value={notes} onChange={(event) => setNotes(event.target.value)} /></Field>
++          </div>
++          {!suppliers.some((supplier) => supplier.active) && <p className="text-sm text-amber-800">Primero registra un proveedor activo en Proveedores.</p>}
++          {items.map((item, index) => <div key={index} className="space-y-3 rounded-2xl border border-border bg-background/60 p-3">
++            <div className="flex items-center justify-between"><h3 className="font-semibold">Producto {index + 1}</h3><button type="button" disabled={items.length === 1} className={secondaryButton} onClick={() => setItems(items.filter((_, itemIndex) => itemIndex !== index))}>Quitar</button></div>
++            <Field label="Producto"><ThemedSelect aria-label={`Producto ${index + 1}`} disabled={busy} required className={inputClass} value={item.productId} onChange={(event) => changeItem(index, { productId: event.target.value })}><option value="">Seleccionar producto</option>{inventory.filter((product) => product.status !== 'Inactivo').map((product) => <option key={product.id} value={product.id}>{product.name} · {product.presentation}</option>)}</ThemedSelect></Field>
++            <div className="grid grid-cols-2 gap-3">
++              <Field label="Cantidad"><input type="number" required min={1} max={2147483647} step={1} className={inputClass} value={Number.isFinite(item.quantity) ? item.quantity : ''} onChange={(event) => changeItem(index, { quantity: event.target.valueAsNumber })} /></Field>
++              <Field label="Costo unitario (Q)"><input type="number" required min={0} max={99999999.99} step="0.01" className={inputClass} value={Number.isFinite(item.unitCost) ? item.unitCost : ''} onChange={(event) => changeItem(index, { unitCost: event.target.valueAsNumber })} /></Field>
++              <Field label="Lote (opcional)"><input maxLength={80} className={inputClass} value={item.lotCode} onChange={(event) => changeItem(index, { lotCode: event.target.value })} /></Field>
++              <Field label="Vencimiento (opcional)"><input type="date" min={date} className={inputClass} value={item.expirationDate} onChange={(event) => changeItem(index, { expirationDate: event.target.value })} /></Field>
++            </div><p className="text-right text-sm font-semibold">Subtotal: {inventoryMoney(item.quantity * item.unitCost || 0)}</p>
++          </div>)}
++          <button type="button" disabled={items.length >= 200} className={secondaryButton} onClick={() => setItems([...items, emptyItem()])}>Agregar producto</button>
++        </fieldset>
++        <p className="text-lg font-bold text-primary">Total: {inventoryMoney(total || 0)}</p>
++        <p className="text-sm text-muted-foreground">Guardar confirma la recepción y aumenta las existencias. Cada fila crea un lote; la compra recibida no se edita.</p>
++        <div className="flex flex-wrap gap-3"><button disabled={busy || !suppliers.some((supplier) => supplier.active)} className={primaryButton}>{busy ? 'Recibiendo...' : 'Confirmar recepción'}</button><button type="button" disabled={busy} className={secondaryButton} onClick={() => setOpen(false)}>Cancelar</button></div>
++      </form>
++    </OperationModal>}
++    {cancelTarget && <OperationModal title={`Anular compra #${cancelTarget.id}`} busy={busy} onClose={() => setCancelTarget(null)}>
++      <OperationNotice message={error} error /><form className="space-y-4" onSubmit={cancel}>
++        <p className="text-sm text-muted-foreground">Solo se puede anular si todas sus unidades siguen disponibles en sus lotes. El documento se conservará.</p>
++        <Field label="Motivo de anulación"><textarea required maxLength={200} disabled={busy} className={inputClass} value={reason} onChange={(event) => setReason(event.target.value)} /></Field>
++        <button disabled={busy || !reason.trim()} className={primaryButton}>{busy ? 'Anulando...' : 'Confirmar anulación'}</button>
++      </form>
++    </OperationModal>}
++  </section>;
++}
+diff --git a/src/app/components/inventory/InventorySuppliers.tsx b/src/app/components/inventory/InventorySuppliers.tsx
+new file mode 100644
+index 0000000..de6b828
+--- /dev/null
++++ b/src/app/components/inventory/InventorySuppliers.tsx
+@@ -0,0 +1,76 @@
++import { useEffect, useState, type FormEvent } from 'react';
++import type { ModulePermissions } from '../../hooks/useModulePermissions';
++import { requestJson } from '../../utils/apiClient';
++import { inventoryError, type Supplier } from '../../utils/inventoryOperations';
++import { CreateButton } from '../ModuleHeader';
++import { Field, inputClass, OperationModal, OperationNotice, primaryButton, secondaryButton } from './OperationUi';
++
++const emptySupplier = (): Omit<Supplier, 'id'> => ({ name: '', phone: '', email: '', address: '', active: true });
++
++export default function InventorySuppliers({ permissions }: { permissions: ModulePermissions }) {
++  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
++  const [search, setSearch] = useState('');
++  const [loading, setLoading] = useState(true);
++  const [error, setError] = useState('');
++  const [message, setMessage] = useState('');
++  const [form, setForm] = useState(emptySupplier);
++  const [editingId, setEditingId] = useState('');
++  const [open, setOpen] = useState(false);
++  const [busy, setBusy] = useState(false);
++
++  const load = async () => {
++    setLoading(true);
++    try { setSuppliers(await requestJson<Supplier[]>('inventario/proveedores', { defaultError: 'No se pudieron cargar los proveedores' })); }
++    catch (error) { setError(inventoryError(error)); }
++    finally { setLoading(false); }
++  };
++  useEffect(() => { void load(); }, []);
++
++  const save = async (event: FormEvent) => {
++    event.preventDefault();
++    if (busy || !(editingId ? permissions.canEdit : permissions.canCreate)) return;
++    setBusy(true); setError(''); setMessage('');
++    try {
++      const result = await requestJson<{ message: string }>(`inventario/proveedores${editingId ? `/${editingId}` : ''}`, {
++        method: editingId ? 'PUT' : 'POST', body: form, defaultError: 'No se pudo guardar el proveedor',
++      });
++      setOpen(false); setMessage(result.message); await load();
++    } catch (error) { setError(inventoryError(error)); }
++    finally { setBusy(false); }
++  };
++
++  return <section>
++    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
++      <h2 className="text-xl font-semibold text-foreground">Proveedores</h2>
++      {permissions.canCreate && <CreateButton onClick={() => { setEditingId(''); setForm(emptySupplier()); setError(''); setOpen(true); }}>Nuevo proveedor</CreateButton>}
++    </div>
++    {!open && <OperationNotice message={error} error />}
++    <OperationNotice message={message} />
++    <Field label="Buscar proveedor"><input className={inputClass} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nombre o teléfono" /></Field>
++    {loading && <p className="my-4 text-muted-foreground">Cargando proveedores...</p>}
++    <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
++      {suppliers.filter((supplier) => `${supplier.name} ${supplier.phone}`.toLowerCase().includes(search.toLowerCase())).map((supplier) => <article key={supplier.id} className="rounded-2xl border border-border bg-card p-4 shadow-sm">
++        <div className="mb-3 flex items-start justify-between gap-2"><h3 className="font-bold text-foreground">{supplier.name}</h3><span className={`rounded-full px-2 py-1 text-xs ${supplier.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>{supplier.active ? 'Activo' : 'Inactivo'}</span></div>
++        <p className="break-words text-sm text-muted-foreground">Teléfono: {supplier.phone || '—'}</p>
++        <p className="break-words text-sm text-muted-foreground">Correo: {supplier.email || '—'}</p>
++        <p className="break-words text-sm text-muted-foreground">Dirección: {supplier.address || '—'}</p>
++        {permissions.canEdit && <button className={`${secondaryButton} mt-3`} onClick={() => { setEditingId(supplier.id); setForm(supplier); setError(''); setOpen(true); }}>Editar proveedor</button>}
++      </article>)}
++    </div>
++    {!loading && suppliers.filter((supplier) => `${supplier.name} ${supplier.phone}`.toLowerCase().includes(search.toLowerCase())).length === 0 && <p className="py-8 text-center text-muted-foreground">No hay proveedores coincidentes.</p>}
++    {open && <OperationModal title={editingId ? 'Editar proveedor' : 'Nuevo proveedor'} busy={busy} onClose={() => setOpen(false)}>
++      <OperationNotice message={error} error />
++      <form className="patient-form space-y-4" onSubmit={save}>
++        <fieldset disabled={busy} className="grid gap-4 md:grid-cols-2">
++          <Field label="Nombre"><input required maxLength={150} className={inputClass} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
++          <Field label="Teléfono"><input maxLength={12} pattern="[0-9]{8,12}" className={inputClass} value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></Field>
++          <Field label="Correo"><input type="email" maxLength={150} className={inputClass} value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></Field>
++          <Field label="Dirección"><input maxLength={255} className={inputClass} value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} /></Field>
++          <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} />Proveedor activo</label>
++        </fieldset>
++        <p className="text-sm text-muted-foreground">Los proveedores inactivos conservan su historial y no se pueden seleccionar en nuevas compras.</p>
++        <div className="flex flex-wrap gap-3"><button disabled={busy} className={primaryButton}>{busy ? 'Guardando...' : 'Guardar proveedor'}</button><button type="button" disabled={busy} className={secondaryButton} onClick={() => setOpen(false)}>Cancelar</button></div>
++      </form>
++    </OperationModal>}
++  </section>;
++}
+diff --git a/src/app/pages/Inventory.tsx b/src/app/pages/Inventory.tsx
+index 663ef69..7a72ccc 100644
+--- a/src/app/pages/Inventory.tsx
++++ b/src/app/pages/Inventory.tsx
+@@ -23,6 +23,10 @@ import type { InventoryProduct } from '../utils/types';
+ import InventoryAudit from '../components/InventoryAudit';
+ import InventoryHistory from '../components/inventory/InventoryHistory';
+ import SalesClosing from '../components/SalesClosing';
++import InventorySuppliers from '../components/inventory/InventorySuppliers';
++import InventoryPurchases from '../components/inventory/InventoryPurchases';
++import InventoryMovements from '../components/inventory/InventoryMovements';
++import { useAuth } from '../context/AuthContext';
+ import ThemedSelect from '../components/ThemedSelect';
+ import { useModulePermissions } from '../hooks/useModulePermissions';
+ import InformationCard from '../components/InformationCard';
+@@ -68,9 +72,27 @@ const formatAuditMonth = (value: string) => {
+ 
+ export default function Inventory() {
+   const { permissions } = useModulePermissions('inventory');
++  const { user } = useAuth();
++  const [operationsUserId, setOperationsUserId] = useState<number | null>(null);
++  const canAccessOperations = Boolean(user && operationsUserId === user.id);
++
++  useEffect(() => {
++    const controller = new AbortController();
++    setOperationsUserId(null);
++    if (user) {
++      void fetch(`${API_URL}/inventario/operaciones-acceso`, {
++        headers: getAuthHeaders(), signal: controller.signal, cache: 'no-store',
++      }).then(async (response) => {
++        if (!response.ok) return;
++        const result = await response.json();
++        if (!controller.signal.aborted && result.canAccessOperations === true) setOperationsUserId(user.id);
++      }).catch(() => { /* Keep the additional sections inaccessible when verification fails. */ });
++    }
++    return () => controller.abort();
++  }, [user?.id]);
+   const [inventory, setInventory] = useState<InventoryProduct[]>([]);
+   const [activeSection, setActiveSection] =
+-    useState<'inventory' | 'audit' | 'sales' | 'history'>('inventory');
++    useState<'inventory' | 'audit' | 'sales' | 'suppliers' | 'purchases' | 'movements' | 'history'>('inventory');
+   const [showAuditDateModal, setShowAuditDateModal] = useState(false);
+   const [auditDate, setAuditDate] = useState(getCurrentGuatemalaDate);
+ 
+@@ -476,7 +498,7 @@ export default function Inventory() {
+       </ModuleHeader>
+ 
+       {activeSection !== 'audit' && (
+-        <nav aria-label="Secciones de inventario" className="mb-4 grid grid-cols-2 gap-2 sm:inline-flex">
++        <nav aria-label="Secciones de inventario" className="mb-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+           <button
+             type="button"
+             aria-pressed={activeSection === 'inventory'}
+@@ -495,14 +517,15 @@ export default function Inventory() {
+             <ReceiptText className="h-4 w-4 shrink-0" />
+             Cierre de ventas
+           </button>
+-          <button
+-            type="button"
+-            aria-pressed={activeSection === 'history'}
+-            onClick={() => setActiveSection('history')}
+-            className={`flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${activeSection === 'history' ? 'border-primary bg-primary text-[#F7EFE6]' : 'border-border bg-card text-foreground hover:bg-muted'}`}
+-          >
+-            Historial de cambios
+-          </button>
++          {canAccessOperations && ([
++            ['suppliers', 'Proveedores'], ['purchases', 'Compras'],
++            ['movements', 'Movimientos'], ['history', 'Historial de cambios'],
++          ] as const).map(([section, label]) => (
++            <button key={section} type="button" aria-pressed={activeSection === section}
++              onClick={() => setActiveSection(section)}
++              className={`flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${activeSection === section ? 'border-primary bg-primary text-[#F7EFE6]' : 'border-border bg-card text-foreground hover:bg-muted'}`}
++            >{label}</button>
++          ))}
+         </nav>
+       )}
+ 
+@@ -514,8 +537,14 @@ export default function Inventory() {
+           onBack={() => setActiveSection('inventory')}
+           onCompleted={loadInventory}
+         />
+-      ) : activeSection === 'history' ? (
++      ) : activeSection === 'history' && canAccessOperations ? (
+         <InventoryHistory inventory={inventory} />
++      ) : activeSection === 'suppliers' && canAccessOperations ? (
++        <InventorySuppliers permissions={permissions} />
++      ) : activeSection === 'purchases' && canAccessOperations ? (
++        <InventoryPurchases inventory={inventory} permissions={permissions} onInventoryChanged={loadInventory} />
++      ) : activeSection === 'movements' && canAccessOperations ? (
++        <InventoryMovements inventory={inventory} />
+       ) : activeSection === 'sales' ? (
+         <SalesClosing
+           inventory={inventory}
+diff --git a/src/app/utils/inventoryOperations.ts b/src/app/utils/inventoryOperations.ts
+index 42b9fe4..94807a5 100644
+--- a/src/app/utils/inventoryOperations.ts
++++ b/src/app/utils/inventoryOperations.ts
+@@ -1,85 +1,85 @@
+-export type Supplier = {
+-  id: string;
+-  name: string;
+-  phone: string;
+-  email: string;
+-  address: string;
+-  active: boolean;
+-};
+-
+-export type PurchaseItem = {
+-  productId: string;
+-  quantity: number;
+-  unitCost: number;
+-  lotCode: string;
+-  expirationDate: string;
+-};
+-
+-export type Purchase = {
+-  id: string;
+-  supplierId: string;
+-  supplierName: string;
+-  date: string;
+-  receipt: string;
+-  notes: string;
+-  total: number;
+-  canceled: boolean;
+-  cancellationReason: string;
+-  responsible: string;
+-  items: Array<PurchaseItem & { id: string; productName: string; lotId: string }>;
+-};
+-
+-export type InventoryMovement = {
+-  id: string;
+-  productId: string;
+-  productName: string;
+-  date: string;
+-  type: string;
+-  quantity: number;
+-  previousStock: number;
+-  newStock: number;
+-  lotCode: string;
+-  responsible: string;
+-  reason: string;
+-  origin: string;
+-  document: string;
+-  referenceId: string;
+-};
+-
+-export const inventoryToday = () => new Intl.DateTimeFormat('en-CA', {
+-  timeZone: 'America/Guatemala', year: 'numeric', month: '2-digit', day: '2-digit',
+-}).format(new Date());
+-
+-export const inventoryMoney = (value: number) => new Intl.NumberFormat('es-GT', {
+-  style: 'currency', currency: 'GTQ',
+-}).format(value);
+-
+-export const inventoryError = (error: unknown) => error instanceof Error ? error.message : 'No se pudo completar la operación';
+-
+-type SummarySale = {
+-  canceled?: boolean;
+-  accountingVersion?: number;
+-  total: number;
+-  cashFundTotal?: number;
+-  hasSales?: boolean;
+-  payments: Array<{ code: string; amount: number; cashFundAmount?: number }>;
+-  items: Array<{ type: string; quantity: number }>;
+-};
+-
+-export const calculateSalesTotals = (sales: SummarySale[]) => sales.reduce((result, sale) => {
+-  if (sale.canceled) return result;
+-  const round = (value: number) => Math.round(value * 100) / 100;
+-  const corrected = sale.accountingVersion === 2;
+-  const fund = corrected ? Number(sale.cashFundTotal || 0) : 0;
+-  if (!corrected || sale.hasSales !== false) result.saleCount += 1;
+-  result.total = corrected ? round(result.total + sale.total - fund) : result.total + sale.total;
+-  result.cashFundTotal = round(result.cashFundTotal + fund);
+-  result.receivedTotal = round(result.receivedTotal + sale.total);
+-  for (const payment of sale.payments) {
+-    const amount = (payment.amount - (corrected ? Number(payment.cashFundAmount || 0) : 0));
+-    if (corrected && amount === 0 && payment.cashFundAmount) continue;
+-    result.byMethod[payment.code] = corrected ? round((result.byMethod[payment.code] || 0) + amount) : (result.byMethod[payment.code] || 0) + amount;
+-  }
+-  for (const item of sale.items) if (item.type === 'Producto') result.productQuantity += item.quantity;
+-  return result;
+-}, { byMethod: {} as Record<string, number>, total: 0, cashFundTotal: 0, receivedTotal: 0, saleCount: 0, productQuantity: 0 });
++export type Supplier = {
++  id: string;
++  name: string;
++  phone: string;
++  email: string;
++  address: string;
++  active: boolean;
++};
++
++export type PurchaseItem = {
++  productId: string;
++  quantity: number;
++  unitCost: number;
++  lotCode: string;
++  expirationDate: string;
++};
++
++export type Purchase = {
++  id: string;
++  supplierId: string;
++  supplierName: string;
++  date: string;
++  receipt: string;
++  notes: string;
++  total: number;
++  canceled: boolean;
++  cancellationReason: string;
++  responsible: string;
++  items: Array<PurchaseItem & { id: string; productName: string; lotId: string }>;
++};
++
++export type InventoryMovement = {
++  id: string;
++  productId: string;
++  productName: string;
++  date: string;
++  type: string;
++  quantity: number;
++  previousStock: number;
++  newStock: number;
++  lotCode: string;
++  responsible: string;
++  reason: string;
++  origin: string;
++  document: string;
++  referenceId: string;
++};
++
++export const inventoryToday = () => new Intl.DateTimeFormat('en-CA', {
++  timeZone: 'America/Guatemala', year: 'numeric', month: '2-digit', day: '2-digit',
++}).format(new Date());
++
++export const inventoryMoney = (value: number) => new Intl.NumberFormat('es-GT', {
++  style: 'currency', currency: 'GTQ',
++}).format(value);
++
++export const inventoryError = (error: unknown) => error instanceof Error ? error.message : 'No se pudo completar la operación';
++
++type SummarySale = {
++  canceled?: boolean;
++  accountingVersion?: number;
++  total: number;
++  cashFundTotal?: number;
++  hasSales?: boolean;
++  payments: Array<{ code: string; amount: number; cashFundAmount?: number }>;
++  items: Array<{ type: string; quantity: number }>;
++};
++
++export const calculateSalesTotals = (sales: SummarySale[]) => sales.reduce((result, sale) => {
++  if (sale.canceled) return result;
++  const round = (value: number) => Math.round(value * 100) / 100;
++  const corrected = sale.accountingVersion === 2;
++  const fund = corrected ? Number(sale.cashFundTotal || 0) : 0;
++  if (!corrected || sale.hasSales !== false) result.saleCount += 1;
++  result.total = corrected ? round(result.total + sale.total - fund) : result.total + sale.total;
++  result.cashFundTotal = round(result.cashFundTotal + fund);
++  result.receivedTotal = round(result.receivedTotal + sale.total);
++  for (const payment of sale.payments) {
++    const amount = (payment.amount - (corrected ? Number(payment.cashFundAmount || 0) : 0));
++    if (corrected && amount === 0 && payment.cashFundAmount) continue;
++    result.byMethod[payment.code] = corrected ? round((result.byMethod[payment.code] || 0) + amount) : (result.byMethod[payment.code] || 0) + amount;
++  }
++  for (const item of sale.items) if (item.type === 'Producto') result.productQuantity += item.quantity;
++  return result;
++}, { byMethod: {} as Record<string, number>, total: 0, cashFundTotal: 0, receivedTotal: 0, saleCount: 0, productQuantity: 0 });

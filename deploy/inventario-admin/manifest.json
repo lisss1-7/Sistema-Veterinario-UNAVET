@@ -1,0 +1,40 @@
+{
+  "files": {
+    "src/app/pages/Inventory.tsx": {
+      "before": "5cf5058abbcedd67efb86035b1873b84eefaf9d0a7d76b5d8a96989b13c9c2a1",
+      "after": "cb48d6dbc906fe4c133105cffcac89929b8d1fc1b1e11f4de2baf4d002e9b14d"
+    },
+    "backend/src/routes/inventarioRoutes.js": {
+      "before": "080c7e9a0085e81a8c94d46c0e819b8e90a755e1adc418ddf4d172ba62f18126",
+      "after": "4e7b5ab74b9a6bf6ef4829795fa346488c8d8989bfb26a4a21f0e7336655324a"
+    },
+    "backend/src/middleware/inventoryOperationsAccess.js": {
+      "before": null,
+      "after": "b21d78c60907ca45d2d1cc1d93e212fb0491246deb2412968154488ec92674ad"
+    },
+    "backend/src/controllers/inventarioOperacionesController.js": {
+      "before": null,
+      "after": "7e2a9c1190534b983482102ee6aaf79464490757c87f98f817ee8f79dd263744"
+    },
+    "src/app/components/inventory/InventorySuppliers.tsx": {
+      "before": null,
+      "after": "28f313a7a347d80cad96889bea0330b253d4cb78437c4624240b54575f0c7f75"
+    },
+    "src/app/components/inventory/InventoryPurchases.tsx": {
+      "before": null,
+      "after": "04512dd6ba9fb3a7ac8efdc896043737bc56ee45d4aaf58fc24d06cf0bb3aabd"
+    },
+    "src/app/components/inventory/InventoryMovements.tsx": {
+      "before": null,
+      "after": "e2a77a8cf29be7b07900a693b8ee6c512ec799912d350131a93b729311c6e14b"
+    },
+    "src/app/utils/inventoryOperations.ts": {
+      "before": "814e4708bf1368d74752c84b1b3f5e27644f90868b8a21568790f3980ca96949",
+      "after": "e48ff1b626001287662e960776ce0fc4e615caeab9544b36f790f7eb40b25589"
+    }
+  },
+  "database": "compras.sql: two new tables only",
+  "restrictedAccount": "admin",
+  "patchSha256": "4fd0eaa5b6916eabcec73c5be1f97fd1a0444fc8504186af615d424aef3714e9",
+  "migrationSha256": "82ad548cb34eb29cb8dc7ceb5fe14a8baca8e77fc276a604efaffd6dc5e94aa9"
+}

@@ -4,3 +4,5 @@ deploy/grooming-rutas/production.patch -text whitespace=-blank-at-eol
 deploy/recetas-consulta/production.patch -text whitespace=-blank-at-eol
 deploy/grooming-mascotas-nuevas/production.patch -text whitespace=-blank-at-eol
 deploy/recetas-busqueda/production.patch -text whitespace=-blank-at-eol
+
+deploy/inventario-admin/production.patch -text whitespace=-blank-at-eol
